@@ -2,9 +2,9 @@ use iced::alignment::{self, Alignment};
 use iced::executor;
 use iced::keyboard;
 use iced::theme::{self, Theme};
-use iced::widget::pane_grid::{self, PaneGrid, Configuration};
+use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{button, column, container, row, scrollable, text};
-use iced::{Application, Command, Element, Length, Settings, Size, Subscription};
+use iced::{Application, Command, Element, Length, Settings, Subscription};
 use iced_lazy::responsive;
 use iced_native::{event, subscription, Event};
 
@@ -13,13 +13,12 @@ pub fn main() -> iced::Result {
 }
 
 struct MainWindow {
-    panes: pane_grid::State<Pane>,
+    panes: pane_grid::State<AppPane>,
     focus: Option<pane_grid::Pane>,
 }
 
 #[derive(Debug, Clone, Copy)]
 enum Message {
-    Split(pane_grid::Axis, pane_grid::Pane),
     FocusAdjacent(pane_grid::Direction),
     Clicked(pane_grid::Pane),
     Dragged(pane_grid::DragEvent),
@@ -41,10 +40,10 @@ impl Application for MainWindow {
             a: Box::new(Configuration::Split {
                 axis: pane_grid::Axis::Vertical,
                 ratio: 0.5,
-                a: Box::new(Configuration::Pane(Pane::new())),
-                b: Box::new(Configuration::Pane(Pane::new())),
+                a: Box::new(Configuration::Pane(AppPane::new(PaneVariant::ScriptList))),
+                b: Box::new(Configuration::Pane(AppPane::new(PaneVariant::ExecutionList))),
             }),
-            b: Box::new(Configuration::Pane(Pane::new())),
+            b: Box::new(Configuration::Pane(AppPane::new(PaneVariant::LogOutput))),
         };
         let panes = pane_grid::State::with_configuration(pane_configuration);
 
@@ -57,13 +56,6 @@ impl Application for MainWindow {
 
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
-            Message::Split(axis, pane) => {
-                let result = self.panes.split(axis, &pane, Pane::new());
-
-                if let Some((pane, _)) = result {
-                    self.focus = Some(pane);
-                }
-            }
             Message::FocusAdjacent(direction) => {
                 if let Some(pane) = self.focus {
                     if let Some(adjacent) = self.panes.adjacent(&pane, direction) {
@@ -97,7 +89,9 @@ impl Application for MainWindow {
         let pane_grid = PaneGrid::new(&self.panes, |id, _pane, is_maximized| {
             let is_focused = focus == Some(id);
 
-            let title = row!["Pane"].spacing(5);
+            let variant = &self.panes.panes[&id].variant;
+
+            let title = row![if *variant == PaneVariant::ScriptList {"Scripts"} else {"Some title"}].spacing(5);
 
             let title_bar = pane_grid::TitleBar::new(title)
                 .controls(view_controls(id, total_panes, is_maximized))
@@ -108,7 +102,7 @@ impl Application for MainWindow {
                     style::title_bar_active
                 });
 
-            pane_grid::Content::new(responsive(move |size| view_content(id, size)))
+            pane_grid::Content::new(responsive(move |_size| view_content(id, variant)))
                 .title_bar(title_bar)
                 .style(if is_focused {
                     style::pane_focused
@@ -167,15 +161,26 @@ fn handle_hotkey(key_code: keyboard::KeyCode) -> Option<Message> {
     }
 }
 
-struct Pane {}
+#[derive(PartialEq)]
+enum PaneVariant {
+    ScriptList,
+    ExecutionList,
+    LogOutput,
+}
 
-impl Pane {
-    fn new() -> Self {
-        Self {}
+struct AppPane {
+    variant: PaneVariant
+}
+
+impl AppPane {
+    fn new(variant: PaneVariant) -> Self {
+        Self {
+            variant,
+        }
     }
 }
 
-fn view_content<'a>(pane: pane_grid::Pane, size: Size) -> Element<'a, Message> {
+fn view_content<'a>(pane: pane_grid::Pane, variant: &PaneVariant) -> Element<'a, Message> {
     let button = |label, message| {
         button(
             text(label)
@@ -199,29 +204,23 @@ fn view_content<'a>(pane: pane_grid::Pane, size: Size) -> Element<'a, Message> {
     .spacing(10)
     .into();
 
-    let controls = column![
-        button(
-            "Split horizontally",
-            Message::Split(pane_grid::Axis::Horizontal, pane),
-        ),
-        button(
-            "Split vertically",
-            Message::Split(pane_grid::Axis::Vertical, pane),
-        ),
-        data,
-    ]
+    let controls = if *variant == PaneVariant::ExecutionList {column![button(
+        "Run",
+        Message::Clicked(pane),
+    ),]
     .spacing(5)
-    .max_width(150);
+    .max_width(150) } else {column![]};
 
     let content = column![
-        text(format!("{}x{}", size.width, size.height)).size(24),
+        scrollable(data),
         controls,
     ]
     .width(Length::Fill)
+    .height(Length::Fill)
     .spacing(10)
     .align_items(Alignment::Center);
 
-    container(scrollable(content))
+    container(content)
         .width(Length::Fill)
         .height(Length::Fill)
         .padding(5)
