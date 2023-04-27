@@ -3,10 +3,12 @@ use iced::executor;
 use iced::keyboard;
 use iced::theme::{self, Theme};
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
-use iced::widget::{button, column, container, row, scrollable, text};
+use iced::widget::{button, column, container, row, scrollable, text, Column};
 use iced::{Application, Command, Element, Length, Settings, Subscription};
 use iced_lazy::responsive;
 use iced_native::{event, subscription, Event};
+use std::process::Output;
+use std::sync::mpsc;
 
 pub fn main() -> iced::Result {
     MainWindow::run(Settings::default())
@@ -15,9 +17,10 @@ pub fn main() -> iced::Result {
 struct MainWindow {
     panes: pane_grid::State<AppPane>,
     focus: Option<pane_grid::Pane>,
+    scripts_to_run: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum Message {
     FocusAdjacent(pane_grid::Direction),
     Clicked(pane_grid::Pane),
@@ -25,6 +28,8 @@ enum Message {
     Resized(pane_grid::ResizeEvent),
     Maximize(pane_grid::Pane),
     Restore,
+    AddScriptToRun(String),
+    RunScripts(),
 }
 
 impl Application for MainWindow {
@@ -41,13 +46,22 @@ impl Application for MainWindow {
                 axis: pane_grid::Axis::Vertical,
                 ratio: 0.5,
                 a: Box::new(Configuration::Pane(AppPane::new(PaneVariant::ScriptList))),
-                b: Box::new(Configuration::Pane(AppPane::new(PaneVariant::ExecutionList))),
+                b: Box::new(Configuration::Pane(AppPane::new(
+                    PaneVariant::ExecutionList,
+                ))),
             }),
             b: Box::new(Configuration::Pane(AppPane::new(PaneVariant::LogOutput))),
         };
         let panes = pane_grid::State::with_configuration(pane_configuration);
 
-        (MainWindow { panes, focus: None }, Command::none())
+        (
+            MainWindow {
+                panes,
+                focus: None,
+                scripts_to_run: Vec::new(),
+            },
+            Command::none(),
+        )
     }
 
     fn title(&self) -> String {
@@ -77,6 +91,27 @@ impl Application for MainWindow {
             Message::Restore => {
                 self.panes.restore();
             }
+            Message::AddScriptToRun(script) => {
+                self.scripts_to_run.push(script);
+            }
+            Message::RunScripts() => {
+                let (tx, rx) = mpsc::channel();
+                let scripts_to_run = self.scripts_to_run.clone();
+                std::thread::spawn(move || {
+                    for script in scripts_to_run {
+                        tx.send(script).unwrap();
+                    }
+                });
+                std::thread::spawn(move || {
+                    for script in rx {
+                        // run script blocking
+                        let output = std::process::Command::new(&script)
+                            .output()
+                            .expect(format!("failed to execute process: {}", script).as_str());
+                        println!("status: {}", output.status);
+                    }
+                });
+            }
         }
 
         Command::none()
@@ -91,7 +126,12 @@ impl Application for MainWindow {
 
             let variant = &self.panes.panes[&id].variant;
 
-            let title = row![if *variant == PaneVariant::ScriptList {"Scripts"} else {"Some title"}].spacing(5);
+            let title = row![match variant {
+                PaneVariant::ScriptList => "Scripts",
+                PaneVariant::ExecutionList => "Executions",
+                PaneVariant::LogOutput => "Log",
+            }]
+            .spacing(5);
 
             let title_bar = pane_grid::TitleBar::new(title)
                 .controls(view_controls(id, total_panes, is_maximized))
@@ -102,13 +142,15 @@ impl Application for MainWindow {
                     style::title_bar_active
                 });
 
-            pane_grid::Content::new(responsive(move |_size| view_content(id, variant)))
-                .title_bar(title_bar)
-                .style(if is_focused {
-                    style::pane_focused
-                } else {
-                    style::pane_active
-                })
+            pane_grid::Content::new(responsive(move |_size| {
+                view_content(&self.scripts_to_run, variant)
+            }))
+            .title_bar(title_bar)
+            .style(if is_focused {
+                style::pane_focused
+            } else {
+                style::pane_active
+            })
         })
         .width(Length::Fill)
         .height(Length::Fill)
@@ -169,18 +211,73 @@ enum PaneVariant {
 }
 
 struct AppPane {
-    variant: PaneVariant
+    variant: PaneVariant,
 }
 
 impl AppPane {
     fn new(variant: PaneVariant) -> Self {
-        Self {
-            variant,
-        }
+        Self { variant }
     }
 }
 
-fn view_content<'a>(pane: pane_grid::Pane, variant: &PaneVariant) -> Element<'a, Message> {
+fn produce_script_list_content<'a>() -> Column<'a, Message> {
+    let button = |label, message| {
+        button(
+            text(label)
+                //.width(Length::Fill)
+                .vertical_alignment(alignment::Vertical::Center)
+                .size(16),
+        )
+        //.width(Length::Fill)
+        .padding(4)
+        .on_press(message)
+    };
+
+    // iterate over files in "scripts" directory
+    let mut files = vec![];
+    let dir = std::fs::read_dir("scripts").unwrap();
+    for entry in dir {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        if path.is_file() {
+            files.push(path);
+        }
+    }
+
+    let data: Element<_> = column(
+        files
+            .iter()
+            .enumerate()
+            .map(|(_i, file)| {
+                row![
+                    text(
+                        file.file_name()
+                            .unwrap_or_default()
+                            .to_str()
+                            .unwrap_or("[error]")
+                            .to_string()
+                    ),
+                    text(" "),
+                    button(
+                        "Add",
+                        Message::AddScriptToRun(file.to_str().unwrap_or_default().to_string())
+                    )
+                ]
+                .into()
+            })
+            .collect(),
+    )
+    .spacing(10)
+    .into();
+
+    return column![scrollable(data),]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .spacing(10)
+        .align_items(Alignment::Center);
+}
+
+fn produce_execution_list_content<'a>(scripts_to_run: &Vec<String>) -> Column<'a, Message> {
     let button = |label, message| {
         button(
             text(label)
@@ -193,32 +290,52 @@ fn view_content<'a>(pane: pane_grid::Pane, variant: &PaneVariant) -> Element<'a,
         .on_press(message)
     };
 
-    let elements = [10, 20, 30];
     let data: Element<_> = column(
-        elements
+        scripts_to_run
             .iter()
             .enumerate()
-            .map(|(_i, element)| text(element.to_string()).into())
+            .map(|(_i, element)| text(element).into())
             .collect(),
     )
     .spacing(10)
     .into();
 
-    let controls = if *variant == PaneVariant::ExecutionList {column![button(
-        "Run",
-        Message::Clicked(pane),
-    ),]
-    .spacing(5)
-    .max_width(150) } else {column![]};
+    let controls = column![button("Run", Message::RunScripts(),),]
+        .spacing(5)
+        .max_width(150);
 
-    let content = column![
-        scrollable(data),
-        controls,
-    ]
-    .width(Length::Fill)
-    .height(Length::Fill)
+    return column![scrollable(data), controls,]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .spacing(10)
+        .align_items(Alignment::Center);
+}
+
+fn produce_log_output_content<'a>() -> Column<'a, Message> {
+    let elements = ["line1", "line2", "line3"];
+    let data: Element<_> = column(
+        elements
+            .iter()
+            .enumerate()
+            .map(|(_i, element)| text(element).into())
+            .collect(),
+    )
     .spacing(10)
-    .align_items(Alignment::Center);
+    .into();
+
+    return column![scrollable(data),]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .spacing(10)
+        .align_items(Alignment::Center);
+}
+
+fn view_content<'a>(scripts_to_run: &Vec<String>, variant: &PaneVariant) -> Element<'a, Message> {
+    let content = match variant {
+        PaneVariant::ScriptList => produce_script_list_content(),
+        PaneVariant::ExecutionList => produce_execution_list_content(scripts_to_run),
+        PaneVariant::LogOutput => produce_log_output_content(),
+    };
 
     container(content)
         .width(Length::Fill)
