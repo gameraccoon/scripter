@@ -1,14 +1,14 @@
 use iced::alignment::{self, Alignment};
 use iced::executor;
-use iced::keyboard;
+// use iced::keyboard;
 use iced::theme::{self, Theme};
+use iced::time;
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{button, column, container, row, scrollable, text, Column};
 use iced::{Application, Command, Element, Length, Settings, Subscription};
 use iced_lazy::responsive;
-use iced_native::{event, subscription, Event};
-use std::process::Output;
 use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 pub fn main() -> iced::Result {
     MainWindow::run(Settings::default())
@@ -18,11 +18,14 @@ struct MainWindow {
     panes: pane_grid::State<AppPane>,
     focus: Option<pane_grid::Pane>,
     scripts_to_run: Vec<String>,
+    start_times: Vec<Instant>,
+    running_progress: isize,
+    progress_receiver: Option<mpsc::Receiver<(isize, Instant)>>,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
-    FocusAdjacent(pane_grid::Direction),
+    //FocusAdjacent(pane_grid::Direction),
     Clicked(pane_grid::Pane),
     Dragged(pane_grid::DragEvent),
     Resized(pane_grid::ResizeEvent),
@@ -30,6 +33,7 @@ enum Message {
     Restore,
     AddScriptToRun(String),
     RunScripts(),
+    Tick(Instant),
 }
 
 impl Application for MainWindow {
@@ -59,6 +63,9 @@ impl Application for MainWindow {
                 panes,
                 focus: None,
                 scripts_to_run: Vec::new(),
+                start_times: Vec::new(),
+                running_progress: -1,
+                progress_receiver: None,
             },
             Command::none(),
         )
@@ -70,13 +77,13 @@ impl Application for MainWindow {
 
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
-            Message::FocusAdjacent(direction) => {
-                if let Some(pane) = self.focus {
-                    if let Some(adjacent) = self.panes.adjacent(&pane, direction) {
-                        self.focus = Some(adjacent);
-                    }
-                }
-            }
+            // Message::FocusAdjacent(direction) => {
+            //     if let Some(pane) = self.focus {
+            //         if let Some(adjacent) = self.panes.adjacent(&pane, direction) {
+            //             self.focus = Some(adjacent);
+            //         }
+            //     }
+            // }
             Message::Clicked(pane) => {
                 self.focus = Some(pane);
             }
@@ -92,25 +99,58 @@ impl Application for MainWindow {
                 self.panes.restore();
             }
             Message::AddScriptToRun(script) => {
-                self.scripts_to_run.push(script);
+                if self.running_progress == -1 {
+                    self.scripts_to_run.push(script);
+                }
             }
             Message::RunScripts() => {
-                let (tx, rx) = mpsc::channel();
-                let scripts_to_run = self.scripts_to_run.clone();
-                std::thread::spawn(move || {
-                    for script in scripts_to_run {
-                        tx.send(script).unwrap();
+                if self.running_progress == -1 {
+                    self.running_progress = 0;
+                    self.start_times.clear();
+                    let (tx, rx) = mpsc::channel();
+                    let scripts_to_run = self.scripts_to_run.clone();
+                    std::thread::spawn(move || {
+                        let mut processed_count = 0;
+                        for script in scripts_to_run {
+                            tx.send((processed_count, Instant::now())).unwrap();
+                            // run script blocking
+                            let output = std::process::Command::new("sh")
+                                .arg("-c")
+                                .arg(&script)
+                                .output()
+                                .expect(format!("failed to execute script: {}", script).as_str());
+
+                            std::fs::create_dir_all("exec_logs")
+                                .expect("failed to create \"exec_logs\" directory");
+
+                            std::fs::write(
+                                format!("exec_logs/{}_stdout.log", processed_count),
+                                output.stdout,
+                            )
+                            .expect("failed to write stdout to file");
+
+                            std::fs::write(
+                                format!("exec_logs/{}_stderr.log", processed_count),
+                                output.stderr,
+                            )
+                            .expect("failed to write stderr to file");
+
+                            processed_count += 1;
+                        }
+                        tx.send((processed_count, Instant::now())).unwrap();
+                    });
+                    self.progress_receiver = Some(rx);
+                }
+            }
+            Message::Tick(_now) => {
+                if let Some(rx) = &self.progress_receiver {
+                    if let Ok(progress) = rx.try_recv() {
+                        self.running_progress = progress.0;
+                        if progress.0 == self.start_times.len() as isize {
+                            self.start_times.push(progress.1);
+                        }
                     }
-                });
-                std::thread::spawn(move || {
-                    for script in rx {
-                        // run script blocking
-                        let output = std::process::Command::new(&script)
-                            .output()
-                            .expect(format!("failed to execute process: {}", script).as_str());
-                        println!("status: {}", output.status);
-                    }
-                });
+                }
             }
         }
 
@@ -143,7 +183,7 @@ impl Application for MainWindow {
                 });
 
             pane_grid::Content::new(responsive(move |_size| {
-                view_content(&self.scripts_to_run, variant)
+                view_content(&self.scripts_to_run, &self.start_times, self.running_progress, variant)
             }))
             .title_bar(title_bar)
             .style(if is_focused {
@@ -167,7 +207,9 @@ impl Application for MainWindow {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        subscription::events_with(|event, status| {
+        // can't find how to process keyboard events and other events at the same time
+        // so for now we just process other events
+        /*subscription::events_with(|event, status| {
             if let event::Status::Captured = status {
                 return None;
             }
@@ -179,29 +221,30 @@ impl Application for MainWindow {
                 }) if modifiers.command() => handle_hotkey(key_code),
                 _ => None,
             }
-        })
+        })*/
+        time::every(Duration::from_millis(10)).map(Message::Tick)
     }
 }
 
-fn handle_hotkey(key_code: keyboard::KeyCode) -> Option<Message> {
-    use keyboard::KeyCode;
-    use pane_grid::Direction;
-
-    let direction = match key_code {
-        KeyCode::Up => Some(Direction::Up),
-        KeyCode::Down => Some(Direction::Down),
-        KeyCode::Left => Some(Direction::Left),
-        KeyCode::Right => Some(Direction::Right),
-        _ => None,
-    };
-
-    match key_code {
-        // KeyCode::V => Some(Message::SplitFocused(Axis::Vertical)),
-        // KeyCode::H => Some(Message::SplitFocused(Axis::Horizontal)),
-        // KeyCode::W => Some(Message::CloseFocused),
-        _ => direction.map(Message::FocusAdjacent),
-    }
-}
+// fn handle_hotkey(key_code: keyboard::KeyCode) -> Option<Message> {
+//     use keyboard::KeyCode;
+//     use pane_grid::Direction;
+//
+//     let direction = match key_code {
+//         KeyCode::Up => Some(Direction::Up),
+//         KeyCode::Down => Some(Direction::Down),
+//         KeyCode::Left => Some(Direction::Left),
+//         KeyCode::Right => Some(Direction::Right),
+//         _ => None,
+//     };
+//
+//     match key_code {
+//         KeyCode::V => Some(Message::SplitFocused(Axis::Vertical)),
+//         KeyCode::H => Some(Message::SplitFocused(Axis::Horizontal)),
+//         KeyCode::W => Some(Message::CloseFocused),
+//         _ => direction.map(Message::FocusAdjacent),
+//     }
+// }
 
 #[derive(PartialEq)]
 enum PaneVariant {
@@ -277,7 +320,11 @@ fn produce_script_list_content<'a>() -> Column<'a, Message> {
         .align_items(Alignment::Center);
 }
 
-fn produce_execution_list_content<'a>(scripts_to_run: &Vec<String>) -> Column<'a, Message> {
+fn produce_execution_list_content<'a>(
+    scripts_to_run: &Vec<String>,
+    start_times: &Vec<Instant>,
+    progress: isize,
+) -> Column<'a, Message> {
     let button = |label, message| {
         button(
             text(label)
@@ -294,7 +341,26 @@ fn produce_execution_list_content<'a>(scripts_to_run: &Vec<String>) -> Column<'a
         scripts_to_run
             .iter()
             .enumerate()
-            .map(|(_i, element)| text(element).into())
+            .map(|(i, element)| {
+                text(if (i as isize) == progress {
+                    if start_times.len() > i {
+                        let time_taken_sec = Instant::now().duration_since(start_times[i]).as_secs();
+                        format!("[...] {} ({:02}:{:02})", element, time_taken_sec / 60, time_taken_sec % 60)
+                    } else {
+                        format!("[...] {}", element)
+                    }
+                } else if (i as isize) < progress {
+                    if start_times.len() > i + 1 {
+                        let time_taken_sec = start_times[i + 1].duration_since(start_times[i]).as_secs();
+                        format!("[DONE] {} ({:02}:{:02})", element, time_taken_sec / 60, time_taken_sec % 60)
+                    } else {
+                        format!("[DONE] {}", element)
+                    }
+                } else {
+                    format!("{}", element)
+                })
+                .into()
+            })
             .collect(),
     )
     .spacing(10)
@@ -330,10 +396,15 @@ fn produce_log_output_content<'a>() -> Column<'a, Message> {
         .align_items(Alignment::Center);
 }
 
-fn view_content<'a>(scripts_to_run: &Vec<String>, variant: &PaneVariant) -> Element<'a, Message> {
+fn view_content<'a>(
+    scripts_to_run: &Vec<String>,
+    start_times: &Vec<Instant>,
+    progress: isize,
+    variant: &PaneVariant,
+) -> Element<'a, Message> {
     let content = match variant {
         PaneVariant::ScriptList => produce_script_list_content(),
-        PaneVariant::ExecutionList => produce_execution_list_content(scripts_to_run),
+        PaneVariant::ExecutionList => produce_execution_list_content(scripts_to_run, start_times, progress),
         PaneVariant::LogOutput => produce_log_output_content(),
     };
 
