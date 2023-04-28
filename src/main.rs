@@ -33,6 +33,8 @@ enum Message {
     Restore,
     AddScriptToRun(String),
     RunScripts(),
+    StopScripts(),
+    ClearScripts(),
     Tick(Instant),
 }
 
@@ -142,6 +144,18 @@ impl Application for MainWindow {
                     self.progress_receiver = Some(rx);
                 }
             }
+            Message::StopScripts() => {
+                println!("Not implemented yet");
+                // if self.running_progress != -1 {
+                //     self.running_progress = -1;
+                //     self.progress_receiver = None;
+                // }
+            }
+            Message::ClearScripts() => {
+                self.running_progress = -1;
+                self.scripts_to_run.clear();
+                self.start_times.clear();
+            }
             Message::Tick(_now) => {
                 if let Some(rx) = &self.progress_receiver {
                     if let Ok(progress) = rx.try_recv() {
@@ -183,7 +197,12 @@ impl Application for MainWindow {
                 });
 
             pane_grid::Content::new(responsive(move |_size| {
-                view_content(&self.scripts_to_run, &self.start_times, self.running_progress, variant)
+                view_content(
+                    &self.scripts_to_run,
+                    &self.start_times,
+                    self.running_progress,
+                    variant,
+                )
             }))
             .title_bar(title_bar)
             .style(if is_focused {
@@ -344,15 +363,27 @@ fn produce_execution_list_content<'a>(
             .map(|(i, element)| {
                 text(if (i as isize) == progress {
                     if start_times.len() > i {
-                        let time_taken_sec = Instant::now().duration_since(start_times[i]).as_secs();
-                        format!("[...] {} ({:02}:{:02})", element, time_taken_sec / 60, time_taken_sec % 60)
+                        let time_taken_sec =
+                            Instant::now().duration_since(start_times[i]).as_secs();
+                        format!(
+                            "[...] {} ({:02}:{:02})",
+                            element,
+                            time_taken_sec / 60,
+                            time_taken_sec % 60
+                        )
                     } else {
                         format!("[...] {}", element)
                     }
                 } else if (i as isize) < progress {
                     if start_times.len() > i + 1 {
-                        let time_taken_sec = start_times[i + 1].duration_since(start_times[i]).as_secs();
-                        format!("[DONE] {} ({:02}:{:02})", element, time_taken_sec / 60, time_taken_sec % 60)
+                        let time_taken_sec =
+                            start_times[i + 1].duration_since(start_times[i]).as_secs();
+                        format!(
+                            "[DONE] {} ({:02}:{:02})",
+                            element,
+                            time_taken_sec / 60,
+                            time_taken_sec % 60
+                        )
                     } else {
                         format!("[DONE] {}", element)
                     }
@@ -366,9 +397,15 @@ fn produce_execution_list_content<'a>(
     .spacing(10)
     .into();
 
-    let controls = column![button("Run", Message::RunScripts(),),]
-        .spacing(5)
-        .max_width(150);
+    let controls = column![if progress >= scripts_to_run.len() as isize {
+        button("Clear", Message::ClearScripts())
+    } else if progress >= 0 {
+        button("Stop", Message::StopScripts())
+    } else {
+        button("Run", Message::RunScripts())
+    }]
+    .spacing(5)
+    .max_width(150);
 
     return column![scrollable(data), controls,]
         .width(Length::Fill)
@@ -404,7 +441,9 @@ fn view_content<'a>(
 ) -> Element<'a, Message> {
     let content = match variant {
         PaneVariant::ScriptList => produce_script_list_content(),
-        PaneVariant::ExecutionList => produce_execution_list_content(scripts_to_run, start_times, progress),
+        PaneVariant::ExecutionList => {
+            produce_execution_list_content(scripts_to_run, start_times, progress)
+        }
         PaneVariant::LogOutput => produce_log_output_content(),
     };
 
