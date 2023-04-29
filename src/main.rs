@@ -129,37 +129,28 @@ impl Application for MainWindow {
                             std::fs::create_dir_all("exec_logs")
                                 .expect("failed to create \"exec_logs\" directory");
 
-                            let mut child = std::process::Command::new("sh")
+                            let stdout_file = std::fs::File::create(format!(
+                                "exec_logs/{}_stdout.log",
+                                processed_count
+                            )).expect("failed to create stdout file");
+                            let stderr_file = std::fs::File::create(format!(
+                                "exec_logs/{}_stderr.log",
+                                processed_count
+                            )).expect("failed to create stderr file");
+                            let stdout = std::process::Stdio::from(stdout_file);
+                            let stderr = std::process::Stdio::from(stderr_file);
+
+                            let output = std::process::Command::new("sh")
                                 .arg("-c")
                                 .arg(&script)
-                                .spawn()
+                                .stdout(stdout)
+                                .stderr(stderr)
+                                .output()
                                 .expect(format!("failed to execute script: {}", script).as_str());
-
-                            // let stdout = child.stdout.take().expect("failed to get stdout");
-                            // let stderr = child.stderr.take().expect("failed to get stderr");
-                            //
-                            // let mut stdout_file = std::fs::File::create(format!(
-                            //     "exec_logs/{}_stdout.txt",
-                            //     processed_count
-                            // ))
-                            // .expect("failed to create stdout file");
-                            // let mut stderr_file = std::fs::File::create(format!(
-                            //     "exec_logs/{}_stderr.txt",
-                            //     processed_count
-                            // ))
-                            // .expect("failed to create stderr file");
-                            //
-                            // std::io::copy(&mut std::io::BufReader::new(stdout), &mut stdout_file)
-                            //     .expect("failed to copy stdout");
-                            //
-                            // std::io::copy(&mut std::io::BufReader::new(stderr), &mut stderr_file)
-                            //     .expect("failed to copy stderr");
-
-                            let status = child.wait();
 
                             processed_count += 1;
 
-                            if status.as_ref().unwrap().success() == false {
+                            if !output.status.success() {
                                 tx.send((processed_count, Instant::now(), false)).unwrap();
                                 return;
                             }
