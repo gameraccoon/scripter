@@ -450,6 +450,8 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
             .collect(),
     )
     .spacing(10)
+    .width(Length::Fill)
+    .align_items(Alignment::Start)
     .into();
 
     let controls = column![if has_error
@@ -462,7 +464,8 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
         button("Run", Message::RunScripts())
     }]
     .spacing(5)
-    .max_width(150);
+    .max_width(150)
+    .align_items(Alignment::Center);
 
     return column![scrollable(data), controls,]
         .width(Length::Fill)
