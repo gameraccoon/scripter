@@ -456,6 +456,18 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
         .align_items(Alignment::Center);
 }
 
+fn get_last_n_lines_from_file(file_name: &str, lines_number: usize) -> Option<Vec<String>> {
+    let file = std::fs::File::open(file_name);
+
+    if file.is_err() {
+        return None;
+    }
+
+    let file = file.unwrap();
+    let text_buffer = RevBufReader::new(file);
+    return Some(text_buffer.lines().take(lines_number).map(|l| l.expect("Could not parse line")).collect());
+}
+
 fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Column<'a, Message> {
     if execution_data.running_progress == -1 {
         return Column::new();
@@ -468,26 +480,33 @@ fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Colum
     } else {
         execution_data.running_progress - 1
     };
-    let stdout_file_name = format!("exec_logs/{}_stdout.log", current_script_idx);
-    let stdout_file = std::fs::File::open(stdout_file_name.clone());
 
-    if stdout_file.is_err() {
+    let stdout_file_name = format!("exec_logs/{}_stdout.log", current_script_idx);
+    let stdout_lines = get_last_n_lines_from_file(&stdout_file_name, 10);
+    let stderr_file_name = format!("exec_logs/{}_stderr.log", current_script_idx);
+    let stderr_lines = get_last_n_lines_from_file(&stderr_file_name, 10);
+
+    if stdout_lines.is_none() || stderr_lines.is_none() {
         return column![text(
             format!("Can't open script output '{}'", stdout_file_name).to_string()
         )];
     }
+    let stdout_lines = stdout_lines.unwrap();
+    let stderr_lines = stderr_lines.unwrap_or_default();
 
-    let stdout_file = stdout_file.unwrap();
+    let mut data_lines: Vec<Element<'_, Message, iced::Renderer>> = stdout_lines
+        .iter()
+        .rev()
+        .map(|element| text(element).into())
+        .collect();
 
-    let buf = RevBufReader::new(stdout_file);
-    let last_lines: Vec<String> = buf.lines().take(10).map(|l| l.expect("Could not parse line")).collect();
+    if !stderr_lines.is_empty() {
+        data_lines.push(text("STDERR:").into());
+        data_lines.extend(stderr_lines.iter().rev().map(|element| text(element).into()));
+    }
 
     let data: Element<_> = column(
-        last_lines
-            .iter()
-            .rev()
-            .map(|element| text(element).into())
-            .collect(),
+        data_lines
     )
     .spacing(10)
     .into();
