@@ -8,7 +8,7 @@ use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{button, column, container, row, scrollable, text, Column};
 use iced::{Application, Command, Element, Length, Settings, Subscription};
 use iced_lazy::responsive;
-use std::sync::mpsc;
+use std::sync::{Arc, Condvar, mpsc, Mutex};
 use std::time::{Duration, Instant};
 use rev_buf_reader::RevBufReader;
 
@@ -22,6 +22,18 @@ struct ScriptExecutionData {
     running_progress: isize,
     last_execution_status_success: bool,
     progress_receiver: Option<mpsc::Receiver<(isize, Instant, bool)>>,
+    termination_condvar: Arc<(Mutex<bool>, Condvar)>,
+}
+
+fn new_execution_data() -> ScriptExecutionData {
+    ScriptExecutionData {
+        scripts_to_run: Vec::new(),
+        start_times: Vec::new(),
+        running_progress: -1,
+        last_execution_status_success: true,
+        progress_receiver: None,
+        termination_condvar: Arc::new((Mutex::new(false), Condvar::new())),
+    }
 }
 
 struct MainWindow {
@@ -71,13 +83,7 @@ impl Application for MainWindow {
             MainWindow {
                 panes,
                 focus: None,
-                execution_data: ScriptExecutionData {
-                    scripts_to_run: Vec::new(),
-                    start_times: Vec::new(),
-                    running_progress: -1,
-                    last_execution_status_success: true,
-                    progress_receiver: None,
-                },
+                execution_data: new_execution_data(),
             },
             Command::none(),
         )
@@ -116,15 +122,14 @@ impl Application for MainWindow {
                 }
             }
             Message::RunScripts() => {
-                let mut exec_data = &mut self.execution_data;
-                if exec_data.running_progress == -1 {
-                    exec_data.running_progress = 0;
-                    exec_data.start_times.clear();
-                    exec_data.last_execution_status_success = true;
+                if self.execution_data.running_progress == -1 {
+                    self.execution_data.running_progress = 0;
                     let (tx, rx) = mpsc::channel();
-                    let scripts_to_run = exec_data.scripts_to_run.clone();
+                    let scripts_to_run = self.execution_data.scripts_to_run.clone();
+                    let termination_condvar = self.execution_data.termination_condvar.clone();
                     std::thread::spawn(move || {
                         let mut processed_count = 0;
+                        let mut termination_requested = termination_condvar.0.lock().unwrap();
                         for script in scripts_to_run {
                             tx.send((processed_count, Instant::now(), true)).unwrap();
 
@@ -144,39 +149,49 @@ impl Application for MainWindow {
                             let stdout = std::process::Stdio::from(stdout_file);
                             let stderr = std::process::Stdio::from(stderr_file);
 
-                            let output = std::process::Command::new("sh")
+                            let mut clild = std::process::Command::new("sh")
                                 .arg("-c")
                                 .arg(&script)
                                 .stdout(stdout)
                                 .stderr(stderr)
-                                .output()
+                                .spawn()
                                 .expect(format!("failed to execute script: {}", script).as_str());
 
-                            processed_count += 1;
+                            loop {
+                                let result = termination_condvar.1.wait_timeout(termination_requested, Duration::from_millis(10)).unwrap();
+                                // 10 milliseconds have passed, or maybe the value changed!
+                                termination_requested = result.0;
+                                if *termination_requested == true {
+                                    // We received the notification and the value has been updated, we can leave.
+                                    clild.kill().expect("Could not kill child process");
+                                }
 
-                            if !output.status.success() {
-                                tx.send((processed_count, Instant::now(), false)).unwrap();
-                                return;
+                                if let Ok(Some(status)) = clild.try_wait() {
+                                    if !status.success() {
+                                        tx.send((processed_count + 1, Instant::now(), false)).unwrap();
+                                        return;
+                                    }
+                                    break;
+                                }
                             }
+
+                            processed_count += 1;
                         }
                         tx.send((processed_count, Instant::now(), true)).unwrap();
                     });
-                    exec_data.progress_receiver = Some(rx);
+                    self.execution_data.progress_receiver = Some(rx);
                 }
             }
             Message::StopScripts() => {
-                println!("Not implemented yet");
-                // if self.running_progress != -1 {
-                //     self.running_progress = -1;
-                //     self.progress_receiver = None;
-                // }
+                if self.execution_data.running_progress != -1 {
+                    let mut termination_requested = self.execution_data.termination_condvar.0.lock().unwrap();
+                    *termination_requested = true;
+                    // We notify the condvar that the value has changed.
+                    self.execution_data.termination_condvar.1.notify_one();
+                }
             }
             Message::ClearScripts() => {
-                let mut exec_data = &mut self.execution_data;
-                exec_data.running_progress = -1;
-                exec_data.scripts_to_run.clear();
-                exec_data.start_times.clear();
-                exec_data.last_execution_status_success = true;
+                self.execution_data = new_execution_data();
             }
             Message::Tick(_now) => {
                 let mut exec_data = &mut self.execution_data;
