@@ -1,6 +1,6 @@
+use std::io::BufRead;
 use iced::alignment::{self, Alignment};
 use iced::executor;
-use std::io::Read;
 // use iced::keyboard;
 use iced::theme::{self, Theme};
 use iced::time;
@@ -10,6 +10,7 @@ use iced::{Application, Command, Element, Length, Settings, Subscription};
 use iced_lazy::responsive;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
+use rev_buf_reader::RevBufReader;
 
 pub fn main() -> iced::Result {
     MainWindow::run(Settings::default())
@@ -468,21 +469,24 @@ fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Colum
         execution_data.running_progress - 1
     };
     let stdout_file_name = format!("exec_logs/{}_stdout.log", current_script_idx);
-    let stdout_content = std::fs::read_to_string(&stdout_file_name);
+    let stdout_file = std::fs::File::open(stdout_file_name.clone());
 
-    if stdout_content.is_err() {
+    if stdout_file.is_err() {
         return column![text(
             format!("Can't open script output '{}'", stdout_file_name).to_string()
         )];
     }
 
-    let stdout_content = stdout_content.unwrap();
+    let stdout_file = stdout_file.unwrap();
+
+    let buf = RevBufReader::new(stdout_file);
+    let last_lines: Vec<String> = buf.lines().take(10).map(|l| l.expect("Could not parse line")).collect();
 
     let data: Element<_> = column(
-        stdout_content
-            .split("\n")
-            .enumerate()
-            .map(|(_i, element)| text(element).into())
+        last_lines
+            .iter()
+            .rev()
+            .map(|element| text(element).into())
             .collect(),
     )
     .spacing(10)
@@ -492,7 +496,7 @@ fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Colum
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
-        .align_items(Alignment::Center);
+        .align_items(Alignment::Start);
 }
 
 fn view_content<'a>(

@@ -2099,6 +2099,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1382d1f0a252c4bf97dc20d979a2fdd05b024acd7c2ed0f7595d7817666a157"
 
 [[package]]
+name = "rev_buf_reader"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c0f2e47e00e29920959826e2e1784728a3780d1a784247be5257258cc75f910"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2153,6 +2162,7 @@ dependencies = [
  "iced_lazy",
  "iced_native",
  "once_cell",
+ "rev_buf_reader",
 ]
 
 [[package]]
