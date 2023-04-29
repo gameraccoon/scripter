@@ -300,7 +300,7 @@ impl AppPane {
     }
 }
 
-fn produce_script_list_content<'a>() -> Column<'a, Message> {
+fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Column<'a, Message> {
     let button = |label, message| {
         button(
             text(label)
@@ -329,20 +329,25 @@ fn produce_script_list_content<'a>() -> Column<'a, Message> {
             .iter()
             .enumerate()
             .map(|(_i, file)| {
-                row![
-                    text(
-                        file.file_name()
-                            .unwrap_or_default()
-                            .to_str()
-                            .unwrap_or("[error]")
-                            .to_string()
-                    ),
-                    text(" "),
-                    button(
-                        "Add",
-                        Message::AddScriptToRun(file.to_str().unwrap_or_default().to_string())
-                    )
-                ]
+                let file_name_str = file
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_str()
+                    .unwrap_or("[error]")
+                    .to_string();
+
+                if execution_data.running_progress == -1 {
+                    row![
+                        text(file_name_str),
+                        text(" "),
+                        button(
+                            "Add",
+                            Message::AddScriptToRun(file.to_str().unwrap_or_default().to_string())
+                        )
+                    ]
+                } else {
+                    row![text(file_name_str)]
+                }
                 .into()
             })
             .collect(),
@@ -461,11 +466,11 @@ fn view_content<'a>(
     variant: &PaneVariant,
 ) -> Element<'a, Message> {
     let content = match variant {
-        PaneVariant::ScriptList => produce_script_list_content(),
         PaneVariant::ExecutionList => {
             produce_execution_list_content(execution_data)
         }
         PaneVariant::LogOutput => produce_log_output_content(),
+        PaneVariant::ScriptList => produce_script_list_content(execution_data),
     };
 
     container(content)
