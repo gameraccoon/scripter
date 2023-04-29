@@ -1,5 +1,6 @@
 use iced::alignment::{self, Alignment};
 use iced::executor;
+use std::io::Read;
 // use iced::keyboard;
 use iced::theme::{self, Theme};
 use iced::time;
@@ -75,7 +76,7 @@ impl Application for MainWindow {
                     running_progress: -1,
                     last_execution_status_success: true,
                     progress_receiver: None,
-                }
+                },
             },
             Command::none(),
         )
@@ -132,11 +133,13 @@ impl Application for MainWindow {
                             let stdout_file = std::fs::File::create(format!(
                                 "exec_logs/{}_stdout.log",
                                 processed_count
-                            )).expect("failed to create stdout file");
+                            ))
+                            .expect("failed to create stdout file");
                             let stderr_file = std::fs::File::create(format!(
                                 "exec_logs/{}_stderr.log",
                                 processed_count
-                            )).expect("failed to create stderr file");
+                            ))
+                            .expect("failed to create stderr file");
                             let stdout = std::process::Stdio::from(stdout_file);
                             let stderr = std::process::Stdio::from(stderr_file);
 
@@ -217,10 +220,7 @@ impl Application for MainWindow {
                 });
 
             pane_grid::Content::new(responsive(move |_size| {
-                view_content(
-                    &self.execution_data,
-                    variant,
-                )
+                view_content(&self.execution_data, variant)
             }))
             .title_bar(title_bar)
             .style(if is_focused {
@@ -359,7 +359,7 @@ fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Colu
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
-        .align_items(Alignment::Center);
+        .align_items(Alignment::Start);
 }
 
 fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> Column<'a, Message> {
@@ -376,17 +376,23 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
     };
 
     let has_error = execution_data.last_execution_status_success == false;
-    let success_number = if has_error { execution_data.running_progress - 1 } else { execution_data.running_progress };
+    let success_number = if has_error {
+        execution_data.running_progress - 1
+    } else {
+        execution_data.running_progress
+    };
 
     let data: Element<_> = column(
-        execution_data.scripts_to_run
+        execution_data
+            .scripts_to_run
             .iter()
             .enumerate()
             .map(|(i, element)| {
                 text(if (i as isize) == success_number && !has_error {
                     if execution_data.start_times.len() > i {
-                        let time_taken_sec =
-                            Instant::now().duration_since(execution_data.start_times[i]).as_secs();
+                        let time_taken_sec = Instant::now()
+                            .duration_since(execution_data.start_times[i])
+                            .as_secs();
                         format!(
                             "[...] {} ({:02}:{:02})",
                             element,
@@ -397,10 +403,15 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
                         format!("[...] {}", element)
                     }
                 } else if (i as isize) <= success_number {
-                    let status = if (i as isize) == success_number { "[FAILED]" } else  { "[DONE]" };
+                    let status = if (i as isize) == success_number {
+                        "[FAILED]"
+                    } else {
+                        "[DONE]"
+                    };
                     if execution_data.start_times.len() > i + 1 {
-                        let time_taken_sec =
-                            execution_data.start_times[i + 1].duration_since(execution_data.start_times[i]).as_secs();
+                        let time_taken_sec = execution_data.start_times[i + 1]
+                            .duration_since(execution_data.start_times[i])
+                            .as_secs();
                         format!(
                             "{} {} ({:02}:{:02})",
                             status,
@@ -415,7 +426,7 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
                     if has_error {
                         format!("[SKIPPED] {}", element)
                     } else {
-                       format!("{}", element)
+                        format!("{}", element)
                     }
                 })
                 .into()
@@ -425,7 +436,9 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
     .spacing(10)
     .into();
 
-    let controls = column![if has_error || success_number >= execution_data.scripts_to_run.len() as isize {
+    let controls = column![if has_error
+        || success_number >= execution_data.scripts_to_run.len() as isize
+    {
         button("Clear", Message::ClearScripts())
     } else if success_number >= 0 {
         button("Stop", Message::StopScripts())
@@ -442,11 +455,32 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
         .align_items(Alignment::Center);
 }
 
-fn produce_log_output_content<'a>() -> Column<'a, Message> {
-    let elements = ["line1", "line2", "line3"];
+fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Column<'a, Message> {
+    if execution_data.running_progress == -1 {
+        return Column::new();
+    }
+
+    let current_script_idx = if execution_data.last_execution_status_success
+        && execution_data.running_progress < execution_data.scripts_to_run.len() as isize
+    {
+        execution_data.running_progress
+    } else {
+        execution_data.running_progress - 1
+    };
+    let stdout_file_name = format!("exec_logs/{}_stdout.log", current_script_idx);
+    let stdout_content = std::fs::read_to_string(&stdout_file_name);
+
+    if stdout_content.is_err() {
+        return column![text(
+            format!("Can't open script output '{}'", stdout_file_name).to_string()
+        )];
+    }
+
+    let stdout_content = stdout_content.unwrap();
+
     let data: Element<_> = column(
-        elements
-            .iter()
+        stdout_content
+            .split("\n")
             .enumerate()
             .map(|(_i, element)| text(element).into())
             .collect(),
@@ -454,7 +488,7 @@ fn produce_log_output_content<'a>() -> Column<'a, Message> {
     .spacing(10)
     .into();
 
-    return column![scrollable(data),]
+    return column![scrollable(data)]
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
@@ -466,11 +500,9 @@ fn view_content<'a>(
     variant: &PaneVariant,
 ) -> Element<'a, Message> {
     let content = match variant {
-        PaneVariant::ExecutionList => {
-            produce_execution_list_content(execution_data)
-        }
-        PaneVariant::LogOutput => produce_log_output_content(),
         PaneVariant::ScriptList => produce_script_list_content(execution_data),
+        PaneVariant::ExecutionList => produce_execution_list_content(execution_data),
+        PaneVariant::LogOutput => produce_log_output_content(execution_data),
     };
 
     container(content)
