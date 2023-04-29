@@ -14,13 +14,18 @@ pub fn main() -> iced::Result {
     MainWindow::run(Settings::default())
 }
 
-struct MainWindow {
-    panes: pane_grid::State<AppPane>,
-    focus: Option<pane_grid::Pane>,
+struct ScriptExecutionData {
     scripts_to_run: Vec<String>,
     start_times: Vec<Instant>,
     running_progress: isize,
-    progress_receiver: Option<mpsc::Receiver<(isize, Instant)>>,
+    last_execution_status_success: bool,
+    progress_receiver: Option<mpsc::Receiver<(isize, Instant, bool)>>,
+}
+
+struct MainWindow {
+    panes: pane_grid::State<AppPane>,
+    focus: Option<pane_grid::Pane>,
+    execution_data: ScriptExecutionData,
 }
 
 #[derive(Debug, Clone)]
@@ -64,10 +69,13 @@ impl Application for MainWindow {
             MainWindow {
                 panes,
                 focus: None,
-                scripts_to_run: Vec::new(),
-                start_times: Vec::new(),
-                running_progress: -1,
-                progress_receiver: None,
+                execution_data: ScriptExecutionData {
+                    scripts_to_run: Vec::new(),
+                    start_times: Vec::new(),
+                    running_progress: -1,
+                    last_execution_status_success: true,
+                    progress_receiver: None,
+                }
             },
             Command::none(),
         )
@@ -101,47 +109,64 @@ impl Application for MainWindow {
                 self.panes.restore();
             }
             Message::AddScriptToRun(script) => {
-                if self.running_progress == -1 {
-                    self.scripts_to_run.push(script);
+                if self.execution_data.running_progress == -1 {
+                    self.execution_data.scripts_to_run.push(script);
                 }
             }
             Message::RunScripts() => {
-                if self.running_progress == -1 {
-                    self.running_progress = 0;
-                    self.start_times.clear();
+                let mut exec_data = &mut self.execution_data;
+                if exec_data.running_progress == -1 {
+                    exec_data.running_progress = 0;
+                    exec_data.start_times.clear();
+                    exec_data.last_execution_status_success = true;
                     let (tx, rx) = mpsc::channel();
-                    let scripts_to_run = self.scripts_to_run.clone();
+                    let scripts_to_run = exec_data.scripts_to_run.clone();
                     std::thread::spawn(move || {
                         let mut processed_count = 0;
                         for script in scripts_to_run {
-                            tx.send((processed_count, Instant::now())).unwrap();
-                            // run script blocking
-                            let output = std::process::Command::new("sh")
-                                .arg("-c")
-                                .arg(&script)
-                                .output()
-                                .expect(format!("failed to execute script: {}", script).as_str());
+                            tx.send((processed_count, Instant::now(), true)).unwrap();
 
                             std::fs::create_dir_all("exec_logs")
                                 .expect("failed to create \"exec_logs\" directory");
 
-                            std::fs::write(
-                                format!("exec_logs/{}_stdout.log", processed_count),
-                                output.stdout,
-                            )
-                            .expect("failed to write stdout to file");
+                            let mut child = std::process::Command::new("sh")
+                                .arg("-c")
+                                .arg(&script)
+                                .spawn()
+                                .expect(format!("failed to execute script: {}", script).as_str());
 
-                            std::fs::write(
-                                format!("exec_logs/{}_stderr.log", processed_count),
-                                output.stderr,
-                            )
-                            .expect("failed to write stderr to file");
+                            // let stdout = child.stdout.take().expect("failed to get stdout");
+                            // let stderr = child.stderr.take().expect("failed to get stderr");
+                            //
+                            // let mut stdout_file = std::fs::File::create(format!(
+                            //     "exec_logs/{}_stdout.txt",
+                            //     processed_count
+                            // ))
+                            // .expect("failed to create stdout file");
+                            // let mut stderr_file = std::fs::File::create(format!(
+                            //     "exec_logs/{}_stderr.txt",
+                            //     processed_count
+                            // ))
+                            // .expect("failed to create stderr file");
+                            //
+                            // std::io::copy(&mut std::io::BufReader::new(stdout), &mut stdout_file)
+                            //     .expect("failed to copy stdout");
+                            //
+                            // std::io::copy(&mut std::io::BufReader::new(stderr), &mut stderr_file)
+                            //     .expect("failed to copy stderr");
+
+                            let status = child.wait();
 
                             processed_count += 1;
+
+                            if status.as_ref().unwrap().success() == false {
+                                tx.send((processed_count, Instant::now(), false)).unwrap();
+                                return;
+                            }
                         }
-                        tx.send((processed_count, Instant::now())).unwrap();
+                        tx.send((processed_count, Instant::now(), true)).unwrap();
                     });
-                    self.progress_receiver = Some(rx);
+                    exec_data.progress_receiver = Some(rx);
                 }
             }
             Message::StopScripts() => {
@@ -152,17 +177,21 @@ impl Application for MainWindow {
                 // }
             }
             Message::ClearScripts() => {
-                self.running_progress = -1;
-                self.scripts_to_run.clear();
-                self.start_times.clear();
+                let mut exec_data = &mut self.execution_data;
+                exec_data.running_progress = -1;
+                exec_data.scripts_to_run.clear();
+                exec_data.start_times.clear();
+                exec_data.last_execution_status_success = true;
             }
             Message::Tick(_now) => {
-                if let Some(rx) = &self.progress_receiver {
+                let mut exec_data = &mut self.execution_data;
+                if let Some(rx) = &exec_data.progress_receiver {
                     if let Ok(progress) = rx.try_recv() {
-                        self.running_progress = progress.0;
-                        if progress.0 == self.start_times.len() as isize {
-                            self.start_times.push(progress.1);
+                        exec_data.running_progress = progress.0;
+                        if progress.0 == exec_data.start_times.len() as isize {
+                            exec_data.start_times.push(progress.1);
                         }
+                        exec_data.last_execution_status_success = progress.2;
                     }
                 }
             }
@@ -198,9 +227,7 @@ impl Application for MainWindow {
 
             pane_grid::Content::new(responsive(move |_size| {
                 view_content(
-                    &self.scripts_to_run,
-                    &self.start_times,
-                    self.running_progress,
+                    &self.execution_data,
                     variant,
                 )
             }))
@@ -339,11 +366,7 @@ fn produce_script_list_content<'a>() -> Column<'a, Message> {
         .align_items(Alignment::Center);
 }
 
-fn produce_execution_list_content<'a>(
-    scripts_to_run: &Vec<String>,
-    start_times: &Vec<Instant>,
-    progress: isize,
-) -> Column<'a, Message> {
+fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> Column<'a, Message> {
     let button = |label, message| {
         button(
             text(label)
@@ -356,15 +379,18 @@ fn produce_execution_list_content<'a>(
         .on_press(message)
     };
 
+    let has_error = execution_data.last_execution_status_success == false;
+    let success_number = if has_error { execution_data.running_progress - 1 } else { execution_data.running_progress };
+
     let data: Element<_> = column(
-        scripts_to_run
+        execution_data.scripts_to_run
             .iter()
             .enumerate()
             .map(|(i, element)| {
-                text(if (i as isize) == progress {
-                    if start_times.len() > i {
+                text(if (i as isize) == success_number && !has_error {
+                    if execution_data.start_times.len() > i {
                         let time_taken_sec =
-                            Instant::now().duration_since(start_times[i]).as_secs();
+                            Instant::now().duration_since(execution_data.start_times[i]).as_secs();
                         format!(
                             "[...] {} ({:02}:{:02})",
                             element,
@@ -374,21 +400,27 @@ fn produce_execution_list_content<'a>(
                     } else {
                         format!("[...] {}", element)
                     }
-                } else if (i as isize) < progress {
-                    if start_times.len() > i + 1 {
+                } else if (i as isize) <= success_number {
+                    let status = if (i as isize) == success_number { "[FAILED]" } else  { "[DONE]" };
+                    if execution_data.start_times.len() > i + 1 {
                         let time_taken_sec =
-                            start_times[i + 1].duration_since(start_times[i]).as_secs();
+                            execution_data.start_times[i + 1].duration_since(execution_data.start_times[i]).as_secs();
                         format!(
-                            "[DONE] {} ({:02}:{:02})",
+                            "{} {} ({:02}:{:02})",
+                            status,
                             element,
                             time_taken_sec / 60,
                             time_taken_sec % 60
                         )
                     } else {
-                        format!("[DONE] {}", element)
+                        format!("{} {}", status, element)
                     }
                 } else {
-                    format!("{}", element)
+                    if has_error {
+                        format!("[SKIPPED] {}", element)
+                    } else {
+                       format!("{}", element)
+                    }
                 })
                 .into()
             })
@@ -397,9 +429,9 @@ fn produce_execution_list_content<'a>(
     .spacing(10)
     .into();
 
-    let controls = column![if progress >= scripts_to_run.len() as isize {
+    let controls = column![if has_error || success_number >= execution_data.scripts_to_run.len() as isize {
         button("Clear", Message::ClearScripts())
-    } else if progress >= 0 {
+    } else if success_number >= 0 {
         button("Stop", Message::StopScripts())
     } else {
         button("Run", Message::RunScripts())
@@ -434,15 +466,13 @@ fn produce_log_output_content<'a>() -> Column<'a, Message> {
 }
 
 fn view_content<'a>(
-    scripts_to_run: &Vec<String>,
-    start_times: &Vec<Instant>,
-    progress: isize,
+    execution_data: &ScriptExecutionData,
     variant: &PaneVariant,
 ) -> Element<'a, Message> {
     let content = match variant {
         PaneVariant::ScriptList => produce_script_list_content(),
         PaneVariant::ExecutionList => {
-            produce_execution_list_content(scripts_to_run, start_times, progress)
+            produce_execution_list_content(execution_data)
         }
         PaneVariant::LogOutput => produce_log_output_content(),
     };
