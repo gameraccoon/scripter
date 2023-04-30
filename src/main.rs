@@ -504,19 +504,26 @@ fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Colum
     let stderr_file_name = format!("exec_logs/{}_stderr.log", current_script_idx);
     let stderr_lines = get_last_n_lines_from_file(&stderr_file_name, 10);
 
-    if stdout_lines.is_none() || stderr_lines.is_none() {
+    if stdout_lines.is_none() {
         return column![text(
             format!("Can't open script output '{}'", stdout_file_name).to_string()
         )];
     }
+    if stderr_lines.is_none() {
+        return column![text(
+            format!("Can't open script output '{}'", stderr_file_name).to_string()
+        )];
+    }
     let stdout_lines = stdout_lines.unwrap();
-    let stderr_lines = stderr_lines.unwrap_or_default();
+    let stderr_lines = stderr_lines.unwrap();
 
-    let mut data_lines: Vec<Element<'_, Message, iced::Renderer>> = stdout_lines
-        .iter()
-        .rev()
-        .map(|element| text(element).into())
-        .collect();
+    let mut data_lines: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
+
+    data_lines.push(text(execution_data.scripts_to_run[current_script_idx as usize].path.clone()).into());
+
+    if !stdout_lines.is_empty() {
+        data_lines.extend(stdout_lines.iter().rev().map(|element| text(element).into()));
+    }
 
     if !stderr_lines.is_empty() {
         data_lines.push(text("STDERR:").into());
