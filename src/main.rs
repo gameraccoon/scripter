@@ -141,6 +141,10 @@ impl Application for MainWindow {
                 }
             }
             Message::RunScripts() => {
+                if self.execution_data.scripts_to_run.is_empty() {
+                    return Command::none();
+                }
+
                 if self.execution_data.running_progress == -1 {
                     std::fs::remove_dir_all("exec_logs").ok();
                     self.execution_data.currently_edited_script = -1;
@@ -394,7 +398,10 @@ fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Colu
         .on_press(message)
     };
 
-    // iterate over files in "scripts" directory
+    if !std::path::Path::new("scripts").exists() {
+        return column![text("No scripts found in \"scripts\" folder")];
+    }
+
     let mut files = vec![];
     let dir = std::fs::read_dir("scripts").unwrap();
     for entry in dir {
@@ -403,6 +410,10 @@ fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Colu
         if path.is_file() {
             files.push(path.clone());
         }
+    }
+
+    if files.is_empty() {
+        return column![text("No scripts found in \"scripts\" folder")];
     }
 
     let data: Element<_> = column(
@@ -555,7 +566,7 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
     .max_width(150)
     .align_items(Alignment::Center);
 
-    return column![scrollable(data), controls,]
+    return column![scrollable(data), controls]
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
@@ -592,6 +603,10 @@ fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Colum
     } else {
         execution_data.running_progress - 1
     };
+
+    if current_script_idx == -1 {
+        return Column::new();
+    }
 
     let stdout_file_name = format!("exec_logs/{}_stdout.log", current_script_idx);
     let stdout_lines = get_last_n_lines_from_file(&stdout_file_name, 10);
