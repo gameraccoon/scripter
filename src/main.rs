@@ -228,7 +228,11 @@ impl Application for MainWindow {
                                 termination_requested = result.0;
                                 if *termination_requested == true {
                                     // We received the notification and the value has been updated, we can leave.
-                                    child.kill().expect("Could not kill child process");
+                                    let kill_result = child.kill();
+                                    if kill_result.is_err() {
+                                        println!("failed to kill child process: {}", kill_result.err().unwrap());
+                                        return;
+                                    }
                                 }
 
                                 if let Ok(Some(status)) = child.try_wait() {
