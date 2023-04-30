@@ -669,6 +669,8 @@ fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Colum
             "Script: {}",
             execution_data.scripts_to_run[current_script_idx as usize]
                 .path
+                .file_name()
+                .unwrap_or_default()
                 .to_str()
                 .unwrap_or("[error]")
                 .to_string(),
