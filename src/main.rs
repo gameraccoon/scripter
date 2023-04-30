@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use iced::alignment::{self, Alignment};
 use iced::executor;
 use std::io::{BufRead, Write};
@@ -398,14 +400,28 @@ fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Colu
         .on_press(message)
     };
 
-    if !std::path::Path::new("scripts").exists() {
-        return column![text("No scripts found in \"scripts\" folder")];
+    // get executable path
+    let executable_path = std::env::current_exe().expect("Failed to get executable path");
+
+    let scripts_folder_path = executable_path
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("scripts")
+        .to_str()
+        .unwrap_or("scripts")
+        .to_string();
+
+    if !std::path::Path::new(&scripts_folder_path).exists() {
+        return column![text(format!(
+            "No scripts found in \"{}\"",
+            &scripts_folder_path
+        ))];
     }
 
     let mut files = vec![];
-    let dir = std::fs::read_dir("scripts").unwrap();
+    let dir = std::fs::read_dir(&scripts_folder_path).expect("Failed to read scripts folder");
     for entry in dir {
-        let entry = entry.unwrap();
+        let entry = entry.expect("Failed to read script entry");
         let path = entry.path();
         if path.is_file() {
             files.push(path.clone());
@@ -413,7 +429,10 @@ fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Colu
     }
 
     if files.is_empty() {
-        return column![text("No scripts found in \"scripts\" folder")];
+        return column![text(format!(
+            "No scripts found in \"{}\"",
+            scripts_folder_path
+        ))];
     }
 
     let data: Element<_> = column(
@@ -697,7 +716,7 @@ fn produce_script_edit_content<'a>(execution_data: &ScriptExecutionData) -> Colu
     let script = &execution_data.scripts_to_run[execution_data.currently_edited_script as usize];
 
     let script_idx = execution_data.currently_edited_script as isize;
-    let arguments = text_input("arg", &script.arguments_line)
+    let arguments = text_input("\"arg1\" \"arg2\"", &script.arguments_line)
         .on_input(move |new_arg| Message::EditArguments(new_arg, script_idx))
         .padding(5);
 
