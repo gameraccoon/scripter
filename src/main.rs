@@ -68,6 +68,7 @@ enum Message {
     OpenScriptEditing(isize),
     RemoveScript(isize),
     EditArguments(String, isize),
+    OpenFile(String),
 }
 
 fn get_script_with_arguments(script: &ScheduledScript) -> String {
@@ -175,16 +176,12 @@ impl Application for MainWindow {
                             std::fs::create_dir_all("exec_logs")
                                 .expect("failed to create \"exec_logs\" directory");
 
-                            let stdout_file = std::fs::File::create(format!(
-                                "exec_logs/{}_stdout.log",
-                                processed_count
-                            ))
-                            .expect("failed to create stdout file");
-                            let stderr_file = std::fs::File::create(format!(
-                                "exec_logs/{}_stderr.log",
-                                processed_count
-                            ))
-                            .expect("failed to create stderr file");
+                            let stdout_file =
+                                std::fs::File::create(get_stdout_path(processed_count))
+                                    .expect("failed to create stdout file");
+                            let stderr_file =
+                                std::fs::File::create(get_stderr_path(processed_count))
+                                    .expect("failed to create stderr file");
                             let stdout = std::process::Stdio::from(stdout_file);
                             let stderr = std::process::Stdio::from(stderr_file);
 
@@ -287,6 +284,22 @@ impl Application for MainWindow {
                 if self.execution_data.currently_edited_script != -1 {
                     self.execution_data.scripts_to_run[script_idx as usize].arguments_line =
                         new_arguments;
+                }
+            }
+            Message::OpenFile(path) => {
+                #[cfg(target_os = "windows")]
+                {
+                    std::process::Command::new("explorer")
+                        .arg(path)
+                        .spawn()
+                        .expect("failed to open file");
+                }
+                #[cfg(target_os = "linux")]
+                {
+                    std::process::Command::new("xdg-open")
+                        .arg(path)
+                        .spawn()
+                        .expect("failed to open file");
                 }
             }
         }
@@ -402,6 +415,33 @@ impl AppPane {
     }
 }
 
+fn get_stdout_path(script_idx: isize) -> String {
+    std::path::Path::new("exec_logs")
+        .join(format!("{}_stdout.log", script_idx))
+        .to_str()
+        .unwrap()
+        .to_string()
+}
+
+fn get_stderr_path(script_idx: isize) -> String {
+    std::path::Path::new("exec_logs")
+        .join(format!("{}_stdERR.log", script_idx))
+        .to_str()
+        .unwrap()
+        .to_string()
+}
+
+fn is_file_empty(path: &str) -> bool {
+    let file = std::fs::File::open(path);
+    if let Ok(file) = file {
+        let metadata = file.metadata();
+        if let Ok(metadata) = metadata {
+            return metadata.len() == 0;
+        }
+    }
+    true
+}
+
 fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Column<'a, Message> {
     let button = |label, message| {
         button(
@@ -496,7 +536,7 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
         .on_press(message)
     };
 
-    let edit_button = |label, message| {
+    let small_button = |label, message| {
         button(
             text(label)
                 .horizontal_alignment(alignment::Horizontal::Center)
@@ -525,7 +565,7 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
                     .unwrap_or(&std::ffi::OsStr::new("[error]"))
                     .to_str()
                     .unwrap_or("[error]");
-                let name = text(if (i as isize) == success_number && !has_error {
+                let name = if (i as isize) == success_number && !has_error {
                     if execution_data.start_times.len() > i {
                         let time_taken_sec = Instant::now()
                             .duration_since(execution_data.start_times[i])
@@ -565,18 +605,33 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
                     } else {
                         format!("{}", script_name)
                     }
-                });
+                };
+
+                let mut row_data: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
+                row_data.push(text(name).into());
 
                 if execution_data.running_progress == -1 {
-                    row![
-                        name,
-                        text(" "),
-                        edit_button("Edit", Message::OpenScriptEditing(i as isize))
-                    ]
-                } else {
-                    row![name]
+                    row_data.push(text(" ").into());
+                    row_data
+                        .push(small_button("Edit", Message::OpenScriptEditing(i as isize)).into());
+                } else if execution_data.running_progress >= i as isize {
+                    if !is_file_empty(&get_stdout_path(i as isize)) {
+                        row_data.push(text(" ").into());
+                        row_data.push(
+                            small_button("log", Message::OpenFile(get_stdout_path(i as isize)))
+                                .into(),
+                        );
+                    }
+                    if !is_file_empty(&get_stderr_path(i as isize)) {
+                        row_data.push(text(" ").into());
+                        row_data.push(
+                            small_button("err", Message::OpenFile(get_stderr_path(i as isize)))
+                                .into(),
+                        );
+                    }
                 }
-                .into()
+
+                row(row_data).into()
             })
             .collect(),
     )
@@ -640,9 +695,9 @@ fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Colum
         return Column::new();
     }
 
-    let stdout_file_name = format!("exec_logs/{}_stdout.log", current_script_idx);
+    let stdout_file_name = get_stdout_path(current_script_idx);
     let stdout_lines = get_last_n_lines_from_file(&stdout_file_name, 10);
-    let stderr_file_name = format!("exec_logs/{}_stderr.log", current_script_idx);
+    let stderr_file_name = get_stderr_path(current_script_idx);
     let stderr_lines = get_last_n_lines_from_file(&stderr_file_name, 10);
     let error_file_name = format!("exec_logs/{}_error.log", current_script_idx);
     let error_lines = get_last_n_lines_from_file(&error_file_name, 10);
@@ -719,11 +774,9 @@ fn produce_script_edit_content<'a>(execution_data: &ScriptExecutionData) -> Colu
     let button = |label, message| {
         button(
             text(label)
-                //.width(Length::Fill)
                 .vertical_alignment(alignment::Vertical::Center)
                 .size(16),
         )
-        //.width(Length::Fill)
         .padding(4)
         .on_press(message)
     };
