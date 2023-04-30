@@ -33,7 +33,8 @@ jobs:
       run: cargo build --release
     - name: Run tests
       run: cargo test --release --verbose
-
+    - name: Add windows icon
+      run: cargo rustc -- -C link-args="res/resources.res"
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v3
       with:
