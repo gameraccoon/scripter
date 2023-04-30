@@ -8,6 +8,7 @@ use iced::theme::{self, Theme};
 use iced::time;
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{button, column, container, row, scrollable, text, text_input, Column};
+use iced::window::icon;
 use iced::{Application, Command, Element, Length, Settings, Subscription};
 use iced_lazy::responsive;
 use rev_buf_reader::RevBufReader;
@@ -19,7 +20,11 @@ use std::time::{Duration, Instant};
 use std::os::windows::process::CommandExt;
 
 pub fn main() -> iced::Result {
-    MainWindow::run(Settings::default())
+    let mut settings = Settings::default();
+    settings.window.icon = Option::from(
+        icon::from_rgba(include_bytes!("../res/icon.rgba").to_vec(), 128, 128).unwrap(),
+    );
+    MainWindow::run(settings)
 }
 
 #[derive(Clone)]
