@@ -154,6 +154,7 @@ impl Application for MainWindow {
                         arguments_line: String::new(),
                     });
                 }
+                self.execution_data.currently_edited_script = -1;
             }
             Message::RunScripts() => {
                 if self.execution_data.scripts_to_run.is_empty() {
