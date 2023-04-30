@@ -11,6 +11,7 @@ use iced::widget::{button, column, container, row, scrollable, text, text_input,
 use iced::{Application, Command, Element, Length, Settings, Subscription};
 use iced_lazy::responsive;
 use rev_buf_reader::RevBufReader;
+use std::path::Path;
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
@@ -23,7 +24,7 @@ pub fn main() -> iced::Result {
 
 #[derive(Clone)]
 struct ScheduledScript {
-    path: Box<std::path::Path>,
+    path: Box<Path>,
     arguments_line: String,
 }
 
@@ -49,10 +50,17 @@ fn new_execution_data() -> ScriptExecutionData {
     }
 }
 
+struct PathCaches {
+    scripts_path: String,
+    logs_path: String,
+    work_path: String,
+}
+
 struct MainWindow {
     panes: pane_grid::State<AppPane>,
     focus: Option<pane_grid::Pane>,
     execution_data: ScriptExecutionData,
+    path_caches: PathCaches,
 }
 
 #[derive(Debug, Clone)]
@@ -63,7 +71,7 @@ enum Message {
     Resized(pane_grid::ResizeEvent),
     Maximize(pane_grid::Pane),
     Restore,
-    AddScriptToRun(Box<std::path::Path>),
+    AddScriptToRun(Box<Path>),
     RunScripts(),
     StopScripts(),
     ClearScripts(),
@@ -84,6 +92,38 @@ fn get_script_with_arguments(script: &ScheduledScript) -> String {
             script.arguments_line
         )
     }
+}
+
+fn get_scripts_path() -> String {
+    return std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("scripts")
+        .to_str()
+        .unwrap()
+        .to_string();
+}
+
+fn get_logs_path() -> String {
+    let pid = std::process::id();
+    let folder_name = format!("exec_logs_{}", pid);
+    return std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join(folder_name)
+        .to_str()
+        .unwrap()
+        .to_string();
+}
+
+fn get_work_path() -> String {
+    return std::env::current_dir()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
 }
 
 impl Application for MainWindow {
@@ -118,13 +158,18 @@ impl Application for MainWindow {
                 panes,
                 focus: None,
                 execution_data: new_execution_data(),
+                path_caches: PathCaches {
+                    scripts_path: get_scripts_path(),
+                    logs_path: get_logs_path(),
+                    work_path: get_work_path(),
+                },
             },
             Command::none(),
         )
     }
 
     fn title(&self) -> String {
-        String::from("Scripter")
+        format!("scripter ({})", self.path_caches.work_path)
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
@@ -165,7 +210,8 @@ impl Application for MainWindow {
                 }
 
                 if self.execution_data.running_progress == -1 {
-                    std::fs::remove_dir_all(get_logs_path()).ok();
+                    let logs_path = self.path_caches.logs_path.clone();
+                    std::fs::remove_dir_all(&logs_path).ok();
                     self.execution_data.currently_edited_script = -1;
                     self.execution_data.running_progress = 0;
                     let (tx, rx) = mpsc::channel();
@@ -177,26 +223,26 @@ impl Application for MainWindow {
                         for script in scripts_to_run {
                             tx.send((processed_count, Instant::now(), true)).unwrap();
 
-                            std::fs::create_dir_all(get_logs_path())
-                                .expect(&format!("failed to create \"{}\" directory", get_logs_path()));
+                            std::fs::create_dir_all(&logs_path)
+                                .expect(&format!("failed to create \"{}\" directory", &logs_path));
 
                             let stdout_file =
-                                std::fs::File::create(get_stdout_path(processed_count))
+                                std::fs::File::create(get_stdout_path(&logs_path, processed_count))
                                     .expect("failed to create stdout file");
                             let stderr_file =
-                                std::fs::File::create(get_stderr_path(processed_count))
+                                std::fs::File::create(get_stderr_path(&logs_path, processed_count))
                                     .expect("failed to create stderr file");
                             let stdout = std::process::Stdio::from(stdout_file);
                             let stderr = std::process::Stdio::from(stderr_file);
 
                             #[cfg(target_os = "windows")]
                             let child = std::process::Command::new("cmd")
-                                    .creation_flags(0x08000000)// CREATE_NO_WINDOW
-                                    .arg("/C")
-                                    .arg(get_script_with_arguments(&script))
-                                    .stdout(stdout)
-                                    .stderr(stderr)
-                                    .spawn();
+                                .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                                .arg("/C")
+                                .arg(get_script_with_arguments(&script))
+                                .stdout(stdout)
+                                .stderr(stderr)
+                                .spawn();
                             #[cfg(not(target_os = "windows"))]
                             let child = std::process::Command::new("sh")
                                 .arg("-c")
@@ -210,8 +256,7 @@ impl Application for MainWindow {
                                 // write error to a file
                                 let error_file = std::fs::File::create(format!(
                                     "{}/{}_error.log",
-                                    get_logs_path(),
-                                    processed_count
+                                    &logs_path, processed_count
                                 ))
                                 .expect("failed to create error file");
                                 let mut error_writer = std::io::BufWriter::new(error_file);
@@ -348,7 +393,7 @@ impl Application for MainWindow {
                 });
 
             pane_grid::Content::new(responsive(move |_size| {
-                view_content(&self.execution_data, variant)
+                view_content(&self.execution_data, &self.path_caches, variant)
             }))
             .title_bar(title_bar)
             .style(if is_focused {
@@ -429,22 +474,16 @@ impl AppPane {
     }
 }
 
-fn get_logs_path() -> String {
-    let pid = std::process::id();
-    let folder_name = format!("exec_logs_{}", pid);
-    return std::env::current_exe().unwrap().parent().unwrap().join(folder_name).to_str().unwrap().to_string();
-}
-
-fn get_stdout_path(script_idx: isize) -> String {
-    std::path::Path::new(&get_logs_path())
+fn get_stdout_path(logs_path: &str, script_idx: isize) -> String {
+    Path::new(logs_path)
         .join(format!("{}_stdout.log", script_idx))
         .to_str()
         .unwrap()
         .to_string()
 }
 
-fn get_stderr_path(script_idx: isize) -> String {
-    std::path::Path::new(&get_logs_path())
+fn get_stderr_path(logs_path: &str, script_idx: isize) -> String {
+    Path::new(logs_path)
         .join(format!("{}_stderr.log", script_idx))
         .to_str()
         .unwrap()
@@ -462,7 +501,10 @@ fn is_file_empty(path: &str) -> bool {
     true
 }
 
-fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Column<'a, Message> {
+fn produce_script_list_content<'a>(
+    execution_data: &ScriptExecutionData,
+    path_caches: &PathCaches,
+) -> Column<'a, Message> {
     let button = |label, message| {
         button(
             text(label)
@@ -473,18 +515,9 @@ fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Colu
         .on_press(message)
     };
 
-    // get executable path
-    let executable_path = std::env::current_exe().expect("Failed to get executable path");
+    let scripts_folder_path = &path_caches.scripts_path;
 
-    let scripts_folder_path = executable_path
-        .parent()
-        .unwrap_or(std::path::Path::new("."))
-        .join("scripts")
-        .to_str()
-        .unwrap_or("scripts")
-        .to_string();
-
-    if !std::path::Path::new(&scripts_folder_path).exists() {
+    if !Path::new(&scripts_folder_path).exists() {
         return column![text(format!(
             "No scripts found in \"{}\"",
             &scripts_folder_path
@@ -504,7 +537,7 @@ fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Colu
     if files.is_empty() {
         return column![text(format!(
             "No scripts found in \"{}\"",
-            scripts_folder_path
+            &scripts_folder_path
         ))];
     }
 
@@ -543,7 +576,10 @@ fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Colu
         .align_items(Alignment::Start);
 }
 
-fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> Column<'a, Message> {
+fn produce_execution_list_content<'a>(
+    execution_data: &ScriptExecutionData,
+    path_caches: &PathCaches,
+) -> Column<'a, Message> {
     let main_button = |label, message| {
         button(
             text(label)
@@ -635,19 +671,15 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
                     row_data
                         .push(small_button("Edit", Message::OpenScriptEditing(i as isize)).into());
                 } else if execution_data.running_progress >= i as isize {
-                    if !is_file_empty(&get_stdout_path(i as isize)) {
+                    let stdout_path = get_stdout_path(&path_caches.logs_path, i as isize);
+                    if !is_file_empty(&stdout_path) {
                         row_data.push(text(" ").into());
-                        row_data.push(
-                            small_button("log", Message::OpenFile(get_stdout_path(i as isize)))
-                                .into(),
-                        );
+                        row_data.push(small_button("log", Message::OpenFile(stdout_path)).into());
                     }
-                    if !is_file_empty(&get_stderr_path(i as isize)) {
+                    let stderr_path = get_stderr_path(&path_caches.logs_path, i as isize);
+                    if !is_file_empty(&stderr_path) {
                         row_data.push(text(" ").into());
-                        row_data.push(
-                            small_button("err", Message::OpenFile(get_stderr_path(i as isize)))
-                                .into(),
-                        );
+                        row_data.push(small_button("err", Message::OpenFile(stderr_path)).into());
                     }
                 }
 
@@ -698,7 +730,10 @@ fn get_last_n_lines_from_file(file_name: &str, lines_number: usize) -> Option<Ve
     );
 }
 
-fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Column<'a, Message> {
+fn produce_log_output_content<'a>(
+    execution_data: &ScriptExecutionData,
+    path_caches: &PathCaches,
+) -> Column<'a, Message> {
     if execution_data.running_progress == -1 {
         return Column::new();
     }
@@ -715,11 +750,14 @@ fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Colum
         return Column::new();
     }
 
-    let stdout_file_name = get_stdout_path(current_script_idx);
+    let stdout_file_name = get_stdout_path(&path_caches.logs_path, current_script_idx);
     let stdout_lines = get_last_n_lines_from_file(&stdout_file_name, 10);
-    let stderr_file_name = get_stderr_path(current_script_idx);
+    let stderr_file_name = get_stderr_path(&path_caches.logs_path, current_script_idx);
     let stderr_lines = get_last_n_lines_from_file(&stderr_file_name, 10);
-    let error_file_name = format!("{}/{}_error.log", get_logs_path(), current_script_idx);
+    let error_file_name = format!(
+        "{}/{}_error.log",
+        &path_caches.logs_path, current_script_idx
+    );
     let error_lines = get_last_n_lines_from_file(&error_file_name, 10);
 
     if stdout_lines.is_none() {
@@ -827,12 +865,13 @@ fn produce_script_edit_content<'a>(execution_data: &ScriptExecutionData) -> Colu
 
 fn view_content<'a>(
     execution_data: &ScriptExecutionData,
+    path_caches: &PathCaches,
     variant: &PaneVariant,
 ) -> Element<'a, Message> {
     let content = match variant {
-        PaneVariant::ScriptList => produce_script_list_content(execution_data),
-        PaneVariant::ExecutionList => produce_execution_list_content(execution_data),
-        PaneVariant::LogOutput => produce_log_output_content(execution_data),
+        PaneVariant::ScriptList => produce_script_list_content(execution_data, path_caches),
+        PaneVariant::ExecutionList => produce_execution_list_content(execution_data, path_caches),
+        PaneVariant::LogOutput => produce_log_output_content(execution_data, path_caches),
         PaneVariant::ScriptEdit => produce_script_edit_content(execution_data),
     };
 
