@@ -163,7 +163,7 @@ impl Application for MainWindow {
                 }
 
                 if self.execution_data.running_progress == -1 {
-                    std::fs::remove_dir_all("exec_logs").ok();
+                    std::fs::remove_dir_all(get_logs_path()).ok();
                     self.execution_data.currently_edited_script = -1;
                     self.execution_data.running_progress = 0;
                     let (tx, rx) = mpsc::channel();
@@ -175,8 +175,8 @@ impl Application for MainWindow {
                         for script in scripts_to_run {
                             tx.send((processed_count, Instant::now(), true)).unwrap();
 
-                            std::fs::create_dir_all("exec_logs")
-                                .expect("failed to create \"exec_logs\" directory");
+                            std::fs::create_dir_all(get_logs_path())
+                                .expect(&format!("failed to create \"{}\" directory", get_logs_path()));
 
                             let stdout_file =
                                 std::fs::File::create(get_stdout_path(processed_count))
@@ -208,7 +208,8 @@ impl Application for MainWindow {
                                 let err = child.err().unwrap();
                                 // write error to a file
                                 let error_file = std::fs::File::create(format!(
-                                    "exec_logs/{}_error.log",
+                                    "{}/{}_error.log",
+                                    get_logs_path(),
                                     processed_count
                                 ))
                                 .expect("failed to create error file");
@@ -427,8 +428,14 @@ impl AppPane {
     }
 }
 
+fn get_logs_path() -> String {
+    let pid = std::process::id();
+    let folder_name = format!("exec_logs_{}", pid);
+    return std::env::current_exe().unwrap().parent().unwrap().join(folder_name).to_str().unwrap().to_string();
+}
+
 fn get_stdout_path(script_idx: isize) -> String {
-    std::path::Path::new("exec_logs")
+    std::path::Path::new(&get_logs_path())
         .join(format!("{}_stdout.log", script_idx))
         .to_str()
         .unwrap()
@@ -436,8 +443,8 @@ fn get_stdout_path(script_idx: isize) -> String {
 }
 
 fn get_stderr_path(script_idx: isize) -> String {
-    std::path::Path::new("exec_logs")
-        .join(format!("{}_stdERR.log", script_idx))
+    std::path::Path::new(&get_logs_path())
+        .join(format!("{}_stderr.log", script_idx))
         .to_str()
         .unwrap()
         .to_string()
@@ -711,7 +718,7 @@ fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Colum
     let stdout_lines = get_last_n_lines_from_file(&stdout_file_name, 10);
     let stderr_file_name = get_stderr_path(current_script_idx);
     let stderr_lines = get_last_n_lines_from_file(&stderr_file_name, 10);
-    let error_file_name = format!("exec_logs/{}_error.log", current_script_idx);
+    let error_file_name = format!("{}/{}_error.log", get_logs_path(), current_script_idx);
     let error_lines = get_last_n_lines_from_file(&error_file_name, 10);
 
     if stdout_lines.is_none() {
