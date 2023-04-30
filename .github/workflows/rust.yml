@@ -2,21 +2,40 @@ name: Rust
 
 on:
   push:
-    branches: [ "main" ]
+    branches: '*'
   pull_request:
-    branches: [ "main" ]
+    branches: '*'
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  build_ubuntu:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v3
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --release
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --release --verbose
+
+    - name: Upload linux artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: Lunux (Ubuntu)
+        path: target/release/scripter
+
+  build_windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: cargo build --release
+    - name: Run tests
+      run: cargo test --release --verbose
+
+    - name: Upload Windows artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: Windows
+        path: target/release/scripter.exe
