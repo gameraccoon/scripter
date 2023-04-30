@@ -1,28 +1,35 @@
-use std::io::BufRead;
 use iced::alignment::{self, Alignment};
 use iced::executor;
+use std::io::{BufRead, Write};
 // use iced::keyboard;
 use iced::theme::{self, Theme};
 use iced::time;
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
-use iced::widget::{button, column, container, row, scrollable, text, Column};
+use iced::widget::{button, column, container, row, scrollable, text, text_input, Column};
 use iced::{Application, Command, Element, Length, Settings, Subscription};
 use iced_lazy::responsive;
-use std::sync::{Arc, Condvar, mpsc, Mutex};
-use std::time::{Duration, Instant};
 use rev_buf_reader::RevBufReader;
+use std::sync::{mpsc, Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 pub fn main() -> iced::Result {
     MainWindow::run(Settings::default())
 }
 
+#[derive(Clone)]
+struct ScheduledScript {
+    path: Box<std::path::Path>,
+    arguments_line: String,
+}
+
 struct ScriptExecutionData {
-    scripts_to_run: Vec<String>,
+    scripts_to_run: Vec<ScheduledScript>,
     start_times: Vec<Instant>,
     running_progress: isize,
     last_execution_status_success: bool,
     progress_receiver: Option<mpsc::Receiver<(isize, Instant, bool)>>,
     termination_condvar: Arc<(Mutex<bool>, Condvar)>,
+    currently_edited_script: isize,
 }
 
 fn new_execution_data() -> ScriptExecutionData {
@@ -33,6 +40,7 @@ fn new_execution_data() -> ScriptExecutionData {
         last_execution_status_success: true,
         progress_receiver: None,
         termination_condvar: Arc::new((Mutex::new(false), Condvar::new())),
+        currently_edited_script: -1,
     }
 }
 
@@ -50,11 +58,14 @@ enum Message {
     Resized(pane_grid::ResizeEvent),
     Maximize(pane_grid::Pane),
     Restore,
-    AddScriptToRun(String),
+    AddScriptToRun(Box<std::path::Path>),
     RunScripts(),
     StopScripts(),
     ClearScripts(),
     Tick(Instant),
+    OpenScriptEditing(isize),
+    RemoveScript(isize),
+    EditArguments(String, isize),
 }
 
 impl Application for MainWindow {
@@ -69,8 +80,13 @@ impl Application for MainWindow {
             ratio: 0.6,
             a: Box::new(Configuration::Split {
                 axis: pane_grid::Axis::Vertical,
-                ratio: 0.5,
-                a: Box::new(Configuration::Pane(AppPane::new(PaneVariant::ScriptList))),
+                ratio: 0.4,
+                a: Box::new(Configuration::Split {
+                    axis: pane_grid::Axis::Horizontal,
+                    ratio: 0.7,
+                    a: Box::new(Configuration::Pane(AppPane::new(PaneVariant::ScriptList))),
+                    b: Box::new(Configuration::Pane(AppPane::new(PaneVariant::ScriptEdit))),
+                }),
                 b: Box::new(Configuration::Pane(AppPane::new(
                     PaneVariant::ExecutionList,
                 ))),
@@ -118,11 +134,16 @@ impl Application for MainWindow {
             }
             Message::AddScriptToRun(script) => {
                 if self.execution_data.running_progress == -1 {
-                    self.execution_data.scripts_to_run.push(script);
+                    self.execution_data.scripts_to_run.push(ScheduledScript {
+                        path: script,
+                        arguments_line: String::new(),
+                    });
                 }
             }
             Message::RunScripts() => {
                 if self.execution_data.running_progress == -1 {
+                    std::fs::remove_dir_all("exec_logs").ok();
+                    self.execution_data.currently_edited_script = -1;
                     self.execution_data.running_progress = 0;
                     let (tx, rx) = mpsc::channel();
                     let scripts_to_run = self.execution_data.scripts_to_run.clone();
@@ -149,26 +170,54 @@ impl Application for MainWindow {
                             let stdout = std::process::Stdio::from(stdout_file);
                             let stderr = std::process::Stdio::from(stderr_file);
 
-                            let mut clild = std::process::Command::new("sh")
+                            let child = std::process::Command::new("sh")
                                 .arg("-c")
-                                .arg(&script)
+                                .arg(if script.arguments_line.is_empty() {
+                                    script.path.to_str().unwrap_or_default().to_string()
+                                } else {
+                                    format!(
+                                        "{} {}",
+                                        script.path.to_str().unwrap_or_default().to_string(),
+                                        script.arguments_line
+                                    )
+                                })
                                 .stdout(stdout)
                                 .stderr(stderr)
-                                .spawn()
-                                .expect(format!("failed to execute script: {}", script).as_str());
+                                .spawn();
+
+                            if child.is_err() {
+                                let err = child.err().unwrap();
+                                // write error to a file
+                                let error_file = std::fs::File::create(format!(
+                                    "exec_logs/{}_error.log",
+                                    processed_count
+                                ))
+                                .expect("failed to create error file");
+                                let mut error_writer = std::io::BufWriter::new(error_file);
+                                write!(error_writer, "{}", err).expect("failed to write error");
+                                tx.send((processed_count + 1, Instant::now(), false))
+                                    .unwrap();
+                                return;
+                            }
+
+                            let mut child = child.unwrap();
 
                             loop {
-                                let result = termination_condvar.1.wait_timeout(termination_requested, Duration::from_millis(10)).unwrap();
+                                let result = termination_condvar
+                                    .1
+                                    .wait_timeout(termination_requested, Duration::from_millis(10))
+                                    .unwrap();
                                 // 10 milliseconds have passed, or maybe the value changed!
                                 termination_requested = result.0;
                                 if *termination_requested == true {
                                     // We received the notification and the value has been updated, we can leave.
-                                    clild.kill().expect("Could not kill child process");
+                                    child.kill().expect("Could not kill child process");
                                 }
 
-                                if let Ok(Some(status)) = clild.try_wait() {
+                                if let Ok(Some(status)) = child.try_wait() {
                                     if !status.success() {
-                                        tx.send((processed_count + 1, Instant::now(), false)).unwrap();
+                                        tx.send((processed_count + 1, Instant::now(), false))
+                                            .unwrap();
                                         return;
                                     }
                                     break;
@@ -184,7 +233,8 @@ impl Application for MainWindow {
             }
             Message::StopScripts() => {
                 if self.execution_data.running_progress != -1 {
-                    let mut termination_requested = self.execution_data.termination_condvar.0.lock().unwrap();
+                    let mut termination_requested =
+                        self.execution_data.termination_condvar.0.lock().unwrap();
                     *termination_requested = true;
                     // We notify the condvar that the value has changed.
                     self.execution_data.termination_condvar.1.notify_one();
@@ -205,6 +255,21 @@ impl Application for MainWindow {
                     }
                 }
             }
+            Message::OpenScriptEditing(script_idx) => {
+                self.execution_data.currently_edited_script = script_idx;
+            }
+            Message::RemoveScript(script_idx) => {
+                self.execution_data
+                    .scripts_to_run
+                    .remove(script_idx as usize);
+                self.execution_data.currently_edited_script = -1;
+            }
+            Message::EditArguments(new_arguments, script_idx) => {
+                if self.execution_data.currently_edited_script != -1 {
+                    self.execution_data.scripts_to_run[script_idx as usize].arguments_line =
+                        new_arguments;
+                }
+            }
         }
 
         Command::none()
@@ -223,6 +288,7 @@ impl Application for MainWindow {
                 PaneVariant::ScriptList => "Scripts",
                 PaneVariant::ExecutionList => "Executions",
                 PaneVariant::LogOutput => "Log",
+                PaneVariant::ScriptEdit => "Script Properties",
             }]
             .spacing(5);
 
@@ -304,6 +370,7 @@ enum PaneVariant {
     ScriptList,
     ExecutionList,
     LogOutput,
+    ScriptEdit,
 }
 
 struct AppPane {
@@ -320,11 +387,9 @@ fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Colu
     let button = |label, message| {
         button(
             text(label)
-                //.width(Length::Fill)
                 .vertical_alignment(alignment::Vertical::Center)
                 .size(16),
         )
-        //.width(Length::Fill)
         .padding(4)
         .on_press(message)
     };
@@ -336,7 +401,7 @@ fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Colu
         let entry = entry.unwrap();
         let path = entry.path();
         if path.is_file() {
-            files.push(path);
+            files.push(path.clone());
         }
     }
 
@@ -356,10 +421,7 @@ fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Colu
                     row![
                         text(file_name_str),
                         text(" "),
-                        button(
-                            "Add",
-                            Message::AddScriptToRun(file.to_str().unwrap_or_default().to_string())
-                        )
+                        button("Add", Message::AddScriptToRun(Box::from(file.clone())))
                     ]
                 } else {
                     row![text(file_name_str)]
@@ -379,7 +441,7 @@ fn produce_script_list_content<'a>(execution_data: &ScriptExecutionData) -> Colu
 }
 
 fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> Column<'a, Message> {
-    let button = |label, message| {
+    let main_button = |label, message| {
         button(
             text(label)
                 .width(Length::Fill)
@@ -388,6 +450,16 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
         )
         .width(Length::Fill)
         .padding(8)
+        .on_press(message)
+    };
+
+    let edit_button = |label, message| {
+        button(
+            text(label)
+                .horizontal_alignment(alignment::Horizontal::Center)
+                .size(16),
+        )
+        .padding(4)
         .on_press(message)
     };
 
@@ -404,19 +476,25 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
             .iter()
             .enumerate()
             .map(|(i, element)| {
-                text(if (i as isize) == success_number && !has_error {
+                let script_name = element
+                    .path
+                    .file_name()
+                    .unwrap_or(&std::ffi::OsStr::new("[error]"))
+                    .to_str()
+                    .unwrap_or("[error]");
+                let name = text(if (i as isize) == success_number && !has_error {
                     if execution_data.start_times.len() > i {
                         let time_taken_sec = Instant::now()
                             .duration_since(execution_data.start_times[i])
                             .as_secs();
                         format!(
                             "[...] {} ({:02}:{:02})",
-                            element,
+                            script_name,
                             time_taken_sec / 60,
                             time_taken_sec % 60
                         )
                     } else {
-                        format!("[...] {}", element)
+                        format!("[...] {}", script_name)
                     }
                 } else if (i as isize) <= success_number {
                     let status = if (i as isize) == success_number {
@@ -431,20 +509,30 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
                         format!(
                             "{} {} ({:02}:{:02})",
                             status,
-                            element,
+                            script_name,
                             time_taken_sec / 60,
                             time_taken_sec % 60
                         )
                     } else {
-                        format!("{} {}", status, element)
+                        format!("{} {}", status, script_name)
                     }
                 } else {
                     if has_error {
-                        format!("[SKIPPED] {}", element)
+                        format!("[SKIPPED] {}", script_name)
                     } else {
-                        format!("{}", element)
+                        format!("{}", script_name)
                     }
-                })
+                });
+
+                if execution_data.running_progress == -1 {
+                    row![
+                        name,
+                        text(" "),
+                        edit_button("Edit", Message::OpenScriptEditing(i as isize))
+                    ]
+                } else {
+                    row![name]
+                }
                 .into()
             })
             .collect(),
@@ -457,11 +545,11 @@ fn produce_execution_list_content<'a>(execution_data: &ScriptExecutionData) -> C
     let controls = column![if has_error
         || success_number >= execution_data.scripts_to_run.len() as isize
     {
-        button("Clear", Message::ClearScripts())
+        main_button("Clear", Message::ClearScripts())
     } else if success_number >= 0 {
-        button("Stop", Message::StopScripts())
+        main_button("Stop", Message::StopScripts())
     } else {
-        button("Run", Message::RunScripts())
+        main_button("Run", Message::RunScripts())
     }]
     .spacing(5)
     .max_width(150)
@@ -483,7 +571,13 @@ fn get_last_n_lines_from_file(file_name: &str, lines_number: usize) -> Option<Ve
 
     let file = file.unwrap();
     let text_buffer = RevBufReader::new(file);
-    return Some(text_buffer.lines().take(lines_number).map(|l| l.expect("Could not parse line")).collect());
+    return Some(
+        text_buffer
+            .lines()
+            .take(lines_number)
+            .map(|l| l.expect("Could not parse line"))
+            .collect(),
+    );
 }
 
 fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Column<'a, Message> {
@@ -503,6 +597,8 @@ fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Colum
     let stdout_lines = get_last_n_lines_from_file(&stdout_file_name, 10);
     let stderr_file_name = format!("exec_logs/{}_stderr.log", current_script_idx);
     let stderr_lines = get_last_n_lines_from_file(&stderr_file_name, 10);
+    let error_file_name = format!("exec_logs/{}_error.log", current_script_idx);
+    let error_lines = get_last_n_lines_from_file(&error_file_name, 10);
 
     if stdout_lines.is_none() {
         return column![text(
@@ -514,29 +610,93 @@ fn produce_log_output_content<'a>(execution_data: &ScriptExecutionData) -> Colum
             format!("Can't open script output '{}'", stderr_file_name).to_string()
         )];
     }
+
     let stdout_lines = stdout_lines.unwrap();
     let stderr_lines = stderr_lines.unwrap();
+    let error_lines = error_lines.unwrap_or(Vec::new());
 
     let mut data_lines: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
 
-    data_lines.push(text(execution_data.scripts_to_run[current_script_idx as usize].path.clone()).into());
+    data_lines.push(
+        text(format!(
+            "Script: {}",
+            execution_data.scripts_to_run[current_script_idx as usize]
+                .path
+                .to_str()
+                .unwrap_or("[error]")
+                .to_string(),
+        ))
+        .into(),
+    );
 
     if !stdout_lines.is_empty() {
-        data_lines.extend(stdout_lines.iter().rev().map(|element| text(element).into()));
+        data_lines.extend(
+            stdout_lines
+                .iter()
+                .rev()
+                .map(|element| text(element).into()),
+        );
     }
 
     if !stderr_lines.is_empty() {
         data_lines.push(text("STDERR:").into());
-        data_lines.extend(stderr_lines.iter().rev().map(|element| text(element).into()));
+        data_lines.extend(
+            stderr_lines
+                .iter()
+                .rev()
+                .map(|element| text(element).into()),
+        );
     }
 
-    let data: Element<_> = column(
-        data_lines
-    )
-    .spacing(10)
-    .into();
+    if !error_lines.is_empty() {
+        data_lines.push(text("RUN ERROR:").into());
+        data_lines.extend(error_lines.iter().rev().map(|element| text(element).into()));
+    }
+
+    let data: Element<_> = column(data_lines).spacing(10).into();
 
     return column![scrollable(data)]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .spacing(10)
+        .align_items(Alignment::Start);
+}
+
+fn produce_script_edit_content<'a>(execution_data: &ScriptExecutionData) -> Column<'a, Message> {
+    if execution_data.currently_edited_script == -1 {
+        return Column::new();
+    }
+
+    let button = |label, message| {
+        button(
+            text(label)
+                //.width(Length::Fill)
+                .vertical_alignment(alignment::Vertical::Center)
+                .size(16),
+        )
+        //.width(Length::Fill)
+        .padding(4)
+        .on_press(message)
+    };
+
+    let script = &execution_data.scripts_to_run[execution_data.currently_edited_script as usize];
+
+    let script_idx = execution_data.currently_edited_script as isize;
+    let arguments = text_input("arg", &script.arguments_line)
+        .on_input(move |new_arg| Message::EditArguments(new_arg, script_idx))
+        .padding(5);
+
+    let content = column![
+        text("Arguments line:"),
+        arguments,
+        text(""),
+        button(
+            "Remove script",
+            Message::RemoveScript(execution_data.currently_edited_script)
+        ),
+    ];
+
+    return column![scrollable(content),]
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
@@ -551,6 +711,7 @@ fn view_content<'a>(
         PaneVariant::ScriptList => produce_script_list_content(execution_data),
         PaneVariant::ExecutionList => produce_execution_list_content(execution_data),
         PaneVariant::LogOutput => produce_log_output_content(execution_data),
+        PaneVariant::ScriptEdit => produce_script_edit_content(execution_data),
     };
 
     container(content)
