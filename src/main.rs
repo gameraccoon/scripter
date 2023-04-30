@@ -3,7 +3,6 @@
 use iced::alignment::{self, Alignment};
 use iced::executor;
 use std::io::{BufRead, Write};
-use std::os::windows::process::CommandExt;
 // use iced::keyboard;
 use iced::theme::{self, Theme};
 use iced::time;
@@ -14,6 +13,9 @@ use iced_lazy::responsive;
 use rev_buf_reader::RevBufReader;
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 pub fn main() -> iced::Result {
     MainWindow::run(Settings::default())
@@ -187,22 +189,21 @@ impl Application for MainWindow {
                             let stdout = std::process::Stdio::from(stdout_file);
                             let stderr = std::process::Stdio::from(stderr_file);
 
-                            let child = if cfg!(target_os = "windows") {
-                                std::process::Command::new("cmd")
+                            #[cfg(target_os = "windows")]
+                            let child = std::process::Command::new("cmd")
                                     .creation_flags(0x08000000)// CREATE_NO_WINDOW
                                     .arg("/C")
                                     .arg(get_script_with_arguments(&script))
                                     .stdout(stdout)
                                     .stderr(stderr)
-                                    .spawn()
-                            } else {
-                                std::process::Command::new("sh")
-                                    .arg("-c")
-                                    .arg(get_script_with_arguments(&script))
-                                    .stdout(stdout)
-                                    .stderr(stderr)
-                                    .spawn()
-                            };
+                                    .spawn();
+                            #[cfg(not(target_os = "windows"))]
+                            let child = std::process::Command::new("sh")
+                                .arg("-c")
+                                .arg(get_script_with_arguments(&script))
+                                .stdout(stdout)
+                                .stderr(stderr)
+                                .spawn();
 
                             if child.is_err() {
                                 let err = child.err().unwrap();
