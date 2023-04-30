@@ -70,6 +70,18 @@ enum Message {
     EditArguments(String, isize),
 }
 
+fn get_script_with_arguments(script: &ScheduledScript) -> String {
+    if script.arguments_line.is_empty() {
+        script.path.to_str().unwrap_or_default().to_string()
+    } else {
+        format!(
+            "{} {}",
+            script.path.to_str().unwrap_or_default().to_string(),
+            script.arguments_line
+        )
+    }
+}
+
 impl Application for MainWindow {
     type Executor = executor::Default;
     type Message = Message;
@@ -176,20 +188,21 @@ impl Application for MainWindow {
                             let stdout = std::process::Stdio::from(stdout_file);
                             let stderr = std::process::Stdio::from(stderr_file);
 
-                            let child = std::process::Command::new("sh")
-                                .arg("-c")
-                                .arg(if script.arguments_line.is_empty() {
-                                    script.path.to_str().unwrap_or_default().to_string()
-                                } else {
-                                    format!(
-                                        "{} {}",
-                                        script.path.to_str().unwrap_or_default().to_string(),
-                                        script.arguments_line
-                                    )
-                                })
-                                .stdout(stdout)
-                                .stderr(stderr)
-                                .spawn();
+                            let child = if cfg!(target_os = "windows") {
+                                std::process::Command::new("cmd")
+                                    .arg("/C")
+                                    .arg(get_script_with_arguments(&script))
+                                    .stdout(stdout)
+                                    .stderr(stderr)
+                                    .spawn()
+                            } else {
+                                std::process::Command::new("sh")
+                                    .arg("-c")
+                                    .arg(get_script_with_arguments(&script))
+                                    .stdout(stdout)
+                                    .stderr(stderr)
+                                    .spawn()
+                            };
 
                             if child.is_err() {
                                 let err = child.err().unwrap();
