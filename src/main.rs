@@ -3,6 +3,7 @@
 use iced::alignment::{self, Alignment};
 use iced::executor;
 use std::io::{BufRead, Write};
+use std::os::windows::process::CommandExt;
 // use iced::keyboard;
 use iced::theme::{self, Theme};
 use iced::time;
@@ -188,6 +189,7 @@ impl Application for MainWindow {
 
                             let child = if cfg!(target_os = "windows") {
                                 std::process::Command::new("cmd")
+                                    .creation_flags(0x08000000)// CREATE_NO_WINDOW
                                     .arg("/C")
                                     .arg(get_script_with_arguments(&script))
                                     .stdout(stdout)
@@ -230,9 +232,14 @@ impl Application for MainWindow {
                                     // We received the notification and the value has been updated, we can leave.
                                     let kill_result = child.kill();
                                     if kill_result.is_err() {
-                                        println!("failed to kill child process: {}", kill_result.err().unwrap());
+                                        println!(
+                                            "failed to kill child process: {}",
+                                            kill_result.err().unwrap()
+                                        );
                                         return;
                                     }
+                                    tx.send((processed_count + 1, Instant::now(), false))
+                                        .unwrap();
                                 }
 
                                 if let Ok(Some(status)) = child.try_wait() {
