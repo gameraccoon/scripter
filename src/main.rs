@@ -208,7 +208,8 @@ impl Application for MainWindow {
                         arguments_line: String::new(),
                     });
                 }
-                self.execution_data.currently_edited_script = -1;
+                self.execution_data.currently_edited_script =
+                    (self.execution_data.scripts_to_run.len() - 1) as isize;
             }
             Message::RunScripts() => {
                 if self.execution_data.scripts_to_run.is_empty() {
@@ -853,14 +854,23 @@ fn produce_script_edit_content<'a>(execution_data: &ScriptExecutionData) -> Colu
         .padding(5);
 
     let content = column![
-        text("Arguments line:"),
-        arguments,
-        text(""),
+        text(format!(
+            "{}",
+            script
+                .path
+                .file_name()
+                .unwrap_or_default()
+                .to_str()
+                .unwrap_or("[error]")
+        )),
         button(
             "Remove script",
             Message::RemoveScript(execution_data.currently_edited_script)
         ),
-    ];
+        text("Arguments line:"),
+        arguments,
+    ]
+    .spacing(10);
 
     return column![scrollable(content),]
         .width(Length::Fill)
