@@ -1,0 +1,26 @@
+name: Update version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version in format 1.2.3'
+        default: '0.0.0'
+        required: true
+        type: string
+
+jobs:
+  update_version:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install cargo-edit
+      run: cargo install cargo-edit
+    - name: Change version
+      run: cargo set-version ${{ inputs.version }}
+    - name: Push
+      run: |
+        git add Cargo.*
+        git commit -m "Updated version to ${{ inputs.version }}"
+        git pull -r
+        git push
