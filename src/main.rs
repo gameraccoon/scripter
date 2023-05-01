@@ -24,6 +24,7 @@ pub fn main() -> iced::Result {
     settings.window.icon = Option::from(
         icon::from_rgba(include_bytes!("../res/icon.rgba").to_vec(), 128, 128).unwrap(),
     );
+    settings.window.position = iced::window::Position::Centered;
     MainWindow::run(settings)
 }
 
