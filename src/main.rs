@@ -12,6 +12,7 @@ use iced::window::icon;
 use iced::{Application, Command, Element, Length, Settings, Subscription};
 use iced_lazy::responsive;
 use rev_buf_reader::RevBufReader;
+use serde::Deserialize;
 use std::path::Path;
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -20,11 +21,14 @@ use std::time::{Duration, Instant};
 use std::os::windows::process::CommandExt;
 
 pub fn main() -> iced::Result {
+    let app_config = read_config();
+
     let mut settings = Settings::default();
     settings.window.icon = Option::from(
         icon::from_rgba(include_bytes!("../res/icon.rgba").to_vec(), 128, 128).unwrap(),
     );
     settings.window.position = iced::window::Position::Centered;
+    settings.window.always_on_top = app_config.always_on_top;
     MainWindow::run(settings)
 }
 
@@ -86,6 +90,39 @@ enum Message {
     RemoveScript(isize),
     EditArguments(String, isize),
     OpenFile(String),
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Deserialize)]
+struct AppConfig {
+    always_on_top: bool,
+}
+
+fn get_default_config() -> AppConfig {
+    AppConfig {
+        always_on_top: true,
+    }
+}
+
+fn read_config() -> AppConfig {
+    let config_path = std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("scripter_config.json");
+
+    if !config_path.exists() {
+        return get_default_config();
+    }
+    let data = std::fs::read_to_string(config_path);
+    if data.is_err() {
+        return get_default_config();
+    }
+    let data = data.unwrap();
+    let config = serde_json::from_str(&data);
+    if config.is_err() {
+        return get_default_config();
+    }
+    return config.unwrap();
 }
 
 fn get_script_with_arguments(script: &ScheduledScript) -> String {
@@ -758,9 +795,9 @@ fn produce_log_output_content<'a>(
     }
 
     let stdout_file_name = get_stdout_path(&path_caches.logs_path, current_script_idx);
-    let stdout_lines = get_last_n_lines_from_file(&stdout_file_name, 10);
+    let stdout_lines = get_last_n_lines_from_file(&stdout_file_name, 30);
     let stderr_file_name = get_stderr_path(&path_caches.logs_path, current_script_idx);
-    let stderr_lines = get_last_n_lines_from_file(&stderr_file_name, 10);
+    let stderr_lines = get_last_n_lines_from_file(&stderr_file_name, 30);
     let error_file_name = format!(
         "{}/{}_error.log",
         &path_caches.logs_path, current_script_idx
