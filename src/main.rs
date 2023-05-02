@@ -36,6 +36,7 @@ pub fn main() -> iced::Result {
 struct ScheduledScript {
     path: Box<Path>,
     arguments_line: String,
+    autorerun_count: usize,
 }
 
 struct ScriptExecutionData {
@@ -89,6 +90,7 @@ enum Message {
     OpenScriptEditing(isize),
     RemoveScript(isize),
     EditArguments(String, isize),
+    EditAutorerunCount(usize, isize),
     OpenFile(String),
 }
 
@@ -243,6 +245,7 @@ impl Application for MainWindow {
                     self.execution_data.scripts_to_run.push(ScheduledScript {
                         path: script,
                         arguments_line: String::new(),
+                        autorerun_count: 0,
                     });
                 }
                 self.execution_data.currently_edited_script =
@@ -265,82 +268,92 @@ impl Application for MainWindow {
                         let mut processed_count = 0;
                         let mut termination_requested = termination_condvar.0.lock().unwrap();
                         for script in scripts_to_run {
-                            tx.send((processed_count, Instant::now(), true)).unwrap();
+                            let mut has_succeeded = false;
+                            for _i in 0..script.autorerun_count + 1 {
+                                if has_succeeded {
+                                    break;
+                                }
+                                tx.send((processed_count, Instant::now(), true)).unwrap();
 
-                            std::fs::create_dir_all(&logs_path)
-                                .expect(&format!("failed to create \"{}\" directory", &logs_path));
+                                std::fs::create_dir_all(&logs_path)
+                                    .expect(&format!("failed to create \"{}\" directory", &logs_path));
 
-                            let stdout_file =
-                                std::fs::File::create(get_stdout_path(&logs_path, processed_count))
-                                    .expect("failed to create stdout file");
-                            let stderr_file =
-                                std::fs::File::create(get_stderr_path(&logs_path, processed_count))
-                                    .expect("failed to create stderr file");
-                            let stdout = std::process::Stdio::from(stdout_file);
-                            let stderr = std::process::Stdio::from(stderr_file);
+                                let stdout_file =
+                                    std::fs::File::create(get_stdout_path(&logs_path, processed_count))
+                                        .expect("failed to create stdout file");
+                                let stderr_file =
+                                    std::fs::File::create(get_stderr_path(&logs_path, processed_count))
+                                        .expect("failed to create stderr file");
+                                let stdout = std::process::Stdio::from(stdout_file);
+                                let stderr = std::process::Stdio::from(stderr_file);
 
-                            #[cfg(target_os = "windows")]
-                            let child = std::process::Command::new("cmd")
-                                .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                                .arg("/C")
-                                .arg(get_script_with_arguments(&script))
-                                .stdout(stdout)
-                                .stderr(stderr)
-                                .spawn();
-                            #[cfg(not(target_os = "windows"))]
-                            let child = std::process::Command::new("sh")
-                                .arg("-c")
-                                .arg(get_script_with_arguments(&script))
-                                .stdout(stdout)
-                                .stderr(stderr)
-                                .spawn();
+                                #[cfg(target_os = "windows")]
+                                    let child = std::process::Command::new("cmd")
+                                    .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                                    .arg("/C")
+                                    .arg(get_script_with_arguments(&script))
+                                    .stdout(stdout)
+                                    .stderr(stderr)
+                                    .spawn();
+                                #[cfg(not(target_os = "windows"))]
+                                    let child = std::process::Command::new("sh")
+                                    .arg("-c")
+                                    .arg(get_script_with_arguments(&script))
+                                    .stdout(stdout)
+                                    .stderr(stderr)
+                                    .spawn();
 
-                            if child.is_err() {
-                                let err = child.err().unwrap();
-                                // write error to a file
-                                let error_file = std::fs::File::create(format!(
-                                    "{}/{}_error.log",
-                                    &logs_path, processed_count
-                                ))
-                                .expect("failed to create error file");
-                                let mut error_writer = std::io::BufWriter::new(error_file);
-                                write!(error_writer, "{}", err).expect("failed to write error");
+                                if child.is_err() {
+                                    let err = child.err().unwrap();
+                                    // write error to a file
+                                    let error_file = std::fs::File::create(format!(
+                                        "{}/{}_error.log",
+                                        &logs_path, processed_count
+                                    ))
+                                        .expect("failed to create error file");
+                                    let mut error_writer = std::io::BufWriter::new(error_file);
+                                    write!(error_writer, "{}", err).expect("failed to write error");
+                                    tx.send((processed_count + 1, Instant::now(), false))
+                                        .unwrap();
+                                    return;
+                                }
+
+                                let mut child = child.unwrap();
+
+                                loop {
+                                    let result = termination_condvar
+                                        .1
+                                        .wait_timeout(termination_requested, Duration::from_millis(10))
+                                        .unwrap();
+                                    // 10 milliseconds have passed, or maybe the value changed!
+                                    termination_requested = result.0;
+                                    if *termination_requested == true {
+                                        // We received the notification and the value has been updated, we can leave.
+                                        let kill_result = child.kill();
+                                        if kill_result.is_err() {
+                                            println!(
+                                                "failed to kill child process: {}",
+                                                kill_result.err().unwrap()
+                                            );
+                                            return;
+                                        }
+                                        tx.send((processed_count + 1, Instant::now(), false))
+                                            .unwrap();
+                                    }
+
+                                    if let Ok(Some(status)) = child.try_wait() {
+                                        if status.success() {
+                                            has_succeeded = true;
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if !has_succeeded {
                                 tx.send((processed_count + 1, Instant::now(), false))
                                     .unwrap();
                                 return;
-                            }
-
-                            let mut child = child.unwrap();
-
-                            loop {
-                                let result = termination_condvar
-                                    .1
-                                    .wait_timeout(termination_requested, Duration::from_millis(10))
-                                    .unwrap();
-                                // 10 milliseconds have passed, or maybe the value changed!
-                                termination_requested = result.0;
-                                if *termination_requested == true {
-                                    // We received the notification and the value has been updated, we can leave.
-                                    let kill_result = child.kill();
-                                    if kill_result.is_err() {
-                                        println!(
-                                            "failed to kill child process: {}",
-                                            kill_result.err().unwrap()
-                                        );
-                                        return;
-                                    }
-                                    tx.send((processed_count + 1, Instant::now(), false))
-                                        .unwrap();
-                                }
-
-                                if let Ok(Some(status)) = child.try_wait() {
-                                    if !status.success() {
-                                        tx.send((processed_count + 1, Instant::now(), false))
-                                            .unwrap();
-                                        return;
-                                    }
-                                    break;
-                                }
                             }
 
                             processed_count += 1;
@@ -387,6 +400,12 @@ impl Application for MainWindow {
                 if self.execution_data.currently_edited_script != -1 {
                     self.execution_data.scripts_to_run[script_idx as usize].arguments_line =
                         new_arguments;
+                }
+            }
+            Message::EditAutorerunCount(new_autorerun_count, script_idx) => {
+                if self.execution_data.currently_edited_script != -1 {
+                    self.execution_data.scripts_to_run[script_idx as usize].autorerun_count =
+                        new_autorerun_count;
                 }
             }
             Message::OpenFile(path) => {
@@ -917,6 +936,10 @@ fn produce_script_edit_content<'a>(execution_data: &ScriptExecutionData) -> Colu
         .on_input(move |new_arg| Message::EditArguments(new_arg, script_idx))
         .padding(5);
 
+    let autorerun_count = text_input("0", &script.autorerun_count.to_string())
+        .on_input(move |new_arg| Message::EditAutorerunCount(new_arg.parse().unwrap_or_default(), script_idx))
+        .padding(5);
+
     let content = column![
         text(format!(
             "{}",
@@ -933,6 +956,8 @@ fn produce_script_edit_content<'a>(execution_data: &ScriptExecutionData) -> Colu
         ),
         text("Arguments line:"),
         arguments,
+        text("Retry count:"),
+        autorerun_count,
     ]
     .spacing(10);
 
