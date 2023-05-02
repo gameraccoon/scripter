@@ -431,7 +431,16 @@ impl Application for MainWindow {
                 .controls(view_controls(id, total_panes, is_maximized))
                 .padding(10)
                 .style(if is_focused {
-                    style::title_bar_focused
+                    if self.execution_data.last_execution_status_success == false {
+                        style::title_bar_focused_failed
+                    }
+                    else if self.execution_data.running_progress
+                        >= self.execution_data.scripts_to_run.len() as isize
+                    {
+                        style::title_bar_focused_completed
+                    } else {
+                        style::title_bar_focused
+                    }
                 } else {
                     style::title_bar_active
                 });
@@ -666,22 +675,27 @@ fn produce_execution_list_content<'a>(
                     .unwrap_or(&std::ffi::OsStr::new("[error]"))
                     .to_str()
                     .unwrap_or("[error]");
+
                 let name = if (i as isize) == success_number && !has_error {
                     if execution_data.start_times.len() > i {
                         let time_taken_sec = Instant::now()
                             .duration_since(execution_data.start_times[i])
                             .as_secs();
-                        format!(
+                        text(format!(
                             "[...] {} ({:02}:{:02})",
                             script_name,
                             time_taken_sec / 60,
                             time_taken_sec % 60
-                        )
+                        ))
                     } else {
-                        format!("[...] {}", script_name)
+                        text(format!("[...] {}", script_name))
                     }
+                    .style(theme::Text::Color(iced::Color::from([0.0, 0.0, 1.0])))
+                    .into()
                 } else if (i as isize) <= success_number {
+                    let mut failed = false;
                     let status = if (i as isize) == success_number {
+                        failed = true;
                         "[FAILED]"
                     } else {
                         "[DONE]"
@@ -690,26 +704,38 @@ fn produce_execution_list_content<'a>(
                         let time_taken_sec = execution_data.start_times[i + 1]
                             .duration_since(execution_data.start_times[i])
                             .as_secs();
-                        format!(
+                        text(format!(
                             "{} {} ({:02}:{:02})",
                             status,
                             script_name,
                             time_taken_sec / 60,
                             time_taken_sec % 60
-                        )
+                        ))
                     } else {
-                        format!("{} {}", status, script_name)
+                        text(format!("{} {}", status, script_name))
                     }
+                    .style(theme::Text::Color(if failed {
+                        iced::Color::from([1.0, 0.0, 0.0])
+                    } else {
+                        iced::Color::from([0.0, 0.0, 0.0])
+                    }))
+                    .into()
                 } else {
                     if has_error {
-                        format!("[SKIPPED] {}", script_name)
+                        text(format!("[SKIPPED] {}", script_name)).into()
                     } else {
-                        format!("{}", script_name)
+                        text(format!("{}", script_name))
+                            .style(if execution_data.currently_edited_script == i as isize {
+                                theme::Text::Color(iced::Color::from([0.0, 0.0, 0.8]))
+                            } else {
+                                theme::Text::Default
+                            })
+                            .into()
                     }
                 };
 
                 let mut row_data: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
-                row_data.push(text(name).into());
+                row_data.push(name);
 
                 if execution_data.running_progress == -1 {
                     row_data.push(text(" ").into());
@@ -983,6 +1009,26 @@ mod style {
         container::Appearance {
             text_color: Some(palette.primary.strong.text),
             background: Some(palette.primary.strong.color.into()),
+            ..Default::default()
+        }
+    }
+
+    pub fn title_bar_focused_completed(theme: &Theme) -> container::Appearance {
+        let palette = theme.extended_palette();
+
+        container::Appearance {
+            text_color: Some(palette.background.strong.text),
+            background: Some(iced::Color::from_rgb(0.3, 0.96, 0.21).into()),
+            ..Default::default()
+        }
+    }
+
+    pub fn title_bar_focused_failed(theme: &Theme) -> container::Appearance {
+        let palette = theme.extended_palette();
+
+        container::Appearance {
+            text_color: Some(palette.background.strong.text),
+            background: Some(iced::Color::from_rgb(0.96, 0.21, 0.13).into()),
             ..Default::default()
         }
     }
