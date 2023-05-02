@@ -1,4 +1,5 @@
 # scripter
+[![Builds and tests](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml/badge.svg)](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml)
 
 A small and lightweight GUI tool for automation of.. well, automation.
 
