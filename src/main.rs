@@ -611,9 +611,10 @@ fn produce_script_list_content<'a>(
             .collect(),
     )
     .spacing(10)
+    .width(Length::Fill)
     .into();
 
-    return column![scrollable(data),]
+    return column![scrollable(data)]
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
