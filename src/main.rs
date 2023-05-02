@@ -562,9 +562,9 @@ fn produce_script_list_content<'a>(
 
                 if execution_data.running_progress == -1 {
                     row![
-                        text(file_name_str),
+                        button("Add", Message::AddScriptToRun(Box::from(file.clone()))),
                         text(" "),
-                        button("Add", Message::AddScriptToRun(Box::from(file.clone())))
+                        text(file_name_str),
                     ]
                 } else {
                     row![text(file_name_str)]
