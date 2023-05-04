@@ -32,8 +32,8 @@ Now you can schedule the exact combination of scripts to run in just a few click
 
 1. Download a version from the releases page or build it with Rust
 1. Copy the executable to a location that the script can have write access to
-1. Add all the scripts you need to run to the "scripts" folder in that location
-1. Either add the script location to PATH or make an alias/script to run it from the terminal
+1. Open `scripter_config.json` and all the scripts you are planning to use and their default parameters
+1. Either add the tool location to PATH environment variable or make an alias/script to run it from the terminal
 
 ## Usage
 

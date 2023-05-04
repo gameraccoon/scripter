@@ -1,0 +1,12 @@
+{
+	"script_definitions": [
+		{
+			"name": "test echo",
+			"command": "echo",
+			"arguments": "test",
+			"autorerun_count": 0,
+			"ignore_previous_failures": false
+		}
+	],
+	"always_on_top": true
+}

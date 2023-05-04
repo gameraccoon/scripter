@@ -12,7 +12,7 @@ use iced::window::icon;
 use iced::{Application, Command, Element, Length, Settings, Subscription};
 use iced_lazy::responsive;
 use rev_buf_reader::RevBufReader;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -21,20 +21,22 @@ use iced_native::widget::checkbox;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-pub fn main() -> iced::Result {
-    let app_config = read_config();
+const CONFIG_NAME: &str = "scripter_config.json";
+thread_local!(static GLOBAL_CONFIG: AppConfig = read_config());
 
+pub fn main() -> iced::Result {
     let mut settings = Settings::default();
     settings.window.icon = Option::from(
         icon::from_rgba(include_bytes!("../res/icon.rgba").to_vec(), 128, 128).unwrap(),
     );
     settings.window.position = iced::window::Position::Centered;
-    settings.window.always_on_top = app_config.always_on_top;
+    settings.window.always_on_top = GLOBAL_CONFIG.with(|config| config.always_on_top);
     MainWindow::run(settings)
 }
 
 #[derive(Clone)]
 struct ScheduledScript {
+    name: String,
     path: Box<Path>,
     arguments_line: String,
     autorerun_count: usize,
@@ -115,12 +117,13 @@ fn has_finished_execution(execution_data: &ScriptExecutionData) -> bool {
     return has_script_finished(&execution_data.scripts_status.last().unwrap());
 }
 
-fn add_script_to_execution(execution_data: &mut ScriptExecutionData, script: Box<Path>) {
+fn add_script_to_execution(execution_data: &mut ScriptExecutionData, script: ScriptDefinition) {
     execution_data.scripts_to_run.push(ScheduledScript {
-        path: script,
-        arguments_line: String::new(),
-        autorerun_count: 0,
-        ignore_previous_failures: false,
+        name: script.name,
+        path: script.command,
+        arguments_line: script.arguments,
+        autorerun_count: script.autorerun_count,
+        ignore_previous_failures: script.ignore_previous_failures,
     });
     execution_data
         .scripts_status
@@ -133,7 +136,6 @@ fn remove_script_from_execution(execution_data: &mut ScriptExecutionData, index:
 }
 
 struct PathCaches {
-    scripts_path: String,
     logs_path: String,
     work_path: String,
 }
@@ -142,6 +144,7 @@ struct MainWindow {
     panes: pane_grid::State<AppPane>,
     focus: Option<pane_grid::Pane>,
     execution_data: ScriptExecutionData,
+    scripts: Vec<ScriptDefinition>,
     path_caches: PathCaches,
 }
 
@@ -153,26 +156,38 @@ enum Message {
     Resized(pane_grid::ResizeEvent),
     Maximize(pane_grid::Pane),
     Restore,
-    AddScriptToRun(Box<Path>),
+    AddScriptToRun(ScriptDefinition),
     RunScripts(),
     StopScripts(),
     ClearScripts(),
     Tick(Instant),
     OpenScriptEditing(isize),
     RemoveScript(isize),
+    EditScriptName(String, isize),
     EditArguments(String, isize),
     EditAutorerunCount(usize, isize),
     OpenFile(String),
     ToggleIgnoreFailures(isize, bool),
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct ScriptDefinition {
+    name: String,
+    command: Box<Path>,
+    arguments: String,
+    autorerun_count: usize,
+    ignore_previous_failures: bool,
+}
+
+#[derive(Default, Clone, Deserialize, Serialize)]
 struct AppConfig {
+    script_definitions: Vec<ScriptDefinition>,
     always_on_top: bool,
 }
 
 fn get_default_config() -> AppConfig {
     AppConfig {
+        script_definitions: Vec::new(),
         always_on_top: true,
     }
 }
@@ -182,11 +197,22 @@ fn read_config() -> AppConfig {
         .unwrap()
         .parent()
         .unwrap()
-        .join("scripter_config.json");
+        .join(CONFIG_NAME);
 
     if !config_path.exists() {
-        return get_default_config();
+        // create the file
+        let config = get_default_config();
+        let data = serde_json::to_string_pretty(&config);
+        if data.is_err() {
+            return get_default_config();
+        }
+        let data = data.unwrap();
+        let result = std::fs::write(&config_path, data);
+        if result.is_err() {
+            return get_default_config();
+        }
     }
+
     let data = std::fs::read_to_string(config_path);
     if data.is_err() {
         return get_default_config();
@@ -209,17 +235,6 @@ fn get_script_with_arguments(script: &ScheduledScript) -> String {
             script.arguments_line
         )
     }
-}
-
-fn get_scripts_path() -> String {
-    return std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("scripts")
-        .to_str()
-        .unwrap()
-        .to_string();
 }
 
 fn get_logs_path() -> String {
@@ -403,9 +418,9 @@ impl Application for MainWindow {
             MainWindow {
                 panes,
                 focus: None,
+                scripts: GLOBAL_CONFIG.with(|config| config.script_definitions.clone()),
                 execution_data: new_execution_data(),
                 path_caches: PathCaches {
-                    scripts_path: get_scripts_path(),
                     logs_path: get_logs_path(),
                     work_path: get_work_path(),
                 },
@@ -496,6 +511,11 @@ impl Application for MainWindow {
                 remove_script_from_execution(&mut self.execution_data, script_idx);
                 self.execution_data.currently_selected_script = -1;
             }
+            Message::EditScriptName(new_name, script_idx) => {
+                if self.execution_data.currently_selected_script != -1 {
+                    self.execution_data.scripts_to_run[script_idx as usize].name = new_name;
+                }
+            }
             Message::EditArguments(new_arguments, script_idx) => {
                 if self.execution_data.currently_selected_script != -1 {
                     self.execution_data.scripts_to_run[script_idx as usize].arguments_line =
@@ -547,7 +567,7 @@ impl Application for MainWindow {
             let title = row![match variant {
                 PaneVariant::ScriptList => "Scripts",
                 PaneVariant::ExecutionList => "Executions",
-                PaneVariant::LogOutput => "Log",
+                PaneVariant::LogOutput => "Logs",
                 PaneVariant::ScriptEdit => "Script Properties",
             }]
             .spacing(5);
@@ -568,7 +588,12 @@ impl Application for MainWindow {
                 });
 
             pane_grid::Content::new(responsive(move |_size| {
-                view_content(&self.execution_data, &self.path_caches, variant)
+                view_content(
+                    &self.execution_data,
+                    &self.path_caches,
+                    variant,
+                    &self.scripts,
+                )
             }))
             .title_bar(title_bar)
             .style(if is_focused {
@@ -678,7 +703,7 @@ fn is_file_empty(path: &str) -> bool {
 
 fn produce_script_list_content<'a>(
     execution_data: &ScriptExecutionData,
-    path_caches: &PathCaches,
+    script_definitions: &Vec<ScriptDefinition>,
 ) -> Column<'a, Message> {
     let button = |label, message| {
         button(
@@ -690,52 +715,28 @@ fn produce_script_list_content<'a>(
         .on_press(message)
     };
 
-    let scripts_folder_path = &path_caches.scripts_path;
-
-    if !Path::new(&scripts_folder_path).exists() {
+    if script_definitions.is_empty() {
         return column![text(format!(
-            "No scripts found in \"{}\"",
-            &scripts_folder_path
-        ))];
-    }
-
-    let mut files = vec![];
-    let dir = std::fs::read_dir(&scripts_folder_path).expect("Failed to read scripts folder");
-    for entry in dir {
-        let entry = entry.expect("Failed to read script entry");
-        let path = entry.path();
-        if path.is_file() {
-            files.push(path.clone());
-        }
-    }
-
-    if files.is_empty() {
-        return column![text(format!(
-            "No scripts found in \"{}\"",
-            &scripts_folder_path
+            "No scripts found in config file \"{}\", or the config file is invalid.",
+            CONFIG_NAME
         ))];
     }
 
     let data: Element<_> = column(
-        files
+        script_definitions
             .iter()
-            .enumerate()
-            .map(|(_i, file)| {
-                let file_name_str = file
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_str()
-                    .unwrap_or("[error]")
-                    .to_string();
-
+            .map(|script| {
                 if !has_started_execution(&execution_data) {
                     row![
-                        button("Add", Message::AddScriptToRun(Box::from(file.clone()))),
+                        button(
+                            "Add",
+                            Message::AddScriptToRun(script.clone()),
+                        ),
                         text(" "),
-                        text(file_name_str),
+                        text(&script.name),
                     ]
                 } else {
-                    row![text(file_name_str)]
+                    row![text(&script.name)]
                 }
                 .into()
             })
@@ -786,12 +787,7 @@ fn produce_execution_list_content<'a>(
             .iter()
             .enumerate()
             .map(|(i, element)| {
-                let script_name = element
-                    .path
-                    .file_name()
-                    .unwrap_or(&std::ffi::OsStr::new("[error]"))
-                    .to_str()
-                    .unwrap_or("[error]");
+                let script_name = &element.name;
 
                 let script_status = &execution_data.scripts_status[i];
 
@@ -951,16 +947,18 @@ fn produce_log_output_content<'a>(
 
     let mut data_lines: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
 
+    let current_script = &execution_data.scripts_to_run[current_script_idx as usize];
     data_lines.push(
         text(format!(
-            "Script: {}",
-            execution_data.scripts_to_run[current_script_idx as usize]
+            "command: {} {}",
+            current_script
                 .path
                 .file_name()
                 .unwrap_or_default()
                 .to_str()
                 .unwrap_or("[error]")
                 .to_string(),
+            current_script.arguments_line,
         ))
         .into(),
     );
@@ -1017,9 +1015,15 @@ fn produce_script_edit_content<'a>(execution_data: &ScriptExecutionData) -> Colu
         .on_press(message)
     };
 
-    let script = &execution_data.scripts_to_run[execution_data.currently_selected_script as usize];
+    let script_idx = execution_data.currently_selected_script;
+    let script = &execution_data.scripts_to_run[script_idx as usize];
 
-    let script_idx = execution_data.currently_selected_script as isize;
+    let script_name = text_input("name", &script.name)
+        .on_input(move |new_arg| {
+            Message::EditScriptName(new_arg, script_idx)
+        })
+        .padding(5);
+
     let arguments = text_input("\"arg1\" \"arg2\"", &script.arguments_line)
         .on_input(move |new_arg| Message::EditArguments(new_arg, script_idx))
         .padding(5);
@@ -1037,15 +1041,7 @@ fn produce_script_edit_content<'a>(execution_data: &ScriptExecutionData) -> Colu
     );
 
     let content = column![
-        text(format!(
-            "{}",
-            script
-                .path
-                .file_name()
-                .unwrap_or_default()
-                .to_str()
-                .unwrap_or("[error]")
-        )),
+        script_name,
         button(
             "Remove script",
             Message::RemoveScript(execution_data.currently_selected_script)
@@ -1069,9 +1065,10 @@ fn view_content<'a>(
     execution_data: &ScriptExecutionData,
     path_caches: &PathCaches,
     variant: &PaneVariant,
+    script_definitions: &Vec<ScriptDefinition>,
 ) -> Element<'a, Message> {
     let content = match variant {
-        PaneVariant::ScriptList => produce_script_list_content(execution_data, path_caches),
+        PaneVariant::ScriptList => produce_script_list_content(execution_data, script_definitions),
         PaneVariant::ExecutionList => produce_execution_list_content(execution_data, path_caches),
         PaneVariant::LogOutput => produce_log_output_content(execution_data, path_caches),
         PaneVariant::ScriptEdit => produce_script_edit_content(execution_data),
