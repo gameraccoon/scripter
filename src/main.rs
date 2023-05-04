@@ -239,7 +239,7 @@ fn get_script_with_arguments(script: &ScheduledScript) -> String {
 
 fn get_logs_path() -> String {
     let pid = std::process::id();
-    let folder_name = format!("exec_logs_{}", pid);
+    let folder_name = format!("scripter_logs/exec_logs_{}", pid);
     return std::env::current_exe()
         .unwrap()
         .parent()
