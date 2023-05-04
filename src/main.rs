@@ -138,6 +138,7 @@ fn remove_script_from_execution(execution_data: &mut ScriptExecutionData, index:
 struct PathCaches {
     logs_path: String,
     work_path: String,
+    exe_folder_path: String,
 }
 
 struct MainWindow {
@@ -228,15 +229,23 @@ fn read_config() -> AppConfig {
     return config.unwrap();
 }
 
-fn get_script_with_arguments(script: &ScheduledScript) -> String {
-    if script.arguments_line.is_empty() {
+fn get_script_with_arguments(script: &ScheduledScript, work_path: &String) -> String {
+    let path = if script.path.is_absolute() {
         script.path.to_str().unwrap_or_default().to_string()
+    } else if script.path.starts_with(".") {
+        Path::new(&work_path)
+            .join(&script.path)
+            .to_str()
+            .unwrap_or_default()
+            .to_string()
     } else {
-        format!(
-            "{} {}",
-            script.path.to_str().unwrap_or_default().to_string(),
-            script.arguments_line
-        )
+        script.path.to_str().unwrap_or_default().to_string()
+    };
+
+    if script.arguments_line.is_empty() {
+        path
+    } else {
+        format!("{} {}", path, script.arguments_line)
     }
 }
 
@@ -261,6 +270,16 @@ fn get_work_path() -> String {
         .to_string();
 }
 
+fn get_exe_folder_path() -> String {
+    return std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+}
+
 fn run_scripts(execution_data: &mut ScriptExecutionData, path_caches: &PathCaches) {
     let (tx, rx) = mpsc::channel();
     execution_data.progress_receiver = Some(rx);
@@ -269,6 +288,7 @@ fn run_scripts(execution_data: &mut ScriptExecutionData, path_caches: &PathCache
     let scripts_to_run = execution_data.scripts_to_run.clone();
     let termination_condvar = execution_data.termination_condvar.clone();
     let logs_path = path_caches.logs_path.clone();
+    let exe_folder_path = path_caches.exe_folder_path.clone();
 
     std::thread::spawn(move || {
         std::fs::remove_dir_all(&logs_path).ok();
@@ -306,14 +326,14 @@ fn run_scripts(execution_data: &mut ScriptExecutionData, path_caches: &PathCache
                 let child = std::process::Command::new("cmd")
                     .creation_flags(0x08000000) // CREATE_NO_WINDOW
                     .arg("/C")
-                    .arg(get_script_with_arguments(&script))
+                    .arg(get_script_with_arguments(&script, &exe_folder_path))
                     .stdout(stdout)
                     .stderr(stderr)
                     .spawn();
                 #[cfg(not(target_os = "windows"))]
                 let child = std::process::Command::new("sh")
                     .arg("-c")
-                    .arg(get_script_with_arguments(&script))
+                    .arg(get_script_with_arguments(&script, &exe_folder_path))
                     .stdout(stdout)
                     .stderr(stderr)
                     .spawn();
@@ -426,6 +446,7 @@ impl Application for MainWindow {
                 path_caches: PathCaches {
                     logs_path: get_logs_path(),
                     work_path: get_work_path(),
+                    exe_folder_path: get_exe_folder_path(),
                 },
                 theme: if GLOBAL_CONFIG.with(|config| config.dark_mode) {
                     Theme::custom(theme::Palette {
