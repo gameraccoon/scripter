@@ -415,7 +415,7 @@ impl Application for MainWindow {
     }
 
     fn title(&self) -> String {
-        format!("scripter ({})", self.path_caches.work_path)
+        "scripter".to_string()
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
@@ -778,6 +778,8 @@ fn produce_execution_list_content<'a>(
         .on_press(message)
     };
 
+    let title: Element<_> = text(format!("{}", path_caches.work_path)).size(16).into();
+
     let data: Element<_> = column(
         execution_data
             .scripts_to_run
@@ -883,7 +885,7 @@ fn produce_execution_list_content<'a>(
     .max_width(150)
     .align_items(Alignment::Center);
 
-    return column![scrollable(data), controls]
+    return column![title, scrollable(data), controls]
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
