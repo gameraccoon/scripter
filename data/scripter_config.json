@@ -8,5 +8,6 @@
 			"ignore_previous_failures": false
 		}
 	],
-	"always_on_top": true
+	"always_on_top": true,
+	"dark_mode": true
 }

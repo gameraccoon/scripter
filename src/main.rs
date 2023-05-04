@@ -146,6 +146,7 @@ struct MainWindow {
     execution_data: ScriptExecutionData,
     scripts: Vec<ScriptDefinition>,
     path_caches: PathCaches,
+    theme: Theme,
 }
 
 #[derive(Debug, Clone)]
@@ -183,12 +184,14 @@ struct ScriptDefinition {
 struct AppConfig {
     script_definitions: Vec<ScriptDefinition>,
     always_on_top: bool,
+    dark_mode: bool,
 }
 
 fn get_default_config() -> AppConfig {
     AppConfig {
         script_definitions: Vec::new(),
         always_on_top: true,
+        dark_mode: false,
     }
 }
 
@@ -424,6 +427,17 @@ impl Application for MainWindow {
                     logs_path: get_logs_path(),
                     work_path: get_work_path(),
                 },
+                theme: if GLOBAL_CONFIG.with(|config| config.dark_mode) {
+                    Theme::custom(theme::Palette {
+                        background: iced::Color::from_rgb(0.25, 0.26, 0.29),
+                        text: iced::Color::BLACK,
+                        primary: iced::Color::from_rgb(0.44, 0.53, 0.855),
+                        success: iced::Color::from_rgb(0.31, 0.50, 0.17),
+                        danger: iced::Color::from_rgb(1.0, 0.0, 0.0),
+                    })
+                } else {
+                    Theme::default()
+                },
             },
             Command::none(),
         )
@@ -593,6 +607,7 @@ impl Application for MainWindow {
                     &self.path_caches,
                     variant,
                     &self.scripts,
+                    &self.theme,
                 )
             }))
             .title_bar(title_bar)
@@ -614,6 +629,10 @@ impl Application for MainWindow {
             .height(Length::Fill)
             .padding(1)
             .into()
+    }
+
+    fn theme(&self) -> Theme {
+        self.theme.clone()
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -756,6 +775,7 @@ fn produce_script_list_content<'a>(
 fn produce_execution_list_content<'a>(
     execution_data: &ScriptExecutionData,
     path_caches: &PathCaches,
+    theme: &Theme,
 ) -> Column<'a, Message> {
     let main_button = |label, message| {
         button(
@@ -813,11 +833,11 @@ fn produce_execution_list_content<'a>(
                         time_taken_sec / 60,
                         time_taken_sec % 60
                     ))
-                    .style(theme::Text::Color(if failed {
-                        iced::Color::from([1.0, 0.0, 0.0])
+                    .style(if failed {
+                        theme.extended_palette().danger.weak.color
                     } else {
-                        iced::Color::from([0.0, 0.0, 0.0])
-                    }))
+                        theme.extended_palette().background.strong.text
+                    })
                     .into()
                 } else if has_script_started(script_status) {
                     let time_taken_sec = Instant::now()
@@ -829,16 +849,9 @@ fn produce_execution_list_content<'a>(
                         time_taken_sec / 60,
                         time_taken_sec % 60
                     ))
-                    .style(theme::Text::Color(iced::Color::from([0.0, 0.0, 1.0])))
                     .into()
                 } else {
-                    text(format!("{}", script_name))
-                        .style(if execution_data.currently_selected_script == i as isize {
-                            theme::Text::Color(iced::Color::from([0.0, 0.0, 0.8]))
-                        } else {
-                            theme::Text::Default
-                        })
-                        .into()
+                    text(format!("{}", script_name)).into()
                 };
 
                 let mut row_data: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
@@ -1066,10 +1079,11 @@ fn view_content<'a>(
     path_caches: &PathCaches,
     variant: &PaneVariant,
     script_definitions: &Vec<ScriptDefinition>,
+    theme: &Theme,
 ) -> Element<'a, Message> {
     let content = match variant {
         PaneVariant::ScriptList => produce_script_list_content(execution_data, script_definitions),
-        PaneVariant::ExecutionList => produce_execution_list_content(execution_data, path_caches),
+        PaneVariant::ExecutionList => produce_execution_list_content(execution_data, path_caches, theme),
         PaneVariant::LogOutput => produce_log_output_content(execution_data, path_caches),
         PaneVariant::ScriptEdit => produce_script_edit_content(execution_data),
     };
@@ -1136,8 +1150,8 @@ mod style {
         let palette = theme.extended_palette();
 
         container::Appearance {
-            text_color: Some(palette.background.strong.text),
-            background: Some(iced::Color::from_rgb(0.3, 0.96, 0.21).into()),
+            text_color: Some(palette.background.weak.text),
+            background: Some(palette.success.strong.color.into()),
             ..Default::default()
         }
     }
@@ -1146,8 +1160,8 @@ mod style {
         let palette = theme.extended_palette();
 
         container::Appearance {
-            text_color: Some(palette.background.strong.text),
-            background: Some(iced::Color::from_rgb(0.96, 0.21, 0.13).into()),
+            text_color: Some(palette.background.weak.text),
+            background: Some(palette.danger.base.color.into()),
             ..Default::default()
         }
     }
