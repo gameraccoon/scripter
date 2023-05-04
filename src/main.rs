@@ -508,12 +508,17 @@ impl Application for MainWindow {
                         }
                         self.execution_data.scripts_status[progress.0] = progress.1;
                         self.execution_data.currently_outputting_script = progress.0 as isize;
+                        let progress_status = &self.execution_data.scripts_status[progress.0];
 
                         if self.execution_data.currently_selected_script == -1
                             || (self.execution_data.currently_selected_script
                                 == progress.0 as isize - 1)
                         {
-                            self.execution_data.currently_selected_script = progress.0 as isize;
+                            if !has_script_finished(progress_status)
+                                || progress_status.result != ScriptResultStatus::Skipped
+                            {
+                                self.execution_data.currently_selected_script = progress.0 as isize;
+                            }
                         }
                     }
                 }
@@ -747,10 +752,7 @@ fn produce_script_list_content<'a>(
             .map(|script| {
                 if !has_started_execution(&execution_data) {
                     row![
-                        button(
-                            "Add",
-                            Message::AddScriptToRun(script.clone()),
-                        ),
+                        button("Add", Message::AddScriptToRun(script.clone()),),
                         text(" "),
                         text(&script.name),
                     ]
@@ -1032,9 +1034,7 @@ fn produce_script_edit_content<'a>(execution_data: &ScriptExecutionData) -> Colu
     let script = &execution_data.scripts_to_run[script_idx as usize];
 
     let script_name = text_input("name", &script.name)
-        .on_input(move |new_arg| {
-            Message::EditScriptName(new_arg, script_idx)
-        })
+        .on_input(move |new_arg| Message::EditScriptName(new_arg, script_idx))
         .padding(5);
 
     let arguments = text_input("\"arg1\" \"arg2\"", &script.arguments_line)
@@ -1083,7 +1083,9 @@ fn view_content<'a>(
 ) -> Element<'a, Message> {
     let content = match variant {
         PaneVariant::ScriptList => produce_script_list_content(execution_data, script_definitions),
-        PaneVariant::ExecutionList => produce_execution_list_content(execution_data, path_caches, theme),
+        PaneVariant::ExecutionList => {
+            produce_execution_list_content(execution_data, path_caches, theme)
+        }
         PaneVariant::LogOutput => produce_log_output_content(execution_data, path_caches),
         PaneVariant::ScriptEdit => produce_script_edit_content(execution_data),
     };
