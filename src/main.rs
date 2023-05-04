@@ -17,6 +17,7 @@ use std::path::Path;
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
+use iced_native::widget::checkbox;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -37,28 +38,98 @@ struct ScheduledScript {
     path: Box<Path>,
     arguments_line: String,
     autorerun_count: usize,
+    ignore_previous_failures: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScriptResultStatus {
+    Success,
+    Failed,
+    Skipped,
+}
+
+#[derive(Clone)]
+struct ScriptExecutionStatus {
+    start_time: Option<Instant>,
+    finish_time: Option<Instant>,
+    result: ScriptResultStatus,
+    retry_count: usize,
+}
+
+fn has_script_started(status: &ScriptExecutionStatus) -> bool {
+    return status.start_time.is_some();
+}
+
+fn has_script_finished(status: &ScriptExecutionStatus) -> bool {
+    if !has_script_started(status) {
+        return false;
+    }
+    return status.finish_time.is_some();
+}
+
+fn has_script_failed(status: &ScriptExecutionStatus) -> bool {
+    return has_script_finished(status) && status.result == ScriptResultStatus::Failed;
+}
+
+fn get_default_script_execution_status() -> ScriptExecutionStatus {
+    ScriptExecutionStatus {
+        start_time: None,
+        finish_time: None,
+        result: ScriptResultStatus::Skipped,
+        retry_count: 0,
+    }
 }
 
 struct ScriptExecutionData {
     scripts_to_run: Vec<ScheduledScript>,
-    start_times: Vec<Instant>,
-    running_progress: isize,
-    last_execution_status_success: bool,
-    progress_receiver: Option<mpsc::Receiver<(isize, Instant, bool)>>,
+    scripts_status: Vec<ScriptExecutionStatus>,
+    has_started: bool,
+    progress_receiver: Option<mpsc::Receiver<(usize, ScriptExecutionStatus)>>,
     termination_condvar: Arc<(Mutex<bool>, Condvar)>,
-    currently_edited_script: isize,
+    currently_selected_script: isize,
+    currently_outputting_script: isize,
+    has_failed_scripts: bool,
 }
 
 fn new_execution_data() -> ScriptExecutionData {
     ScriptExecutionData {
         scripts_to_run: Vec::new(),
-        start_times: Vec::new(),
-        running_progress: -1,
-        last_execution_status_success: true,
+        scripts_status: Vec::new(),
+        has_started: false,
         progress_receiver: None,
         termination_condvar: Arc::new((Mutex::new(false), Condvar::new())),
-        currently_edited_script: -1,
+        currently_selected_script: -1,
+        currently_outputting_script: -1,
+        has_failed_scripts: false,
     }
+}
+
+fn has_started_execution(execution_data: &ScriptExecutionData) -> bool {
+    return execution_data.has_started;
+}
+
+fn has_finished_execution(execution_data: &ScriptExecutionData) -> bool {
+    if !has_started_execution(&execution_data) {
+        return false;
+    }
+    return has_script_finished(&execution_data.scripts_status.last().unwrap());
+}
+
+fn add_script_to_execution(execution_data: &mut ScriptExecutionData, script: Box<Path>) {
+    execution_data.scripts_to_run.push(ScheduledScript {
+        path: script,
+        arguments_line: String::new(),
+        autorerun_count: 0,
+        ignore_previous_failures: false,
+    });
+    execution_data
+        .scripts_status
+        .push(get_default_script_execution_status());
+}
+
+fn remove_script_from_execution(execution_data: &mut ScriptExecutionData, index: isize) {
+    execution_data.scripts_to_run.remove(index as usize);
+    execution_data.scripts_status.remove(index as usize);
 }
 
 struct PathCaches {
@@ -92,6 +163,7 @@ enum Message {
     EditArguments(String, isize),
     EditAutorerunCount(usize, isize),
     OpenFile(String),
+    ToggleIgnoreFailures(isize, bool),
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Deserialize)]
@@ -171,6 +243,135 @@ fn get_work_path() -> String {
         .to_string();
 }
 
+fn run_scripts(execution_data: &mut ScriptExecutionData, path_caches: &PathCaches) {
+    let (tx, rx) = mpsc::channel();
+    execution_data.progress_receiver = Some(rx);
+    execution_data.has_started = true;
+
+    let scripts_to_run = execution_data.scripts_to_run.clone();
+    let termination_condvar = execution_data.termination_condvar.clone();
+    let logs_path = path_caches.logs_path.clone();
+
+    std::thread::spawn(move || {
+        std::fs::remove_dir_all(&logs_path).ok();
+
+        let mut termination_requested = termination_condvar.0.lock().unwrap();
+        let mut has_previous_script_failed = false;
+        let mut kill_requested = false;
+        for script_idx in 0..scripts_to_run.len() {
+            let script = &scripts_to_run[script_idx];
+            let mut script_state = get_default_script_execution_status();
+            script_state.start_time = Some(Instant::now());
+
+            if kill_requested || (has_previous_script_failed && !script.ignore_previous_failures) {
+                script_state.result = ScriptResultStatus::Skipped;
+                script_state.finish_time = Some(Instant::now());
+                tx.send((script_idx, script_state.clone())).unwrap();
+                continue;
+            }
+            tx.send((script_idx, script_state.clone())).unwrap();
+
+            'retry_loop: loop {
+                std::fs::create_dir_all(&logs_path)
+                    .expect(&format!("failed to create \"{}\" directory", &logs_path));
+
+                let stdout_file =
+                    std::fs::File::create(get_stdout_path(&logs_path, script_idx as isize))
+                        .expect("failed to create stdout file");
+                let stderr_file =
+                    std::fs::File::create(get_stderr_path(&logs_path, script_idx as isize))
+                        .expect("failed to create stderr file");
+                let stdout = std::process::Stdio::from(stdout_file);
+                let stderr = std::process::Stdio::from(stderr_file);
+
+                #[cfg(target_os = "windows")]
+                let child = std::process::Command::new("cmd")
+                    .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                    .arg("/C")
+                    .arg(get_script_with_arguments(&script))
+                    .stdout(stdout)
+                    .stderr(stderr)
+                    .spawn();
+                #[cfg(not(target_os = "windows"))]
+                let child = std::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(get_script_with_arguments(&script))
+                    .stdout(stdout)
+                    .stderr(stderr)
+                    .spawn();
+
+                if child.is_err() {
+                    let err = child.err().unwrap();
+                    // write error to a file
+                    let error_file = std::fs::File::create(format!(
+                        "{}/{}_error.log",
+                        &logs_path, script_idx as isize
+                    ))
+                    .expect("failed to create error file");
+                    let mut error_writer = std::io::BufWriter::new(error_file);
+                    write!(error_writer, "{}", err).expect("failed to write error");
+                    // it doesn't make sense to retry if something is broken on this level
+                    script_state.result = ScriptResultStatus::Failed;
+                    script_state.finish_time = Some(Instant::now());
+                    tx.send((script_idx, script_state.clone())).unwrap();
+                    has_previous_script_failed = true;
+                    break 'retry_loop;
+                }
+
+                let mut child = child.unwrap();
+
+                loop {
+                    let result = termination_condvar
+                        .1
+                        .wait_timeout(termination_requested, Duration::from_millis(10))
+                        .unwrap();
+                    // 10 milliseconds have passed, or maybe the value changed
+                    termination_requested = result.0;
+                    if *termination_requested == true {
+                        // we received the notification and the value has been updated, we can leave
+                        let kill_result = child.kill();
+                        if kill_result.is_err() {
+                            println!(
+                                "failed to kill child process: {}",
+                                kill_result.err().unwrap()
+                            );
+                        }
+                        script_state.finish_time = Some(Instant::now());
+                        script_state.result = ScriptResultStatus::Failed;
+                        tx.send((script_idx, script_state.clone())).unwrap();
+                        kill_requested = true;
+                        break 'retry_loop;
+                    }
+
+                    if let Ok(Some(status)) = child.try_wait() {
+                        if status.success() {
+                            // successfully finished the script, jump to the next script
+                            script_state.finish_time = Some(Instant::now());
+                            script_state.result = ScriptResultStatus::Success;
+                            tx.send((script_idx, script_state.clone())).unwrap();
+                            has_previous_script_failed = false;
+                            break 'retry_loop;
+                        } else {
+                            if script_state.retry_count < script.autorerun_count {
+                                // script failed, but we can retry
+                                script_state.retry_count += 1;
+                                tx.send((script_idx, script_state.clone())).unwrap();
+                            } else {
+                                // script failed and we can't retry
+                                script_state.finish_time = Some(Instant::now());
+                                script_state.result = ScriptResultStatus::Failed;
+                                tx.send((script_idx, script_state.clone())).unwrap();
+                                has_previous_script_failed = true;
+                                break 'retry_loop;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
 impl Application for MainWindow {
     type Executor = executor::Default;
     type Message = Message;
@@ -241,14 +442,10 @@ impl Application for MainWindow {
                 self.panes.restore();
             }
             Message::AddScriptToRun(script) => {
-                if self.execution_data.running_progress == -1 {
-                    self.execution_data.scripts_to_run.push(ScheduledScript {
-                        path: script,
-                        arguments_line: String::new(),
-                        autorerun_count: 0,
-                    });
+                if !has_started_execution(&self.execution_data) {
+                    add_script_to_execution(&mut self.execution_data, script);
                 }
-                self.execution_data.currently_edited_script =
+                self.execution_data.currently_selected_script =
                     (self.execution_data.scripts_to_run.len() - 1) as isize;
             }
             Message::RunScripts() => {
@@ -256,115 +453,13 @@ impl Application for MainWindow {
                     return Command::none();
                 }
 
-                if self.execution_data.running_progress == -1 {
-                    let logs_path = self.path_caches.logs_path.clone();
-                    std::fs::remove_dir_all(&logs_path).ok();
-                    self.execution_data.currently_edited_script = -1;
-                    self.execution_data.running_progress = 0;
-                    let (tx, rx) = mpsc::channel();
-                    let scripts_to_run = self.execution_data.scripts_to_run.clone();
-                    let termination_condvar = self.execution_data.termination_condvar.clone();
-                    std::thread::spawn(move || {
-                        let mut processed_count = 0;
-                        let mut termination_requested = termination_condvar.0.lock().unwrap();
-                        for script in scripts_to_run {
-                            let mut has_succeeded = false;
-                            for _i in 0..script.autorerun_count + 1 {
-                                if has_succeeded {
-                                    break;
-                                }
-                                tx.send((processed_count, Instant::now(), true)).unwrap();
-
-                                std::fs::create_dir_all(&logs_path)
-                                    .expect(&format!("failed to create \"{}\" directory", &logs_path));
-
-                                let stdout_file =
-                                    std::fs::File::create(get_stdout_path(&logs_path, processed_count))
-                                        .expect("failed to create stdout file");
-                                let stderr_file =
-                                    std::fs::File::create(get_stderr_path(&logs_path, processed_count))
-                                        .expect("failed to create stderr file");
-                                let stdout = std::process::Stdio::from(stdout_file);
-                                let stderr = std::process::Stdio::from(stderr_file);
-
-                                #[cfg(target_os = "windows")]
-                                    let child = std::process::Command::new("cmd")
-                                    .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                                    .arg("/C")
-                                    .arg(get_script_with_arguments(&script))
-                                    .stdout(stdout)
-                                    .stderr(stderr)
-                                    .spawn();
-                                #[cfg(not(target_os = "windows"))]
-                                    let child = std::process::Command::new("sh")
-                                    .arg("-c")
-                                    .arg(get_script_with_arguments(&script))
-                                    .stdout(stdout)
-                                    .stderr(stderr)
-                                    .spawn();
-
-                                if child.is_err() {
-                                    let err = child.err().unwrap();
-                                    // write error to a file
-                                    let error_file = std::fs::File::create(format!(
-                                        "{}/{}_error.log",
-                                        &logs_path, processed_count
-                                    ))
-                                        .expect("failed to create error file");
-                                    let mut error_writer = std::io::BufWriter::new(error_file);
-                                    write!(error_writer, "{}", err).expect("failed to write error");
-                                    tx.send((processed_count + 1, Instant::now(), false))
-                                        .unwrap();
-                                    return;
-                                }
-
-                                let mut child = child.unwrap();
-
-                                loop {
-                                    let result = termination_condvar
-                                        .1
-                                        .wait_timeout(termination_requested, Duration::from_millis(10))
-                                        .unwrap();
-                                    // 10 milliseconds have passed, or maybe the value changed!
-                                    termination_requested = result.0;
-                                    if *termination_requested == true {
-                                        // We received the notification and the value has been updated, we can leave.
-                                        let kill_result = child.kill();
-                                        if kill_result.is_err() {
-                                            println!(
-                                                "failed to kill child process: {}",
-                                                kill_result.err().unwrap()
-                                            );
-                                            return;
-                                        }
-                                        tx.send((processed_count + 1, Instant::now(), false))
-                                            .unwrap();
-                                    }
-
-                                    if let Ok(Some(status)) = child.try_wait() {
-                                        if status.success() {
-                                            has_succeeded = true;
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
-
-                            if !has_succeeded {
-                                tx.send((processed_count + 1, Instant::now(), false))
-                                    .unwrap();
-                                return;
-                            }
-
-                            processed_count += 1;
-                        }
-                        tx.send((processed_count, Instant::now(), true)).unwrap();
-                    });
-                    self.execution_data.progress_receiver = Some(rx);
+                if !has_started_execution(&self.execution_data) {
+                    self.execution_data.currently_selected_script = -1;
+                    run_scripts(&mut self.execution_data, &self.path_caches);
                 }
             }
             Message::StopScripts() => {
-                if self.execution_data.running_progress != -1 {
+                if has_started_execution(&self.execution_data) {
                     let mut termination_requested =
                         self.execution_data.termination_condvar.0.lock().unwrap();
                     *termination_requested = true;
@@ -374,36 +469,41 @@ impl Application for MainWindow {
             }
             Message::ClearScripts() => {
                 self.execution_data = new_execution_data();
+                self.execution_data.has_started = false;
             }
             Message::Tick(_now) => {
-                let mut exec_data = &mut self.execution_data;
-                if let Some(rx) = &exec_data.progress_receiver {
+                if let Some(rx) = &self.execution_data.progress_receiver {
                     if let Ok(progress) = rx.try_recv() {
-                        exec_data.running_progress = progress.0;
-                        if progress.0 == exec_data.start_times.len() as isize {
-                            exec_data.start_times.push(progress.1);
+                        if has_script_failed(&progress.1) {
+                            self.execution_data.has_failed_scripts = true;
                         }
-                        exec_data.last_execution_status_success = progress.2;
+                        self.execution_data.scripts_status[progress.0] = progress.1;
+                        self.execution_data.currently_outputting_script = progress.0 as isize;
+
+                        if self.execution_data.currently_selected_script == -1
+                            || (self.execution_data.currently_selected_script
+                                == progress.0 as isize - 1)
+                        {
+                            self.execution_data.currently_selected_script = progress.0 as isize;
+                        }
                     }
                 }
             }
             Message::OpenScriptEditing(script_idx) => {
-                self.execution_data.currently_edited_script = script_idx;
+                self.execution_data.currently_selected_script = script_idx;
             }
             Message::RemoveScript(script_idx) => {
-                self.execution_data
-                    .scripts_to_run
-                    .remove(script_idx as usize);
-                self.execution_data.currently_edited_script = -1;
+                remove_script_from_execution(&mut self.execution_data, script_idx);
+                self.execution_data.currently_selected_script = -1;
             }
             Message::EditArguments(new_arguments, script_idx) => {
-                if self.execution_data.currently_edited_script != -1 {
+                if self.execution_data.currently_selected_script != -1 {
                     self.execution_data.scripts_to_run[script_idx as usize].arguments_line =
                         new_arguments;
                 }
             }
             Message::EditAutorerunCount(new_autorerun_count, script_idx) => {
-                if self.execution_data.currently_edited_script != -1 {
+                if self.execution_data.currently_selected_script != -1 {
                     self.execution_data.scripts_to_run[script_idx as usize].autorerun_count =
                         new_autorerun_count;
                 }
@@ -422,6 +522,12 @@ impl Application for MainWindow {
                         .arg(path)
                         .spawn()
                         .expect("failed to open file");
+                }
+            }
+            Message::ToggleIgnoreFailures(script_idx, value) => {
+                if self.execution_data.currently_selected_script != -1 {
+                    self.execution_data.scripts_to_run[script_idx as usize]
+                        .ignore_previous_failures = value;
                 }
             }
         }
@@ -450,12 +556,9 @@ impl Application for MainWindow {
                 .controls(view_controls(id, total_panes, is_maximized))
                 .padding(10)
                 .style(if is_focused {
-                    if self.execution_data.last_execution_status_success == false {
+                    if self.execution_data.has_failed_scripts {
                         style::title_bar_focused_failed
-                    }
-                    else if self.execution_data.running_progress
-                        >= self.execution_data.scripts_to_run.len() as isize
-                    {
+                    } else if has_finished_execution(&self.execution_data) {
                         style::title_bar_focused_completed
                     } else {
                         style::title_bar_focused
@@ -625,7 +728,7 @@ fn produce_script_list_content<'a>(
                     .unwrap_or("[error]")
                     .to_string();
 
-                if execution_data.running_progress == -1 {
+                if !has_started_execution(&execution_data) {
                     row![
                         button("Add", Message::AddScriptToRun(Box::from(file.clone()))),
                         text(" "),
@@ -675,13 +778,6 @@ fn produce_execution_list_content<'a>(
         .on_press(message)
     };
 
-    let has_error = execution_data.last_execution_status_success == false;
-    let success_number = if has_error {
-        execution_data.running_progress - 1
-    } else {
-        execution_data.running_progress
-    };
-
     let data: Element<_> = column(
         execution_data
             .scripts_to_run
@@ -695,72 +791,66 @@ fn produce_execution_list_content<'a>(
                     .to_str()
                     .unwrap_or("[error]");
 
-                let name = if (i as isize) == success_number && !has_error {
-                    if execution_data.start_times.len() > i {
-                        let time_taken_sec = Instant::now()
-                            .duration_since(execution_data.start_times[i])
-                            .as_secs();
-                        text(format!(
-                            "[...] {} ({:02}:{:02})",
-                            script_name,
-                            time_taken_sec / 60,
-                            time_taken_sec % 60
-                        ))
-                    } else {
-                        text(format!("[...] {}", script_name))
-                    }
-                    .style(theme::Text::Color(iced::Color::from([0.0, 0.0, 1.0])))
-                    .into()
-                } else if (i as isize) <= success_number {
+                let script_status = &execution_data.scripts_status[i];
+
+                let name = if has_script_finished(script_status) {
                     let mut failed = false;
-                    let status = if (i as isize) == success_number {
-                        failed = true;
-                        "[FAILED]"
-                    } else {
-                        "[DONE]"
+                    let status = match script_status.result {
+                        ScriptResultStatus::Failed => {
+                            failed = true;
+                            "[FAILED]"
+                        }
+                        ScriptResultStatus::Success => "[DONE]",
+                        ScriptResultStatus::Skipped => "[SKIPPED]",
                     };
-                    if execution_data.start_times.len() > i + 1 {
-                        let time_taken_sec = execution_data.start_times[i + 1]
-                            .duration_since(execution_data.start_times[i])
-                            .as_secs();
-                        text(format!(
-                            "{} {} ({:02}:{:02})",
-                            status,
-                            script_name,
-                            time_taken_sec / 60,
-                            time_taken_sec % 60
-                        ))
-                    } else {
-                        text(format!("{} {}", status, script_name))
-                    }
+                    let time_taken_sec = script_status
+                        .finish_time
+                        .unwrap()
+                        .duration_since(script_status.finish_time.unwrap())
+                        .as_secs();
+                    text(format!(
+                        "{} {} ({:02}:{:02})",
+                        status,
+                        script_name,
+                        time_taken_sec / 60,
+                        time_taken_sec % 60
+                    ))
                     .style(theme::Text::Color(if failed {
                         iced::Color::from([1.0, 0.0, 0.0])
                     } else {
                         iced::Color::from([0.0, 0.0, 0.0])
                     }))
                     .into()
+                } else if has_script_started(script_status) {
+                    let time_taken_sec = Instant::now()
+                        .duration_since(script_status.start_time.unwrap())
+                        .as_secs();
+                    text(format!(
+                        "[...] {} ({:02}:{:02})",
+                        script_name,
+                        time_taken_sec / 60,
+                        time_taken_sec % 60
+                    ))
+                    .style(theme::Text::Color(iced::Color::from([0.0, 0.0, 1.0])))
+                    .into()
                 } else {
-                    if has_error {
-                        text(format!("[SKIPPED] {}", script_name)).into()
-                    } else {
-                        text(format!("{}", script_name))
-                            .style(if execution_data.currently_edited_script == i as isize {
-                                theme::Text::Color(iced::Color::from([0.0, 0.0, 0.8]))
-                            } else {
-                                theme::Text::Default
-                            })
-                            .into()
-                    }
+                    text(format!("{}", script_name))
+                        .style(if execution_data.currently_selected_script == i as isize {
+                            theme::Text::Color(iced::Color::from([0.0, 0.0, 0.8]))
+                        } else {
+                            theme::Text::Default
+                        })
+                        .into()
                 };
 
                 let mut row_data: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
                 row_data.push(name);
 
-                if execution_data.running_progress == -1 {
+                if !has_started_execution(&execution_data) {
                     row_data.push(text(" ").into());
                     row_data
                         .push(small_button("Edit", Message::OpenScriptEditing(i as isize)).into());
-                } else if execution_data.running_progress >= i as isize {
+                } else if has_script_started(&script_status) {
                     let stdout_path = get_stdout_path(&path_caches.logs_path, i as isize);
                     if !is_file_empty(&stdout_path) {
                         row_data.push(text(" ").into());
@@ -782,11 +872,9 @@ fn produce_execution_list_content<'a>(
     .align_items(Alignment::Start)
     .into();
 
-    let controls = column![if has_error
-        || success_number >= execution_data.scripts_to_run.len() as isize
-    {
+    let controls = column![if has_finished_execution(&execution_data) {
         main_button("Clear", Message::ClearScripts())
-    } else if success_number >= 0 {
+    } else if has_started_execution(&execution_data) {
         main_button("Stop", Message::StopScripts())
     } else {
         main_button("Run", Message::RunScripts())
@@ -824,17 +912,11 @@ fn produce_log_output_content<'a>(
     execution_data: &ScriptExecutionData,
     path_caches: &PathCaches,
 ) -> Column<'a, Message> {
-    if execution_data.running_progress == -1 {
+    if !has_started_execution(&execution_data) {
         return Column::new();
     }
 
-    let current_script_idx = if execution_data.last_execution_status_success
-        && execution_data.running_progress < execution_data.scripts_to_run.len() as isize
-    {
-        execution_data.running_progress
-    } else {
-        execution_data.running_progress - 1
-    };
+    let current_script_idx = execution_data.currently_selected_script;
 
     if current_script_idx == -1 {
         return Column::new();
@@ -915,7 +997,11 @@ fn produce_log_output_content<'a>(
 }
 
 fn produce_script_edit_content<'a>(execution_data: &ScriptExecutionData) -> Column<'a, Message> {
-    if execution_data.currently_edited_script == -1 {
+    if has_started_execution(&execution_data) {
+        return Column::new();
+    }
+
+    if execution_data.currently_selected_script == -1 {
         return Column::new();
     }
 
@@ -929,16 +1015,24 @@ fn produce_script_edit_content<'a>(execution_data: &ScriptExecutionData) -> Colu
         .on_press(message)
     };
 
-    let script = &execution_data.scripts_to_run[execution_data.currently_edited_script as usize];
+    let script = &execution_data.scripts_to_run[execution_data.currently_selected_script as usize];
 
-    let script_idx = execution_data.currently_edited_script as isize;
+    let script_idx = execution_data.currently_selected_script as isize;
     let arguments = text_input("\"arg1\" \"arg2\"", &script.arguments_line)
         .on_input(move |new_arg| Message::EditArguments(new_arg, script_idx))
         .padding(5);
 
     let autorerun_count = text_input("0", &script.autorerun_count.to_string())
-        .on_input(move |new_arg| Message::EditAutorerunCount(new_arg.parse().unwrap_or_default(), script_idx))
+        .on_input(move |new_arg| {
+            Message::EditAutorerunCount(new_arg.parse().unwrap_or_default(), script_idx)
+        })
         .padding(5);
+
+    let ignore_failures_checkbox = checkbox(
+        "Ignore previous failures",
+        script.ignore_previous_failures,
+        move |val| Message::ToggleIgnoreFailures(script_idx, val),
+    );
 
     let content = column![
         text(format!(
@@ -952,12 +1046,13 @@ fn produce_script_edit_content<'a>(execution_data: &ScriptExecutionData) -> Colu
         )),
         button(
             "Remove script",
-            Message::RemoveScript(execution_data.currently_edited_script)
+            Message::RemoveScript(execution_data.currently_selected_script)
         ),
         text("Arguments line:"),
         arguments,
         text("Retry count:"),
         autorerun_count,
+        ignore_failures_checkbox,
     ]
     .spacing(10);
 
