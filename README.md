@@ -1,39 +1,47 @@
 # scripter
 [![Builds and tests](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml/badge.svg)](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml)
 
-A small and lightweight GUI tool for automation of.. well, automation.
+A small and lightweight GUI tool for automation of.. well, of automation.
 
-Have a lot of scripts that you run daily?  
-Wish there was something nicer to run sequences of scripts than doing `script1.sh && script2.sh`?  
-Getting a combinatorial explosion of the number of batch files to run all the common script combinations?  
+- Have a lot of scripts that you run daily?  
+- Wish there was something nicer than `script1.sh && script2.sh` to run scripts in a sequence?  
+- Getting a combinatorial explosion of the number of batch files to run all the common script combinations?  
 
 You are in the right place.
 
-No more time wasted because you missed when one script finished and didn't start the next script.  
-No more focus lost on maintaining of the running scripts.  
-No more trying to figure out which script failed, or scrolling up to see log of a specific script in a batch.  
+- No more time wasted because you missed when one script finished and didn't start the next script right away.  
+- No more focus lost on maintaining of the running scripts.  
+- No more trying to figure out which script failed, or scrolling up to see log of a specific script in a batch.  
 
-Now you can schedule the exact combination of scripts to run in just a few clicks. You can go for lunch or continue working on something else, knowing that the work will be done. 
+Now you can schedule the exact combination of scripts to run in just a few clicks. You can go for lunch or continue working on something else, knowing that the work will be done even without your active involvement.  
 
 ## Notable features
 
-- Allows to schedule a queue of scripts
-- Allows to set command arguments for each script
-- Tracks execution of the scripts and shows recent logs
-- Allows to see the full logs of a specific script
+- Queue the execution of the specific chain of scripts that you need right now, just in a few clicks
+- Can specify arguments, retry count, and some other parameters
+- Once configure what scripts you can run, and not deal with configuraion files ever again
+- See the state of the execution, or open the full logs to see the details
 
 ## Getting Started
 
 ### Prerequisites
 
-- Operating system: Windows or Linux
+- Operating system: Windows or Linux (Mac is not tested)
 
 ### Installation
 
-1. Download a version from the releases page or build it with Rust
+#### From Releases
+1. Download a version from the releases page
 1. Copy the executable to a location that the script can have write access to
-1. Open `scripter_config.json` and all the scripts you are planning to use and their default parameters
+1. Open `scripter_config.json` and add the scripts you are planning to use and their default parameters
 1. Either add the tool location to PATH environment variable or make an alias/script to run it from the terminal
+
+#### Building manually
+
+1. Clone the repository
+1. Build, copy `script_config.json` from `data` folder next to the built executable
+1. Add the scripts that you are planning to use and their default parameters to the config file
+1. Run the executable
 
 ## Usage
 
