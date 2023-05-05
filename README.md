@@ -11,7 +11,7 @@ You are in the right place.
 
 - No more time wasted because you missed when one script finished and didn't start the next script right away.  
 - No more focus lost on maintaining of the running scripts.  
-- No more trying to figure out which script failed, or scrolling up to see log of a specific script in a batch.  
+- No more figuring out which script failed, or scrolling up to see log of a specific script in a batch.  
 
 Now you can schedule the exact combination of scripts to run in just a few clicks. You can go for lunch or continue working on something else, knowing that the work will be done even without your active involvement.  
 
@@ -47,11 +47,22 @@ Now you can schedule the exact combination of scripts to run in just a few click
 
 1. Navigate to the working directory where you want to run the scripts from
 1. Run the scripter executable from the terminal
-1. Add scripts to the list of scripts to run (specify arguments if needed)
+1. AAdd the scripts you want to run to the list, and specify their arguments if needed
 1. Start the execution
 
+### Tips and tricks
+
+I wanted to keep the tool simple but at the same time useful for different situations. Every use case of the tool is special, and here are some tricks you can do to achieve some desired behaviors (please share if you still lack some configuration options).
+
+- You can run normal console commands from scripter as well, for example you can set "git" as the "command" in the configuration and be able to schedule any git command by changing the arguments before running it.
+- You can make a script being run even if there was a failure before. Set "Ignore previous failures" checkbox or set it to true as default in the configuration.  
+This allows to set up "notification" scripts that play a sound, show a message, or send an email to you when the list is finished regardless of the outcome of the run.
+- You can make a script try again if it fails. Set a positive value to "Retry count" when you add a script to a run, or set the default value in the config.  
+This allows to more reliably run scripts that depend on stable internet connection. It would be a waste of time to run scripts to prepare freshly built branch in the evening, and then find in the morning that "git pull" failed because the network was unstable.
+
+
 ## Screenshots
-![image_2023-05-01_22-16-01](https://user-images.githubusercontent.com/24990031/235530861-ef51677f-b0cc-4b48-b690-c1fcccf68bd4.png)
+![20230505_222428_scripter_L55OnW](https://user-images.githubusercontent.com/24990031/236567932-66b1b39d-5ec7-4421-b43a-c295bcbb36a2.png)
 
 
 ## License
