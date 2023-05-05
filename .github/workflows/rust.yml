@@ -19,11 +19,13 @@ jobs:
     - name: Run tests
       run: cargo test --release --verbose
 
+    - name: Move the executable to data folder
+      run: mv target/release/scripter data/scripter
     - name: Upload linux artifacts
       uses: actions/upload-artifact@v3
       with:
         name: Linux (Ubuntu)
-        path: target/release/scripter
+        path: data/*
 
   build_windows:
     runs-on: windows-latest
@@ -33,10 +35,13 @@ jobs:
       run: cargo build --release
     - name: Run tests
       run: cargo test --release --verbose
+
     - name: Add windows icon
       run: cargo rustc --release -- -C link-args="res/resources.res"
+    - name: Move the executable to data folder
+      run: mv target/release/scripter.exe data/scripter.exe
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v3
       with:
         name: Windows
-        path: target/release/scripter.exe
+        path: data/*
