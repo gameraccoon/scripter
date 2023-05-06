@@ -36,7 +36,11 @@ Now you can schedule the exact combination of scripts to run in just a few click
 1. Download a version from the releases page
 1. Copy the executable to a location that the script can have write access to
 1. Open `scripter_config.json` and add the scripts you are planning to use and their default parameters
-1. Either add the tool location to PATH environment variable, make an alias/script to run it from the terminal, or create a windows shortcut to run it in the desired folder
+1. Prepare scripter to be run from your working directory if needed
+    1. either add the tool location to PATH environment variable
+    1. or make an alias/script to run it from the terminal
+    1. or create a windows shortcut to run it in the desired folder
+    1. or provide `--work-path your_path` to the executable
 
 #### Building manually
 
@@ -63,6 +67,13 @@ This allows to set up "notification" scripts that play a sound, show a message, 
 This allows to more reliably run scripts that depend on stable internet connection. It would be a waste of time to run scripts to prepare freshly built branch in the evening, and then find in the morning that "git pull" failed because the network was unstable.
 - You can specify commands relative to the scripter executable in the config, setting "path_relative_to_scripter" parameter to true.  
 This allows to bundle scripter with the scripts to share with other developers, and allowing everyone who gets your tools to have the same experience regardles of their local setup.
+- As arguments to scripter you can provide both the path to the configuration file and the path to folder where logs will be stored.  
+This makes it possible to have multiple lists of available scripts, or keep a split between bin/etc/temp folders.
+
+### Available arguments
+- `--config-path <path>` - path to the json file with the configuration of scripter that will be used for this instance
+- `--work_path <path>` - path to the working directory that will be used to execute the scripts
+- `--logs-path <path>` - path to the folder where logs will be stored (requires write access)
 
 ## Screenshots
 ![20230505_222428_scripter_L55OnW](https://user-images.githubusercontent.com/24990031/236622895-97782150-fa07-419e-acdc-9550d35e0407.png)
