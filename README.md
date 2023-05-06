@@ -1,6 +1,6 @@
-![scripter_small](https://user-images.githubusercontent.com/24990031/236622920-094b7357-216b-4475-88b3-3e746af34e07.gif)
-
 # scripter
+![scripter_small](https://user-images.githubusercontent.com/24990031/236623413-3db76595-c6df-4a23-bc7b-afb973204be3.gif)
+
 [![Builds and tests](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml/badge.svg)](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml)
 
 A small and lightweight GUI tool for automation of.. well, of automation.
