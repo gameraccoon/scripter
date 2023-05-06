@@ -842,7 +842,7 @@ fn produce_execution_list_content<'a>(
                     let time_taken_sec = script_status
                         .finish_time
                         .unwrap()
-                        .duration_since(script_status.finish_time.unwrap())
+                        .duration_since(script_status.start_time.unwrap())
                         .as_secs();
                     text(format!(
                         "{} {} ({:02}:{:02})",
