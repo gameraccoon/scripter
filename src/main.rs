@@ -11,13 +11,13 @@ use iced::widget::{button, column, container, row, scrollable, text, text_input,
 use iced::window::icon;
 use iced::{Application, Command, Element, Length, Settings, Subscription};
 use iced_lazy::responsive;
+use iced_native::widget::checkbox;
 use rev_buf_reader::RevBufReader;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
-use iced_native::widget::checkbox;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -136,9 +136,9 @@ fn remove_script_from_execution(execution_data: &mut ScriptExecutionData, index:
 }
 
 struct PathCaches {
-    logs_path: String,
-    work_path: String,
-    exe_folder_path: String,
+    logs_path: PathBuf,
+    work_path: PathBuf,
+    exe_folder_path: PathBuf,
 }
 
 struct MainWindow {
@@ -168,7 +168,7 @@ enum Message {
     EditScriptName(String, isize),
     EditArguments(String, isize),
     EditAutorerunCount(usize, isize),
-    OpenFile(String),
+    OpenFile(PathBuf),
     ToggleIgnoreFailures(isize, bool),
 }
 
@@ -229,11 +229,11 @@ fn read_config() -> AppConfig {
     return config.unwrap();
 }
 
-fn get_script_with_arguments(script: &ScheduledScript, work_path: &String) -> String {
+fn get_script_with_arguments(script: &ScheduledScript, work_path: &Path) -> String {
     let path = if script.path.is_absolute() {
         script.path.to_str().unwrap_or_default().to_string()
     } else if script.path.starts_with(".") {
-        Path::new(&work_path)
+        work_path
             .join(&script.path)
             .to_str()
             .unwrap_or_default()
@@ -249,35 +249,23 @@ fn get_script_with_arguments(script: &ScheduledScript, work_path: &String) -> St
     }
 }
 
-fn get_logs_path() -> String {
+fn get_exe_folder_path() -> PathBuf {
+    return std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
+}
+
+fn get_logs_path() -> PathBuf {
     let pid = std::process::id();
-    let folder_name = format!("scripter_logs/exec_logs_{}", pid);
-    return std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join(folder_name)
-        .to_str()
-        .unwrap()
-        .to_string();
+    return get_exe_folder_path()
+        .join("scripter_logs")
+        .join(format!("exec_logs_{}", pid));
 }
 
-fn get_work_path() -> String {
-    return std::env::current_dir()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
-}
-
-fn get_exe_folder_path() -> String {
-    return std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
+fn get_work_path() -> PathBuf {
+    return std::env::current_dir().unwrap();
 }
 
 fn run_scripts(execution_data: &mut ScriptExecutionData, path_caches: &PathCaches) {
@@ -310,14 +298,16 @@ fn run_scripts(execution_data: &mut ScriptExecutionData, path_caches: &PathCache
             tx.send((script_idx, script_state.clone())).unwrap();
 
             'retry_loop: loop {
-                std::fs::create_dir_all(&logs_path)
-                    .expect(&format!("failed to create \"{}\" directory", &logs_path));
+                std::fs::create_dir_all(&logs_path).expect(&format!(
+                    "failed to create \"{}\" directory",
+                    logs_path.to_str().unwrap()
+                ));
 
                 let stdout_file =
-                    std::fs::File::create(get_stdout_path(&logs_path, script_idx as isize))
+                    std::fs::File::create(get_stdout_path(logs_path.clone(), script_idx as isize))
                         .expect("failed to create stdout file");
                 let stderr_file =
-                    std::fs::File::create(get_stderr_path(&logs_path, script_idx as isize))
+                    std::fs::File::create(get_stderr_path(logs_path.clone(), script_idx as isize))
                         .expect("failed to create stderr file");
                 let stdout = std::process::Stdio::from(stdout_file);
                 let stderr = std::process::Stdio::from(stderr_file);
@@ -341,10 +331,9 @@ fn run_scripts(execution_data: &mut ScriptExecutionData, path_caches: &PathCache
                 if child.is_err() {
                     let err = child.err().unwrap();
                     // write error to a file
-                    let error_file = std::fs::File::create(format!(
-                        "{}/{}_error.log",
-                        &logs_path, script_idx as isize
-                    ))
+                    let error_file = std::fs::File::create(
+                        logs_path.join(format!("{}_error.log", script_idx as isize)),
+                    )
                     .expect("failed to create error file");
                     let mut error_writer = std::io::BufWriter::new(error_file);
                     write!(error_writer, "{}", err).expect("failed to write error");
@@ -571,17 +560,29 @@ impl Application for MainWindow {
             Message::OpenFile(path) => {
                 #[cfg(target_os = "windows")]
                 {
-                    std::process::Command::new("explorer")
+                    let result = std::process::Command::new("explorer")
                         .arg(path)
-                        .spawn()
-                        .expect("failed to open file");
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn();
+
+                    if result.is_err() {
+                        return Command::none();
+                    }
                 }
                 #[cfg(target_os = "linux")]
                 {
-                    std::process::Command::new("xdg-open")
+                    let result = std::process::Command::new("xdg-open")
                         .arg(path)
-                        .spawn()
-                        .expect("failed to open file");
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn();
+
+                    if result.is_err() {
+                        return Command::none();
+                    }
                 }
             }
             Message::ToggleIgnoreFailures(script_idx, value) => {
@@ -719,23 +720,15 @@ impl AppPane {
     }
 }
 
-fn get_stdout_path(logs_path: &str, script_idx: isize) -> String {
-    Path::new(logs_path)
-        .join(format!("{}_stdout.log", script_idx))
-        .to_str()
-        .unwrap()
-        .to_string()
+fn get_stdout_path(logs_path: PathBuf, script_idx: isize) -> PathBuf {
+    logs_path.join(format!("{}_stdout.log", script_idx))
 }
 
-fn get_stderr_path(logs_path: &str, script_idx: isize) -> String {
-    Path::new(logs_path)
-        .join(format!("{}_stderr.log", script_idx))
-        .to_str()
-        .unwrap()
-        .to_string()
+fn get_stderr_path(logs_path: PathBuf, script_idx: isize) -> PathBuf {
+    logs_path.join(format!("{}_stderr.log", script_idx))
 }
 
-fn is_file_empty(path: &str) -> bool {
+fn is_file_empty(path: &PathBuf) -> bool {
     let file = std::fs::File::open(path);
     if let Ok(file) = file {
         let metadata = file.metadata();
@@ -822,7 +815,9 @@ fn produce_execution_list_content<'a>(
         .on_press(message)
     };
 
-    let title: Element<_> = text(format!("{}", path_caches.work_path)).size(16).into();
+    let title: Element<_> = text(path_caches.work_path.to_str().unwrap())
+        .size(16)
+        .into();
 
     let data: Element<_> = column(
         execution_data
@@ -885,12 +880,12 @@ fn produce_execution_list_content<'a>(
                     row_data
                         .push(small_button("Edit", Message::OpenScriptEditing(i as isize)).into());
                 } else if has_script_started(&script_status) {
-                    let stdout_path = get_stdout_path(&path_caches.logs_path, i as isize);
+                    let stdout_path = get_stdout_path(path_caches.logs_path.clone(), i as isize);
                     if !is_file_empty(&stdout_path) {
                         row_data.push(text(" ").into());
                         row_data.push(small_button("log", Message::OpenFile(stdout_path)).into());
                     }
-                    let stderr_path = get_stderr_path(&path_caches.logs_path, i as isize);
+                    let stderr_path = get_stderr_path(path_caches.logs_path.clone(), i as isize);
                     if !is_file_empty(&stderr_path) {
                         row_data.push(text(" ").into());
                         row_data.push(small_button("err", Message::OpenFile(stderr_path)).into());
@@ -924,8 +919,8 @@ fn produce_execution_list_content<'a>(
         .align_items(Alignment::Center);
 }
 
-fn get_last_n_lines_from_file(file_name: &str, lines_number: usize) -> Option<Vec<String>> {
-    let file = std::fs::File::open(file_name);
+fn get_last_n_lines_from_file(file_path: &PathBuf, lines_number: usize) -> Option<Vec<String>> {
+    let file = std::fs::File::open(file_path);
 
     if file.is_err() {
         return None;
@@ -956,24 +951,31 @@ fn produce_log_output_content<'a>(
         return Column::new();
     }
 
-    let stdout_file_name = get_stdout_path(&path_caches.logs_path, current_script_idx);
-    let stdout_lines = get_last_n_lines_from_file(&stdout_file_name, 30);
-    let stderr_file_name = get_stderr_path(&path_caches.logs_path, current_script_idx);
-    let stderr_lines = get_last_n_lines_from_file(&stderr_file_name, 30);
-    let error_file_name = format!(
-        "{}/{}_error.log",
-        &path_caches.logs_path, current_script_idx
-    );
-    let error_lines = get_last_n_lines_from_file(&error_file_name, 10);
+    let stdout_file_path = get_stdout_path(path_caches.logs_path.clone(), current_script_idx);
+    let stdout_lines = get_last_n_lines_from_file(&stdout_file_path, 30);
+    let stderr_file_path = get_stderr_path(path_caches.logs_path.clone(), current_script_idx);
+    let stderr_lines = get_last_n_lines_from_file(&stderr_file_path, 30);
+    let error_file_path = path_caches
+        .logs_path
+        .join(format!("{}_error.log", current_script_idx));
+    let error_lines = get_last_n_lines_from_file(&error_file_path, 10);
 
     if stdout_lines.is_none() {
         return column![text(
-            format!("Can't open script output '{}'", stdout_file_name).to_string()
+            format!(
+                "Can't open script output '{}'",
+                stdout_file_path.to_str().unwrap()
+            )
+            .to_string()
         )];
     }
     if stderr_lines.is_none() {
         return column![text(
-            format!("Can't open script output '{}'", stderr_file_name).to_string()
+            format!(
+                "Can't open script output '{}'",
+                stderr_file_path.to_str().unwrap()
+            )
+            .to_string()
         )];
     }
 
