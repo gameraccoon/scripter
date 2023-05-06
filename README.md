@@ -36,7 +36,7 @@ Now you can schedule the exact combination of scripts to run in just a few click
 1. Download a version from the releases page
 1. Copy the executable to a location that the script can have write access to
 1. Open `scripter_config.json` and add the scripts you are planning to use and their default parameters
-1. Either add the tool location to PATH environment variable or make an alias/script to run it from the terminal
+1. Either add the tool location to PATH environment variable, make an alias/script to run it from the terminal, or create a windows shortcut to run it in the desired folder
 
 #### Building manually
 
