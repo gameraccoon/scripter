@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-const CONFIG_NAME: &str = "scripter_config.json";
+const DEFAULT_CONFIG_NAME: &str = "scripter_config.json";
 thread_local!(static GLOBAL_CONFIG: AppConfig = read_config());
 
 pub fn main() -> iced::Result {
@@ -189,47 +189,96 @@ struct AppConfig {
     script_definitions: Vec<ScriptDefinition>,
     always_on_top: bool,
     dark_mode: bool,
+    #[serde(skip)]
+    app_arguments: AppArguments,
 }
 
-fn get_default_config() -> AppConfig {
+fn get_default_config(app_arguments: AppArguments) -> AppConfig {
     AppConfig {
         script_definitions: Vec::new(),
         always_on_top: true,
         dark_mode: false,
+        app_arguments,
     }
 }
 
 fn read_config() -> AppConfig {
-    let config_path = std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join(CONFIG_NAME);
+    let app_arguments = get_app_arguments();
+
+    let config_path = if let Some(config_path) = app_arguments.custom_config_path.clone() {
+        PathBuf::from(config_path.clone())
+    } else {
+        std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join(DEFAULT_CONFIG_NAME)
+    };
 
     if !config_path.exists() {
         // create the file
-        let config = get_default_config();
+        let config = get_default_config(app_arguments.clone());
         let data = serde_json::to_string_pretty(&config);
         if data.is_err() {
-            return get_default_config();
+            return get_default_config(app_arguments);
         }
         let data = data.unwrap();
         let result = std::fs::write(&config_path, data);
         if result.is_err() {
-            return get_default_config();
+            return get_default_config(app_arguments);
         }
     }
 
     let data = std::fs::read_to_string(config_path);
     if data.is_err() {
-        return get_default_config();
+        return get_default_config(app_arguments);
     }
     let data = data.unwrap();
     let config = serde_json::from_str(&data);
     if config.is_err() {
-        return get_default_config();
+        return get_default_config(app_arguments);
     }
-    return config.unwrap();
+    let mut config: AppConfig = config.unwrap();
+    config.app_arguments = app_arguments;
+    return config;
+}
+
+#[derive(Default, Clone)]
+struct AppArguments {
+    custom_config_path: Option<String>,
+    custom_logs_path: Option<String>,
+    custom_work_path: Option<String>,
+}
+
+fn get_app_arguments() -> AppArguments {
+    let mut custom_config_path = None;
+    let mut custom_logs_path = None;
+    let mut custom_work_path = None;
+
+    let args: Vec<String> = std::env::args().collect();
+    for i in 1..args.len() {
+        let arg = &args[i];
+        println!("'{}'", &arg);
+        if arg == "--config-path" {
+            if i + 1 < args.len() {
+                custom_config_path = Some(args[i + 1].clone());
+            }
+        } else if arg == "--logs-path" {
+            if i + 1 < args.len() {
+                custom_logs_path = Some(args[i + 1].clone());
+            }
+        } else if arg == "--work-path" {
+            if i + 1 < args.len() {
+                custom_work_path = Some(args[i + 1].clone());
+            }
+        }
+    }
+
+    AppArguments {
+        custom_config_path,
+        custom_logs_path,
+        custom_work_path,
+    }
 }
 
 fn get_script_with_arguments(script: &ScheduledScript, work_path: &Path) -> String {
@@ -258,14 +307,14 @@ fn get_exe_folder_path() -> PathBuf {
         .to_path_buf();
 }
 
-fn get_logs_path() -> PathBuf {
+fn get_default_logs_path() -> PathBuf {
     let pid = std::process::id();
     return get_exe_folder_path()
         .join("scripter_logs")
         .join(format!("exec_logs_{}", pid));
 }
 
-fn get_work_path() -> PathBuf {
+fn get_default_work_path() -> PathBuf {
     return std::env::current_dir().unwrap();
 }
 
@@ -434,8 +483,16 @@ impl Application for MainWindow {
                 scripts: GLOBAL_CONFIG.with(|config| config.script_definitions.clone()),
                 execution_data: new_execution_data(),
                 path_caches: PathCaches {
-                    logs_path: get_logs_path(),
-                    work_path: get_work_path(),
+                    logs_path: if let Some(custom_logs_path) = GLOBAL_CONFIG.with(|config| { config.app_arguments.custom_logs_path.clone() }) {
+                        PathBuf::from(custom_logs_path)
+                    } else {
+                        get_default_logs_path()
+                    },
+                    work_path: if let Some(custom_work_path) = GLOBAL_CONFIG.with(|config| { config.app_arguments.custom_work_path.clone() }) {
+                        PathBuf::from(custom_work_path)
+                    } else {
+                        get_default_work_path()
+                    },
                     exe_folder_path: get_exe_folder_path(),
                 },
                 theme: if GLOBAL_CONFIG.with(|config| config.dark_mode) {
@@ -755,9 +812,15 @@ fn produce_script_list_content<'a>(
     };
 
     if script_definitions.is_empty() {
+        let config_path = if let Some(custom_config_path) = GLOBAL_CONFIG.with(|config| { config.app_arguments.custom_config_path.clone() }) {
+            custom_config_path
+        } else {
+            DEFAULT_CONFIG_NAME.to_string()
+        };
+
         return column![text(format!(
             "No scripts found in config file \"{}\", or the config file is invalid.",
-            CONFIG_NAME
+            &config_path
         ))];
     }
 
