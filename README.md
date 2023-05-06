@@ -1,3 +1,5 @@
+![scripter_small](https://user-images.githubusercontent.com/24990031/236622920-094b7357-216b-4475-88b3-3e746af34e07.gif)
+
 # scripter
 [![Builds and tests](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml/badge.svg)](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml)
 
@@ -59,11 +61,12 @@ I wanted to keep the tool simple but at the same time useful for different situa
 This allows to set up "notification" scripts that play a sound, show a message, or send an email to you when the list is finished regardless of the outcome of the run.
 - You can make a script try again if it fails. Set a positive value to "Retry count" when you add a script to a run, or set the default value in the config.  
 This allows to more reliably run scripts that depend on stable internet connection. It would be a waste of time to run scripts to prepare freshly built branch in the evening, and then find in the morning that "git pull" failed because the network was unstable.
-
+- You can specify commands relative to the scripter executable in the config, setting "path_relative_to_scripter" parameter to true.  
+This allows to bundle scripter with the scripts to share with other developers, and allowing everyone who gets your tools to have the same experience regardles of their local setup.
 
 ## Screenshots
-![20230505_222428_scripter_L55OnW](https://user-images.githubusercontent.com/24990031/236567932-66b1b39d-5ec7-4421-b43a-c295bcbb36a2.png)
-
+![20230505_222428_scripter_L55OnW](https://user-images.githubusercontent.com/24990031/236622895-97782150-fa07-419e-acdc-9550d35e0407.png)
+![20230506_135829_scripter_AzxYkV](https://user-images.githubusercontent.com/24990031/236622897-4a7c9a67-1976-4cfe-b147-6a93f9406d9a.png)
 
 ## License
 
