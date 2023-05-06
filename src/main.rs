@@ -39,6 +39,7 @@ struct ScheduledScript {
     name: String,
     path: Box<Path>,
     arguments_line: String,
+    path_relative_to_scripter: bool,
     autorerun_count: usize,
     ignore_previous_failures: bool,
 }
@@ -122,6 +123,7 @@ fn add_script_to_execution(execution_data: &mut ScriptExecutionData, script: Scr
         name: script.name,
         path: script.command,
         arguments_line: script.arguments,
+        path_relative_to_scripter: script.path_relative_to_scripter,
         autorerun_count: script.autorerun_count,
         ignore_previous_failures: script.ignore_previous_failures,
     });
@@ -177,6 +179,7 @@ struct ScriptDefinition {
     name: String,
     command: Box<Path>,
     arguments: String,
+    path_relative_to_scripter: bool,
     autorerun_count: usize,
     ignore_previous_failures: bool,
 }
@@ -230,9 +233,7 @@ fn read_config() -> AppConfig {
 }
 
 fn get_script_with_arguments(script: &ScheduledScript, work_path: &Path) -> String {
-    let path = if script.path.is_absolute() {
-        script.path.to_str().unwrap_or_default().to_string()
-    } else if script.path.starts_with(".") {
+    let path = if script.path_relative_to_scripter {
         work_path
             .join(&script.path)
             .to_str()

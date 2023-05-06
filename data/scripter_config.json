@@ -4,6 +4,7 @@
 			"name": "test echo",
 			"command": "echo",
 			"arguments": "test",
+			"path_relative_to_scripter": false,
 			"autorerun_count": 0,
 			"ignore_previous_failures": false
 		}
