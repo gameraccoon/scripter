@@ -46,6 +46,14 @@ pub fn is_always_on_top() -> bool {
     GLOBAL_CONFIG.with(|config| config.always_on_top)
 }
 
+pub fn get_stdout_path(logs_path: PathBuf, script_idx: isize) -> PathBuf {
+    logs_path.join(format!("{}_stdout.log", script_idx))
+}
+
+pub fn get_stderr_path(logs_path: PathBuf, script_idx: isize) -> PathBuf {
+    logs_path.join(format!("{}_stderr.log", script_idx))
+}
+
 fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppConfig {
     AppConfig {
         script_definitions: Vec::new(),

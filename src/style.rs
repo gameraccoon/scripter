@@ -1,5 +1,5 @@
+use iced::theme::{self, Theme};
 use iced::widget::container;
-use iced::Theme;
 
 pub fn title_bar_active(theme: &Theme) -> container::Appearance {
     let palette = theme.extended_palette();
@@ -61,4 +61,14 @@ pub fn pane_focused(theme: &Theme) -> container::Appearance {
         border_color: palette.primary.strong.color,
         ..Default::default()
     }
+}
+
+pub fn get_dark_theme() -> Theme {
+    Theme::custom(theme::Palette {
+        background: iced::Color::from_rgb(0.25, 0.26, 0.29),
+        text: iced::Color::BLACK,
+        primary: iced::Color::from_rgb(0.44, 0.53, 0.855),
+        success: iced::Color::from_rgb(0.31, 0.50, 0.17),
+        danger: iced::Color::from_rgb(1.0, 0.0, 0.0),
+    })
 }
