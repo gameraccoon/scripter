@@ -173,7 +173,6 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
 
                 if child.is_err() {
                     let err = child.err().unwrap();
-                    // write error to a file
                     let error_file = std::fs::File::create(
                         logs_path.join(format!("{}_error.log", script_idx as isize)),
                     )
@@ -198,8 +197,6 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     // 10 milliseconds have passed, or maybe the value changed
                     termination_requested = result.0;
                     if *termination_requested == true {
-                        // we received the notification and the value has been updated, we can leave
-                        let kill_result = child.kill();
                         if kill_result.is_err() {
                             println!(
                                 "failed to kill child process: {}",
@@ -226,6 +223,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                                 // script failed, but we can retry
                                 script_state.retry_count += 1;
                                 tx.send((script_idx, script_state.clone())).unwrap();
+                                break;
                             } else {
                                 // script failed and we can't retry
                                 script_state.finish_time = Some(Instant::now());
