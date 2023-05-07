@@ -135,6 +135,10 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
             tx.send((script_idx, script_state.clone())).unwrap();
 
             'retry_loop: loop {
+                if kill_requested {
+                    break;
+                }
+
                 std::fs::create_dir_all(&logs_path).expect(&format!(
                     "failed to create \"{}\" directory",
                     logs_path.to_str().unwrap()
@@ -197,17 +201,8 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     // 10 milliseconds have passed, or maybe the value changed
                     termination_requested = result.0;
                     if *termination_requested == true {
-                        if kill_result.is_err() {
-                            println!(
-                                "failed to kill child process: {}",
-                                kill_result.err().unwrap()
-                            );
-                        }
-                        script_state.finish_time = Some(Instant::now());
-                        script_state.result = ScriptResultStatus::Failed;
-                        tx.send((script_idx, script_state.clone())).unwrap();
+                        kill_process(&mut child);
                         kill_requested = true;
-                        break 'retry_loop;
                     }
 
                     if let Ok(Some(status)) = child.try_wait() {
@@ -219,7 +214,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                             has_previous_script_failed = false;
                             break 'retry_loop;
                         } else {
-                            if script_state.retry_count < script.autorerun_count {
+                            if script_state.retry_count < script.autorerun_count && !kill_requested {
                                 // script failed, but we can retry
                                 script_state.retry_count += 1;
                                 tx.send((script_idx, script_state.clone())).unwrap();
@@ -264,5 +259,26 @@ fn get_default_script_execution_status() -> ScriptExecutionStatus {
         finish_time: None,
         result: ScriptResultStatus::Skipped,
         retry_count: 0,
+    }
+}
+
+fn kill_process(process: &mut std::process::Child) {
+    #[cfg(not(target_os = "windows"))]
+    {
+        let kill_output = std::process::Command::new("kill")
+            .args([&process.id().to_string()])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output();
+
+        if kill_output.is_err() {
+            println!("failed to kill child process: {}", kill_output.err().unwrap());
+        }
+    }
+
+    let kill_result = process.kill();
+    if kill_result.is_err() {
+        println!("failed to kill child process: {}", kill_result.err().unwrap());
     }
 }
