@@ -1,5 +1,8 @@
 #![windows_subsystem = "windows"]
 
+mod config;
+mod style;
+
 use iced::alignment::{self, Alignment};
 use iced::executor;
 use std::io::{BufRead, Write};
@@ -13,7 +16,6 @@ use iced::{Application, Command, Element, Length, Settings, Subscription};
 use iced_lazy::responsive;
 use iced_native::widget::checkbox;
 use rev_buf_reader::RevBufReader;
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -21,16 +23,13 @@ use std::time::{Duration, Instant};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-const DEFAULT_CONFIG_NAME: &str = "scripter_config.json";
-thread_local!(static GLOBAL_CONFIG: AppConfig = read_config());
-
 pub fn main() -> iced::Result {
     let mut settings = Settings::default();
     settings.window.icon = Option::from(
         icon::from_rgba(include_bytes!("../res/icon.rgba").to_vec(), 128, 128).unwrap(),
     );
     settings.window.position = iced::window::Position::Centered;
-    settings.window.always_on_top = GLOBAL_CONFIG.with(|config| config.always_on_top);
+    settings.window.always_on_top = config::is_always_on_top();
     MainWindow::run(settings)
 }
 
@@ -118,7 +117,10 @@ fn has_finished_execution(execution_data: &ScriptExecutionData) -> bool {
     return has_script_finished(&execution_data.scripts_status.last().unwrap());
 }
 
-fn add_script_to_execution(execution_data: &mut ScriptExecutionData, script: ScriptDefinition) {
+fn add_script_to_execution(
+    execution_data: &mut ScriptExecutionData,
+    script: config::ScriptDefinition,
+) {
     execution_data.scripts_to_run.push(ScheduledScript {
         name: script.name,
         path: script.command,
@@ -137,18 +139,12 @@ fn remove_script_from_execution(execution_data: &mut ScriptExecutionData, index:
     execution_data.scripts_status.remove(index as usize);
 }
 
-struct PathCaches {
-    logs_path: PathBuf,
-    work_path: PathBuf,
-    exe_folder_path: PathBuf,
-}
-
 struct MainWindow {
     panes: pane_grid::State<AppPane>,
     focus: Option<pane_grid::Pane>,
     execution_data: ScriptExecutionData,
-    scripts: Vec<ScriptDefinition>,
-    path_caches: PathCaches,
+    scripts: Vec<config::ScriptDefinition>,
+    app_config: config::AppConfig,
     theme: Theme,
 }
 
@@ -160,7 +156,7 @@ enum Message {
     Resized(pane_grid::ResizeEvent),
     Maximize(pane_grid::Pane),
     Restore,
-    AddScriptToRun(ScriptDefinition),
+    AddScriptToRun(config::ScriptDefinition),
     RunScripts(),
     StopScripts(),
     ClearScripts(),
@@ -174,116 +170,9 @@ enum Message {
     ToggleIgnoreFailures(isize, bool),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-struct ScriptDefinition {
-    name: String,
-    command: Box<Path>,
-    arguments: String,
-    path_relative_to_scripter: bool,
-    autorerun_count: usize,
-    ignore_previous_failures: bool,
-}
-
-#[derive(Default, Clone, Deserialize, Serialize)]
-struct AppConfig {
-    script_definitions: Vec<ScriptDefinition>,
-    always_on_top: bool,
-    dark_mode: bool,
-    #[serde(skip)]
-    app_arguments: AppArguments,
-}
-
-fn get_default_config(app_arguments: AppArguments) -> AppConfig {
-    AppConfig {
-        script_definitions: Vec::new(),
-        always_on_top: true,
-        dark_mode: false,
-        app_arguments,
-    }
-}
-
-fn read_config() -> AppConfig {
-    let app_arguments = get_app_arguments();
-
-    let config_path = if let Some(config_path) = app_arguments.custom_config_path.clone() {
-        PathBuf::from(config_path.clone())
-    } else {
-        std::env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join(DEFAULT_CONFIG_NAME)
-    };
-
-    if !config_path.exists() {
-        // create the file
-        let config = get_default_config(app_arguments.clone());
-        let data = serde_json::to_string_pretty(&config);
-        if data.is_err() {
-            return get_default_config(app_arguments);
-        }
-        let data = data.unwrap();
-        let result = std::fs::write(&config_path, data);
-        if result.is_err() {
-            return get_default_config(app_arguments);
-        }
-    }
-
-    let data = std::fs::read_to_string(config_path);
-    if data.is_err() {
-        return get_default_config(app_arguments);
-    }
-    let data = data.unwrap();
-    let config = serde_json::from_str(&data);
-    if config.is_err() {
-        return get_default_config(app_arguments);
-    }
-    let mut config: AppConfig = config.unwrap();
-    config.app_arguments = app_arguments;
-    return config;
-}
-
-#[derive(Default, Clone)]
-struct AppArguments {
-    custom_config_path: Option<String>,
-    custom_logs_path: Option<String>,
-    custom_work_path: Option<String>,
-}
-
-fn get_app_arguments() -> AppArguments {
-    let mut custom_config_path = None;
-    let mut custom_logs_path = None;
-    let mut custom_work_path = None;
-
-    let args: Vec<String> = std::env::args().collect();
-    for i in 1..args.len() {
-        let arg = &args[i];
-        println!("'{}'", &arg);
-        if arg == "--config-path" {
-            if i + 1 < args.len() {
-                custom_config_path = Some(args[i + 1].clone());
-            }
-        } else if arg == "--logs-path" {
-            if i + 1 < args.len() {
-                custom_logs_path = Some(args[i + 1].clone());
-            }
-        } else if arg == "--work-path" {
-            if i + 1 < args.len() {
-                custom_work_path = Some(args[i + 1].clone());
-            }
-        }
-    }
-
-    AppArguments {
-        custom_config_path,
-        custom_logs_path,
-        custom_work_path,
-    }
-}
-
-fn get_script_with_arguments(script: &ScheduledScript, work_path: &Path) -> String {
+fn get_script_with_arguments(script: &ScheduledScript, exe_folder_path: &Path) -> String {
     let path = if script.path_relative_to_scripter {
-        work_path
+        exe_folder_path
             .join(&script.path)
             .to_str()
             .unwrap_or_default()
@@ -299,34 +188,15 @@ fn get_script_with_arguments(script: &ScheduledScript, work_path: &Path) -> Stri
     }
 }
 
-fn get_exe_folder_path() -> PathBuf {
-    return std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf();
-}
-
-fn get_default_logs_path() -> PathBuf {
-    let pid = std::process::id();
-    return get_exe_folder_path()
-        .join("scripter_logs")
-        .join(format!("exec_logs_{}", pid));
-}
-
-fn get_default_work_path() -> PathBuf {
-    return std::env::current_dir().unwrap();
-}
-
-fn run_scripts(execution_data: &mut ScriptExecutionData, path_caches: &PathCaches) {
+fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config::AppConfig) {
     let (tx, rx) = mpsc::channel();
     execution_data.progress_receiver = Some(rx);
     execution_data.has_started = true;
 
     let scripts_to_run = execution_data.scripts_to_run.clone();
     let termination_condvar = execution_data.termination_condvar.clone();
-    let logs_path = path_caches.logs_path.clone();
-    let exe_folder_path = path_caches.exe_folder_path.clone();
+    let logs_path = app_config.paths.logs_path.clone();
+    let exe_folder_path = app_config.paths.exe_folder_path.clone();
 
     std::thread::spawn(move || {
         std::fs::remove_dir_all(&logs_path).ok();
@@ -475,27 +345,15 @@ impl Application for MainWindow {
             b: Box::new(Configuration::Pane(AppPane::new(PaneVariant::LogOutput))),
         };
         let panes = pane_grid::State::with_configuration(pane_configuration);
+        let app_config = config::get_app_config_copy();
 
         (
             MainWindow {
                 panes,
                 focus: None,
-                scripts: GLOBAL_CONFIG.with(|config| config.script_definitions.clone()),
+                scripts: app_config.script_definitions.clone(),
                 execution_data: new_execution_data(),
-                path_caches: PathCaches {
-                    logs_path: if let Some(custom_logs_path) = GLOBAL_CONFIG.with(|config| { config.app_arguments.custom_logs_path.clone() }) {
-                        PathBuf::from(custom_logs_path)
-                    } else {
-                        get_default_logs_path()
-                    },
-                    work_path: if let Some(custom_work_path) = GLOBAL_CONFIG.with(|config| { config.app_arguments.custom_work_path.clone() }) {
-                        PathBuf::from(custom_work_path)
-                    } else {
-                        get_default_work_path()
-                    },
-                    exe_folder_path: get_exe_folder_path(),
-                },
-                theme: if GLOBAL_CONFIG.with(|config| config.dark_mode) {
+                theme: if app_config.dark_mode {
                     Theme::custom(theme::Palette {
                         background: iced::Color::from_rgb(0.25, 0.26, 0.29),
                         text: iced::Color::BLACK,
@@ -506,6 +364,7 @@ impl Application for MainWindow {
                 } else {
                     Theme::default()
                 },
+                app_config,
             },
             Command::none(),
         )
@@ -552,7 +411,7 @@ impl Application for MainWindow {
 
                 if !has_started_execution(&self.execution_data) {
                     self.execution_data.currently_selected_script = -1;
-                    run_scripts(&mut self.execution_data, &self.path_caches);
+                    run_scripts(&mut self.execution_data, &self.app_config);
                 }
             }
             Message::StopScripts() => {
@@ -689,10 +548,10 @@ impl Application for MainWindow {
             pane_grid::Content::new(responsive(move |_size| {
                 view_content(
                     &self.execution_data,
-                    &self.path_caches,
                     variant,
                     &self.scripts,
                     &self.theme,
+                    &self.app_config.paths,
                 )
             }))
             .title_bar(title_bar)
@@ -799,7 +658,8 @@ fn is_file_empty(path: &PathBuf) -> bool {
 
 fn produce_script_list_content<'a>(
     execution_data: &ScriptExecutionData,
-    script_definitions: &Vec<ScriptDefinition>,
+    script_definitions: &Vec<config::ScriptDefinition>,
+    paths: &config::PathCaches,
 ) -> Column<'a, Message> {
     let button = |label, message| {
         button(
@@ -812,11 +672,7 @@ fn produce_script_list_content<'a>(
     };
 
     if script_definitions.is_empty() {
-        let config_path = if let Some(custom_config_path) = GLOBAL_CONFIG.with(|config| { config.app_arguments.custom_config_path.clone() }) {
-            custom_config_path
-        } else {
-            DEFAULT_CONFIG_NAME.to_string()
-        };
+        let config_path = paths.config_path.to_str().unwrap();
 
         return column![text(format!(
             "No scripts found in config file \"{}\", or the config file is invalid.",
@@ -854,7 +710,7 @@ fn produce_script_list_content<'a>(
 
 fn produce_execution_list_content<'a>(
     execution_data: &ScriptExecutionData,
-    path_caches: &PathCaches,
+    path_caches: &config::PathCaches,
     theme: &Theme,
 ) -> Column<'a, Message> {
     let main_button = |label, message| {
@@ -1003,7 +859,7 @@ fn get_last_n_lines_from_file(file_path: &PathBuf, lines_number: usize) -> Optio
 
 fn produce_log_output_content<'a>(
     execution_data: &ScriptExecutionData,
-    path_caches: &PathCaches,
+    path_caches: &config::PathCaches,
 ) -> Column<'a, Message> {
     if !has_started_execution(&execution_data) {
         return Column::new();
@@ -1163,17 +1019,17 @@ fn produce_script_edit_content<'a>(execution_data: &ScriptExecutionData) -> Colu
 
 fn view_content<'a>(
     execution_data: &ScriptExecutionData,
-    path_caches: &PathCaches,
     variant: &PaneVariant,
-    script_definitions: &Vec<ScriptDefinition>,
+    script_definitions: &Vec<config::ScriptDefinition>,
     theme: &Theme,
+    paths: &config::PathCaches,
 ) -> Element<'a, Message> {
     let content = match variant {
-        PaneVariant::ScriptList => produce_script_list_content(execution_data, script_definitions),
-        PaneVariant::ExecutionList => {
-            produce_execution_list_content(execution_data, path_caches, theme)
+        PaneVariant::ScriptList => {
+            produce_script_list_content(execution_data, script_definitions, paths)
         }
-        PaneVariant::LogOutput => produce_log_output_content(execution_data, path_caches),
+        PaneVariant::ExecutionList => produce_execution_list_content(execution_data, paths, theme),
+        PaneVariant::LogOutput => produce_log_output_content(execution_data, paths),
         PaneVariant::ScriptEdit => produce_script_edit_content(execution_data),
     };
 
@@ -1209,71 +1065,4 @@ fn view_controls<'a>(
     }
 
     row.into()
-}
-
-mod style {
-    use iced::widget::container;
-    use iced::Theme;
-
-    pub fn title_bar_active(theme: &Theme) -> container::Appearance {
-        let palette = theme.extended_palette();
-
-        container::Appearance {
-            text_color: Some(palette.background.strong.text),
-            background: Some(palette.background.strong.color.into()),
-            ..Default::default()
-        }
-    }
-
-    pub fn title_bar_focused(theme: &Theme) -> container::Appearance {
-        let palette = theme.extended_palette();
-
-        container::Appearance {
-            text_color: Some(palette.primary.strong.text),
-            background: Some(palette.primary.strong.color.into()),
-            ..Default::default()
-        }
-    }
-
-    pub fn title_bar_focused_completed(theme: &Theme) -> container::Appearance {
-        let palette = theme.extended_palette();
-
-        container::Appearance {
-            text_color: Some(palette.background.weak.text),
-            background: Some(palette.success.strong.color.into()),
-            ..Default::default()
-        }
-    }
-
-    pub fn title_bar_focused_failed(theme: &Theme) -> container::Appearance {
-        let palette = theme.extended_palette();
-
-        container::Appearance {
-            text_color: Some(palette.background.weak.text),
-            background: Some(palette.danger.base.color.into()),
-            ..Default::default()
-        }
-    }
-
-    pub fn pane_active(theme: &Theme) -> container::Appearance {
-        let palette = theme.extended_palette();
-
-        container::Appearance {
-            background: Some(palette.background.weak.color.into()),
-            border_width: 2.0,
-            border_color: palette.background.strong.color,
-            ..Default::default()
-        }
-    }
-
-    pub fn pane_focused(theme: &Theme) -> container::Appearance {
-        let palette = theme.extended_palette();
-
-        container::Appearance {
-            background: Some(palette.background.weak.color.into()),
-            border_width: 2.0,
-            border_color: palette.primary.strong.color,
-            ..Default::default()
-        }
-    }
 }
