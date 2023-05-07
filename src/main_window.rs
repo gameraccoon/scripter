@@ -151,6 +151,7 @@ impl Application for MainWindow {
                         self.execution_data.currently_outputting_script = progress.0 as isize;
                         let progress_status = &self.execution_data.scripts_status[progress.0];
 
+                        // move selection to the next script if the previous one was selected
                         if self.execution_data.currently_selected_script == -1
                             || (self.execution_data.currently_selected_script
                                 == progress.0 as isize - 1)
@@ -420,6 +421,15 @@ fn produce_execution_list_content<'a>(
 
                 let script_status = &execution_data.scripts_status[i];
 
+                let repeat_text = if script_status.retry_count > 0 {
+                    format!(
+                        " [{}/{}]",
+                        script_status.retry_count, element.autorerun_count
+                    )
+                } else {
+                    String::new()
+                };
+
                 let name = if execution::has_script_finished(script_status) {
                     let mut failed = false;
                     let status = match script_status.result {
@@ -436,11 +446,12 @@ fn produce_execution_list_content<'a>(
                         .duration_since(script_status.start_time.unwrap())
                         .as_secs();
                     text(format!(
-                        "{} {} ({:02}:{:02})",
+                        "{} {} ({:02}:{:02}){}",
                         status,
                         script_name,
                         time_taken_sec / 60,
-                        time_taken_sec % 60
+                        time_taken_sec % 60,
+                        repeat_text,
                     ))
                     .style(if failed {
                         theme.extended_palette().danger.weak.color
@@ -453,10 +464,11 @@ fn produce_execution_list_content<'a>(
                         .duration_since(script_status.start_time.unwrap())
                         .as_secs();
                     text(format!(
-                        "[...] {} ({:02}:{:02})",
+                        "[...] {} ({:02}:{:02}){}",
                         script_name,
                         time_taken_sec / 60,
-                        time_taken_sec % 60
+                        time_taken_sec % 60,
+                        repeat_text,
                     ))
                     .into()
                 } else {
@@ -471,14 +483,20 @@ fn produce_execution_list_content<'a>(
                     row_data
                         .push(small_button("Edit", Message::OpenScriptEditing(i as isize)).into());
                 } else if execution::has_script_started(&script_status) {
-                    let stdout_path =
-                        config::get_stdout_path(path_caches.logs_path.clone(), i as isize);
+                    let stdout_path = config::get_stdout_path(
+                        path_caches.logs_path.clone(),
+                        i as isize,
+                        script_status.retry_count,
+                    );
                     if !is_file_empty(&stdout_path) {
                         row_data.push(text(" ").into());
                         row_data.push(small_button("log", Message::OpenFile(stdout_path)).into());
                     }
-                    let stderr_path =
-                        config::get_stderr_path(path_caches.logs_path.clone(), i as isize);
+                    let stderr_path = config::get_stderr_path(
+                        path_caches.logs_path.clone(),
+                        i as isize,
+                        script_status.retry_count,
+                    );
                     if !is_file_empty(&stderr_path) {
                         row_data.push(text(" ").into());
                         row_data.push(small_button("err", Message::OpenFile(stderr_path)).into());
@@ -544,11 +562,20 @@ fn produce_log_output_content<'a>(
         return Column::new();
     }
 
-    let stdout_file_path =
-        config::get_stdout_path(path_caches.logs_path.clone(), current_script_idx);
+    let current_script = &execution_data.scripts_to_run[current_script_idx as usize];
+    let script_status = &execution_data.scripts_status[current_script_idx as usize];
+
+    let stdout_file_path = config::get_stdout_path(
+        path_caches.logs_path.clone(),
+        current_script_idx,
+        script_status.retry_count,
+    );
     let stdout_lines = get_last_n_lines_from_file(&stdout_file_path, 30);
-    let stderr_file_path =
-        config::get_stderr_path(path_caches.logs_path.clone(), current_script_idx);
+    let stderr_file_path = config::get_stderr_path(
+        path_caches.logs_path.clone(),
+        current_script_idx,
+        script_status.retry_count,
+    );
     let stderr_lines = get_last_n_lines_from_file(&stderr_file_path, 30);
     let error_file_path = path_caches
         .logs_path
@@ -580,7 +607,6 @@ fn produce_log_output_content<'a>(
 
     let mut data_lines: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
 
-    let current_script = &execution_data.scripts_to_run[current_script_idx as usize];
     data_lines.push(
         text(format!(
             "command: {} {}",

@@ -30,7 +30,7 @@ pub struct ScriptExecutionStatus {
     pub start_time: Option<Instant>,
     pub finish_time: Option<Instant>,
     pub result: ScriptResultStatus,
-    retry_count: usize,
+    pub retry_count: usize,
 }
 
 pub struct ScriptExecutionData {
@@ -143,11 +143,13 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                 let stdout_file = std::fs::File::create(config::get_stdout_path(
                     logs_path.clone(),
                     script_idx as isize,
+                    script_state.retry_count,
                 ))
                 .expect("failed to create stdout file");
                 let stderr_file = std::fs::File::create(config::get_stderr_path(
                     logs_path.clone(),
                     script_idx as isize,
+                    script_state.retry_count,
                 ))
                 .expect("failed to create stderr file");
                 let stdout = std::process::Stdio::from(stdout_file);
