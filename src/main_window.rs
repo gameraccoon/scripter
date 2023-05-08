@@ -130,11 +130,12 @@ impl Application for MainWindow {
             }
             Message::StopScripts() => {
                 if execution::has_started_execution(&self.execution_data) {
-                    let mut termination_requested =
-                        self.execution_data.termination_condvar.0.lock().unwrap();
-                    *termination_requested = true;
-                    // We notify the condvar that the value has changed.
-                    self.execution_data.termination_condvar.1.notify_one();
+                    if let Ok(mut termination_requested) =
+                        self.execution_data.termination_condvar.0.lock() {
+                        *termination_requested = true;
+                        // We notify the condvar that the value has changed.
+                        self.execution_data.termination_condvar.1.notify_one();
+                    }
                 }
             }
             Message::ClearScripts() => {
@@ -344,7 +345,7 @@ fn produce_script_list_content<'a>(
     };
 
     if script_definitions.is_empty() {
-        let config_path = paths.config_path.to_str().unwrap();
+        let config_path = paths.config_path.to_str().unwrap_or_default();
 
         return column![text(format!(
             "No scripts found in config file \"{}\", or the config file is invalid.",
@@ -407,7 +408,7 @@ fn produce_execution_list_content<'a>(
         .on_press(message)
     };
 
-    let title: Element<_> = text(path_caches.work_path.to_str().unwrap())
+    let title: Element<_> = text(path_caches.work_path.to_str().unwrap_or_default())
         .size(16)
         .into();
 
@@ -442,8 +443,8 @@ fn produce_execution_list_content<'a>(
                     };
                     let time_taken_sec = script_status
                         .finish_time
-                        .unwrap()
-                        .duration_since(script_status.start_time.unwrap())
+                        .unwrap_or(Instant::now())
+                        .duration_since(script_status.start_time.unwrap_or(Instant::now()))
                         .as_secs();
                     text(format!(
                         "{} {} ({:02}:{:02}){}",
@@ -461,7 +462,7 @@ fn produce_execution_list_content<'a>(
                     .into()
                 } else if execution::has_script_started(script_status) {
                     let time_taken_sec = Instant::now()
-                        .duration_since(script_status.start_time.unwrap())
+                        .duration_since(script_status.start_time.unwrap_or(Instant::now()))
                         .as_secs();
                     text(format!(
                         "[...] {} ({:02}:{:02}){}",
@@ -533,19 +534,23 @@ fn produce_execution_list_content<'a>(
 fn get_last_n_lines_from_file(file_path: &PathBuf, lines_number: usize) -> Option<Vec<String>> {
     let file = std::fs::File::open(file_path);
 
-    if file.is_err() {
-        return None;
-    }
-
-    let file = file.unwrap();
-    let text_buffer = RevBufReader::new(file);
-    return Some(
-        text_buffer
-            .lines()
-            .take(lines_number)
-            .map(|l| l.expect("Could not parse line"))
-            .collect(),
-    );
+    return if let Ok(file) = file {
+        Some(
+            RevBufReader::new(file)
+                .lines()
+                .take(lines_number)
+                .map(|l| {
+                    if let Ok(l) = l {
+                        l
+                    } else {
+                        "[line contain incorrect Unicode symbols]".to_string()
+                    }
+                })
+                .collect(),
+        )
+    } else {
+        None
+    };
 }
 
 fn produce_log_output_content<'a>(
@@ -586,7 +591,7 @@ fn produce_log_output_content<'a>(
         return column![text(
             format!(
                 "Can't open script output '{}'",
-                stdout_file_path.to_str().unwrap()
+                stdout_file_path.to_str().unwrap_or_default()
             )
             .to_string()
         )];
@@ -595,7 +600,7 @@ fn produce_log_output_content<'a>(
         return column![text(
             format!(
                 "Can't open script output '{}'",
-                stderr_file_path.to_str().unwrap()
+                stderr_file_path.to_str().unwrap_or_default()
             )
             .to_string()
         )];

@@ -80,7 +80,10 @@ pub fn has_finished_execution(execution_data: &ScriptExecutionData) -> bool {
     if !has_started_execution(&execution_data) {
         return false;
     }
-    return has_script_finished(&execution_data.scripts_status.last().unwrap());
+    if let Some(last) = execution_data.scripts_status.last() {
+        return has_script_finished(&last);
+    }
+    return false;
 }
 
 pub fn add_script_to_execution(
@@ -118,7 +121,13 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
     std::thread::spawn(move || {
         std::fs::remove_dir_all(&logs_path).ok();
 
-        let mut termination_requested = termination_condvar.0.lock().unwrap();
+        let termination_requested = termination_condvar.0.lock();
+        if termination_requested.is_err() {
+            println!("Failed to lock termination mutex");
+            return;
+        }
+        let mut termination_requested = termination_requested.unwrap();
+
         let mut has_previous_script_failed = false;
         let mut kill_requested = false;
         for script_idx in 0..scripts_to_run.len() {
@@ -129,35 +138,38 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
             if kill_requested || (has_previous_script_failed && !script.ignore_previous_failures) {
                 script_state.result = ScriptResultStatus::Skipped;
                 script_state.finish_time = Some(Instant::now());
-                tx.send((script_idx, script_state.clone())).unwrap();
+                send_script_execution_status(&tx, script_idx, script_state.clone());
                 continue;
             }
-            tx.send((script_idx, script_state.clone())).unwrap();
+            send_script_execution_status(&tx, script_idx, script_state.clone());
 
             'retry_loop: loop {
                 if kill_requested {
                     break;
                 }
 
-                std::fs::create_dir_all(&logs_path).expect(&format!(
-                    "failed to create \"{}\" directory",
-                    logs_path.to_str().unwrap()
-                ));
+                let _ = std::fs::create_dir_all(&logs_path);
 
                 let stdout_file = std::fs::File::create(config::get_stdout_path(
                     logs_path.clone(),
                     script_idx as isize,
                     script_state.retry_count,
-                ))
-                .expect("failed to create stdout file");
+                ));
                 let stderr_file = std::fs::File::create(config::get_stderr_path(
                     logs_path.clone(),
                     script_idx as isize,
                     script_state.retry_count,
-                ))
-                .expect("failed to create stderr file");
-                let stdout = std::process::Stdio::from(stdout_file);
-                let stderr = std::process::Stdio::from(stderr_file);
+                ));
+                let stdout = if let Ok(stdout_file) = stdout_file {
+                    std::process::Stdio::from(stdout_file)
+                } else {
+                    std::process::Stdio::null()
+                };
+                let stderr = if let Ok(stderr_file) = stderr_file {
+                    std::process::Stdio::from(stderr_file)
+                } else {
+                    std::process::Stdio::null()
+                };
 
                 #[cfg(target_os = "windows")]
                 let child = std::process::Command::new("cmd")
@@ -179,14 +191,15 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     let err = child.err().unwrap();
                     let error_file = std::fs::File::create(
                         logs_path.join(format!("{}_error.log", script_idx as isize)),
-                    )
-                    .expect("failed to create error file");
-                    let mut error_writer = std::io::BufWriter::new(error_file);
-                    write!(error_writer, "{}", err).expect("failed to write error");
+                    );
+                    if let Ok(error_file) = error_file {
+                        let mut error_writer = std::io::BufWriter::new(error_file);
+                        let _ = write!(error_writer, "{}", err);
+                    }
                     // it doesn't make sense to retry if something is broken on this level
                     script_state.result = ScriptResultStatus::Failed;
                     script_state.finish_time = Some(Instant::now());
-                    tx.send((script_idx, script_state.clone())).unwrap();
+                    send_script_execution_status(&tx, script_idx, script_state.clone());
                     has_previous_script_failed = true;
                     break 'retry_loop;
                 }
@@ -196,9 +209,9 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                 loop {
                     let result = termination_condvar
                         .1
-                        .wait_timeout(termination_requested, Duration::from_millis(10))
+                        .wait_timeout(termination_requested, Duration::from_millis(100))
                         .unwrap();
-                    // 10 milliseconds have passed, or maybe the value changed
+                    // 100 milliseconds have passed, or maybe the value changed
                     termination_requested = result.0;
                     if *termination_requested == true {
                         kill_process(&mut child);
@@ -210,20 +223,21 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                             // successfully finished the script, jump to the next script
                             script_state.finish_time = Some(Instant::now());
                             script_state.result = ScriptResultStatus::Success;
-                            tx.send((script_idx, script_state.clone())).unwrap();
+                            send_script_execution_status(&tx, script_idx, script_state.clone());
                             has_previous_script_failed = false;
                             break 'retry_loop;
                         } else {
-                            if script_state.retry_count < script.autorerun_count && !kill_requested {
+                            if script_state.retry_count < script.autorerun_count && !kill_requested
+                            {
                                 // script failed, but we can retry
                                 script_state.retry_count += 1;
-                                tx.send((script_idx, script_state.clone())).unwrap();
+                                send_script_execution_status(&tx, script_idx, script_state.clone());
                                 break;
                             } else {
                                 // script failed and we can't retry
                                 script_state.finish_time = Some(Instant::now());
                                 script_state.result = ScriptResultStatus::Failed;
-                                tx.send((script_idx, script_state.clone())).unwrap();
+                                send_script_execution_status(&tx, script_idx, script_state.clone());
                                 has_previous_script_failed = true;
                                 break 'retry_loop;
                             }
@@ -233,6 +247,14 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
             }
         }
     });
+}
+
+fn send_script_execution_status(
+    tx: &mpsc::Sender<(usize, ScriptExecutionStatus)>,
+    script_idx: usize,
+    script_state: ScriptExecutionStatus,
+) {
+    let _result = tx.send((script_idx, script_state));
 }
 
 fn get_script_with_arguments(script: &ScheduledScript, exe_folder_path: &Path) -> String {
@@ -272,13 +294,14 @@ fn kill_process(process: &mut std::process::Child) {
             .stderr(std::process::Stdio::null())
             .output();
 
-        if kill_output.is_err() {
-            println!("failed to kill child process: {}", kill_output.err().unwrap());
+        let kill_result = process.kill();
+        if let Err(result) = kill_result {
+            println!("failed to kill child process: {}", result);
         }
     }
 
     let kill_result = process.kill();
-    if kill_result.is_err() {
-        println!("failed to kill child process: {}", kill_result.err().unwrap());
+    if let Err(result) = kill_result {
+        println!("failed to kill child process: {}", result);
     }
 }

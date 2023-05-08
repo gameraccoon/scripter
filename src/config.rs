@@ -89,9 +89,9 @@ fn get_config_path(app_arguments: &AppArguments) -> PathBuf {
         PathBuf::from(config_path.clone())
     } else {
         std::env::current_exe()
-            .unwrap()
+            .unwrap_or_default()
             .parent()
-            .unwrap()
+            .unwrap_or(Path::new(""))
             .join(DEFAULT_CONFIG_NAME)
     }
 }
@@ -162,9 +162,9 @@ fn get_app_arguments() -> AppArguments {
 
 fn get_exe_folder_path() -> PathBuf {
     return std::env::current_exe()
-        .unwrap()
+        .unwrap_or_default()
         .parent()
-        .unwrap()
+        .unwrap_or(&PathBuf::from(""))
         .to_path_buf();
 }
 
@@ -176,5 +176,5 @@ fn get_default_logs_path() -> PathBuf {
 }
 
 fn get_default_work_path() -> PathBuf {
-    return std::env::current_dir().unwrap();
+    return std::env::current_dir().unwrap_or_default();
 }
