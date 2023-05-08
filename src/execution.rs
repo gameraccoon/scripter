@@ -249,6 +249,14 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
     });
 }
 
+pub fn reset_execution_progress(execution_data: &mut ScriptExecutionData) {
+    execution_data.scripts_status.fill(get_default_script_execution_status());
+    execution_data.has_started = false;
+    execution_data.has_failed_scripts = false;
+    execution_data.currently_outputting_script = -1;
+    execution_data.termination_condvar = Arc::new((Mutex::new(false), Condvar::new()));
+}
+
 fn send_script_execution_status(
     tx: &mpsc::Sender<(usize, ScriptExecutionStatus)>,
     script_idx: usize,

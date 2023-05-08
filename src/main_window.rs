@@ -36,6 +36,7 @@ pub enum Message {
     RunScripts(),
     StopScripts(),
     ClearScripts(),
+    RescheduleScripts(),
     Tick(Instant),
     OpenScriptEditing(isize),
     RemoveScript(isize),
@@ -131,7 +132,8 @@ impl Application for MainWindow {
             Message::StopScripts() => {
                 if execution::has_started_execution(&self.execution_data) {
                     if let Ok(mut termination_requested) =
-                        self.execution_data.termination_condvar.0.lock() {
+                        self.execution_data.termination_condvar.0.lock()
+                    {
                         *termination_requested = true;
                         // We notify the condvar that the value has changed.
                         self.execution_data.termination_condvar.1.notify_one();
@@ -141,6 +143,13 @@ impl Application for MainWindow {
             Message::ClearScripts() => {
                 self.execution_data = execution::new_execution_data();
                 self.execution_data.has_started = false;
+            }
+            Message::RescheduleScripts() => {
+                if !execution::has_started_execution(&self.execution_data) {
+                    return Command::none();
+                }
+
+                execution::reset_execution_progress(&mut self.execution_data);
             }
             Message::Tick(_now) => {
                 if let Some(rx) = &self.execution_data.progress_receiver {
@@ -393,7 +402,7 @@ fn produce_execution_list_content<'a>(
                 .horizontal_alignment(alignment::Horizontal::Center)
                 .size(16),
         )
-        .width(Length::Fill)
+        .width(Length::Shrink)
         .padding(8)
         .on_press(message)
     };
@@ -511,20 +520,37 @@ fn produce_execution_list_content<'a>(
     .spacing(10)
     .width(Length::Fill)
     .align_items(Alignment::Start)
+        .padding(10)
     .into();
 
     let controls = column![if execution::has_finished_execution(&execution_data) {
-        main_button("Clear", Message::ClearScripts())
+        if execution::has_finished_execution(&execution_data) {
+            row![
+                main_button("Reschedule", Message::RescheduleScripts()),
+                main_button("Clear", Message::ClearScripts())
+            ]
+            .align_items(Alignment::Center)
+            .spacing(5)
+        } else {
+            row![main_button("Clear", Message::ClearScripts())].align_items(Alignment::Center)
+        }
     } else if execution::has_started_execution(&execution_data) {
-        main_button("Stop", Message::StopScripts())
+        row![main_button("Stop", Message::StopScripts())].align_items(Alignment::Center)
+    } else if !execution_data.scripts_to_run.is_empty() {
+        row![
+            main_button("Run", Message::RunScripts()),
+            main_button("Clear", Message::ClearScripts()),
+        ]
+        .align_items(Alignment::Center)
+        .spacing(5)
     } else {
-        main_button("Run", Message::RunScripts())
+        row![].into()
     }]
     .spacing(5)
-    .max_width(150)
+    .width(Length::Fill)
     .align_items(Alignment::Center);
 
-    return column![title, scrollable(data), controls]
+    return column![title, scrollable(column![data, controls])]
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
