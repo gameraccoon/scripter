@@ -202,12 +202,12 @@ impl Application for MainWindow {
             Message::OpenFile(path) => {
                 #[cfg(target_os = "windows")]
                 {
-                    let result = std::process::Command::new("explorer")
+                    let result = subprocess::Exec::cmd("explorer")
                         .arg(path)
-                        .stdin(std::process::Stdio::null())
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .spawn();
+                        .stdin(subprocess::Redirection::None)
+                        .stdout(subprocess::Redirection::None)
+                        .stderr(subprocess::Redirection::None)
+                        .join();
 
                     if result.is_err() {
                         return Command::none();
@@ -215,12 +215,12 @@ impl Application for MainWindow {
                 }
                 #[cfg(target_os = "linux")]
                 {
-                    let result = std::process::Command::new("xdg-open")
+                    let result = subprocess::Exec::cmd("xdg-open")
                         .arg(path)
-                        .stdin(std::process::Stdio::null())
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .spawn();
+                        .stdin(subprocess::Redirection::None)
+                        .stdout(subprocess::Redirection::None)
+                        .stderr(subprocess::Redirection::None)
+                        .join();
 
                     if result.is_err() {
                         return Command::none();
@@ -493,23 +493,14 @@ fn produce_execution_list_content<'a>(
                     row_data
                         .push(small_button("Edit", Message::OpenScriptEditing(i as isize)).into());
                 } else if execution::has_script_started(&script_status) {
-                    let stdout_path = config::get_stdout_path(
+                    let output_path = config::get_script_output_path(
                         path_caches.logs_path.clone(),
                         i as isize,
                         script_status.retry_count,
                     );
-                    if !is_file_empty(&stdout_path) {
+                    if !is_file_empty(&output_path) {
                         row_data.push(text(" ").into());
-                        row_data.push(small_button("log", Message::OpenFile(stdout_path)).into());
-                    }
-                    let stderr_path = config::get_stderr_path(
-                        path_caches.logs_path.clone(),
-                        i as isize,
-                        script_status.retry_count,
-                    );
-                    if !is_file_empty(&stderr_path) {
-                        row_data.push(text(" ").into());
-                        row_data.push(small_button("err", Message::OpenFile(stderr_path)).into());
+                        row_data.push(small_button("log", Message::OpenFile(output_path)).into());
                     }
                 }
 
@@ -596,44 +587,28 @@ fn produce_log_output_content<'a>(
     let current_script = &execution_data.scripts_to_run[current_script_idx as usize];
     let script_status = &execution_data.scripts_status[current_script_idx as usize];
 
-    let stdout_file_path = config::get_stdout_path(
+    let output_file_path = config::get_script_output_path(
         path_caches.logs_path.clone(),
         current_script_idx,
         script_status.retry_count,
     );
-    let stdout_lines = get_last_n_lines_from_file(&stdout_file_path, 30);
-    let stderr_file_path = config::get_stderr_path(
-        path_caches.logs_path.clone(),
-        current_script_idx,
-        script_status.retry_count,
-    );
-    let stderr_lines = get_last_n_lines_from_file(&stderr_file_path, 30);
+    let output_lines = get_last_n_lines_from_file(&output_file_path, 30);
     let error_file_path = path_caches
         .logs_path
         .join(format!("{}_error.log", current_script_idx));
     let error_lines = get_last_n_lines_from_file(&error_file_path, 10);
 
-    if stdout_lines.is_none() {
+    if output_lines.is_none() {
         return column![text(
             format!(
                 "Can't open script output '{}'",
-                stdout_file_path.to_str().unwrap_or_default()
-            )
-            .to_string()
-        )];
-    }
-    if stderr_lines.is_none() {
-        return column![text(
-            format!(
-                "Can't open script output '{}'",
-                stderr_file_path.to_str().unwrap_or_default()
+                output_file_path.to_str().unwrap_or_default()
             )
             .to_string()
         )];
     }
 
-    let stdout_lines = stdout_lines.unwrap();
-    let stderr_lines = stderr_lines.unwrap();
+    let output_lines = output_lines.unwrap();
     let error_lines = error_lines.unwrap_or(Vec::new());
 
     let mut data_lines: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
@@ -653,19 +628,9 @@ fn produce_log_output_content<'a>(
         .into(),
     );
 
-    if !stdout_lines.is_empty() {
+    if !output_lines.is_empty() {
         data_lines.extend(
-            stdout_lines
-                .iter()
-                .rev()
-                .map(|element| text(element).into()),
-        );
-    }
-
-    if !stderr_lines.is_empty() {
-        data_lines.push(text("STDERR:").into());
-        data_lines.extend(
-            stderr_lines
+            output_lines
                 .iter()
                 .rev()
                 .map(|element| text(element).into()),

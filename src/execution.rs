@@ -150,42 +150,21 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
 
                 let _ = std::fs::create_dir_all(&logs_path);
 
-                let stdout_file = std::fs::File::create(config::get_stdout_path(
+                let output_file = std::fs::File::create(config::get_script_output_path(
                     logs_path.clone(),
                     script_idx as isize,
                     script_state.retry_count,
                 ));
-                let stderr_file = std::fs::File::create(config::get_stderr_path(
-                    logs_path.clone(),
-                    script_idx as isize,
-                    script_state.retry_count,
-                ));
-                let stdout = if let Ok(stdout_file) = stdout_file {
-                    std::process::Stdio::from(stdout_file)
-                } else {
-                    std::process::Stdio::null()
-                };
-                let stderr = if let Ok(stderr_file) = stderr_file {
-                    std::process::Stdio::from(stderr_file)
-                } else {
-                    std::process::Stdio::null()
-                };
 
-                #[cfg(target_os = "windows")]
-                let child = std::process::Command::new("cmd")
-                    .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                    .arg("/C")
-                    .arg(get_script_with_arguments(&script, &exe_folder_path))
-                    .stdout(stdout)
-                    .stderr(stderr)
-                    .spawn();
-                #[cfg(not(target_os = "windows"))]
-                let child = std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(get_script_with_arguments(&script, &exe_folder_path))
-                    .stdout(stdout)
-                    .stderr(stderr)
-                    .spawn();
+                let child =
+                    subprocess::Exec::shell(get_script_with_arguments(&script, &exe_folder_path))
+                        .stdout(if output_file.is_ok() {
+                            subprocess::Redirection::File(output_file.unwrap())
+                        } else {
+                            subprocess::Redirection::Pipe
+                        })
+                        .stderr(subprocess::Redirection::Merge)
+                        .popen();
 
                 if child.is_err() {
                     let err = child.err().unwrap();
@@ -216,9 +195,10 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     if *termination_requested == true {
                         kill_process(&mut child);
                         kill_requested = true;
+                        *termination_requested = false;
                     }
 
-                    if let Ok(Some(status)) = child.try_wait() {
+                    if let Some(status) = child.poll() {
                         if status.success() {
                             // successfully finished the script, jump to the next script
                             script_state.finish_time = Some(Instant::now());
@@ -250,7 +230,9 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
 }
 
 pub fn reset_execution_progress(execution_data: &mut ScriptExecutionData) {
-    execution_data.scripts_status.fill(get_default_script_execution_status());
+    execution_data
+        .scripts_status
+        .fill(get_default_script_execution_status());
     execution_data.has_started = false;
     execution_data.has_failed_scripts = false;
     execution_data.currently_outputting_script = -1;
@@ -292,24 +274,12 @@ fn get_default_script_execution_status() -> ScriptExecutionStatus {
     }
 }
 
-fn kill_process(process: &mut std::process::Child) {
+fn kill_process(process: &mut subprocess::Popen) {
     #[cfg(not(target_os = "windows"))]
     {
-        let kill_output = std::process::Command::new("kill")
-            .args([&process.id().to_string()])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .output();
-
         let kill_result = process.kill();
         if let Err(result) = kill_result {
             println!("failed to kill child process: {}", result);
         }
-    }
-
-    let kill_result = process.kill();
-    if let Err(result) = kill_result {
-        println!("failed to kill child process: {}", result);
     }
 }
