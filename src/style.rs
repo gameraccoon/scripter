@@ -1,6 +1,8 @@
 use iced::theme::{self, Theme};
 use iced::widget::container;
 
+use crate::config;
+
 pub fn title_bar_active(theme: &Theme) -> container::Appearance {
     let palette = theme.extended_palette();
 
@@ -63,12 +65,12 @@ pub fn pane_focused(theme: &Theme) -> container::Appearance {
     }
 }
 
-pub fn get_dark_theme() -> Theme {
+pub fn get_custom_theme(custom_config: config::CustomTheme) -> Theme {
     Theme::custom(theme::Palette {
-        background: iced::Color::from_rgb(0.25, 0.26, 0.29),
-        text: iced::Color::BLACK,
-        primary: iced::Color::from_rgb(0.44, 0.53, 0.855),
-        success: iced::Color::from_rgb(0.31, 0.50, 0.17),
-        danger: iced::Color::from_rgb(1.0, 0.0, 0.0),
+        background: iced::Color::from_rgb(custom_config.background[0], custom_config.background[1], custom_config.background[2]),
+        text: iced::Color::from_rgb(custom_config.text[0], custom_config.text[1], custom_config.text[2]),
+        primary: iced::Color::from_rgb(custom_config.primary[0], custom_config.primary[1], custom_config.primary[2]),
+        success: iced::Color::from_rgb(custom_config.success[0], custom_config.success[1], custom_config.success[2]),
+        danger: iced::Color::from_rgb(custom_config.danger[0], custom_config.danger[1], custom_config.danger[2]),
     })
 }

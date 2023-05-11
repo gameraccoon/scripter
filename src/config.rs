@@ -8,9 +8,9 @@ thread_local!(static GLOBAL_CONFIG: AppConfig = read_config());
 pub struct AppConfig {
     pub script_definitions: Vec<ScriptDefinition>,
     pub always_on_top: bool,
-    pub dark_mode: bool,
     #[serde(skip)]
     pub paths: PathCaches,
+    pub custom_theme: Option<CustomTheme>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -38,6 +38,15 @@ struct AppArguments {
     custom_work_path: Option<String>,
 }
 
+#[derive(Default, Clone, Serialize, Deserialize)]
+pub struct CustomTheme {
+    pub background: [f32; 3],
+    pub text: [f32; 3],
+    pub primary: [f32; 3],
+    pub success: [f32; 3],
+    pub danger: [f32; 3],
+}
+
 pub fn get_app_config_copy() -> AppConfig {
     GLOBAL_CONFIG.with(|config| config.clone())
 }
@@ -58,7 +67,6 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
     AppConfig {
         script_definitions: Vec::new(),
         always_on_top: true,
-        dark_mode: false,
         paths: PathCaches {
             logs_path: if let Some(custom_logs_path) = app_arguments.custom_logs_path.clone() {
                 PathBuf::from(custom_logs_path)
@@ -73,6 +81,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             exe_folder_path: get_exe_folder_path(),
             config_path,
         },
+        custom_theme: None,
     }
 }
 

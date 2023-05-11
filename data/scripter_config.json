@@ -10,5 +10,11 @@
 		}
 	],
 	"always_on_top": true,
-	"dark_mode": true
+	"custom_theme": {
+		"background": [0.25, 0.26, 0.29],
+		"text": [0.0, 0.0, 0.0],
+		"primary": [0.44, 0.53, 0.855],
+		"success": [0.31, 0.50, 0.17],
+		"danger": [1.0, 0.0, 0.0]
+	}
 }

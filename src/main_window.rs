@@ -81,8 +81,8 @@ impl Application for MainWindow {
                 focus: None,
                 scripts: app_config.script_definitions.clone(),
                 execution_data: execution::new_execution_data(),
-                theme: if app_config.dark_mode {
-                    style::get_dark_theme()
+                theme: if app_config.custom_theme.is_some() {
+                    style::get_custom_theme(app_config.custom_theme.clone().unwrap())
                 } else {
                     Theme::default()
                 },
