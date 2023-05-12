@@ -99,6 +99,11 @@ impl Application for MainWindow {
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::Clicked(pane) => {
+                if self.panes.panes[&pane].variant == PaneVariant::ExecutionList
+                    && !self.execution_data.has_started
+                {
+                    self.execution_data.currently_selected_script = -1;
+                }
                 self.focus = Some(pane);
             }
             Message::Resized(pane_grid::ResizeEvent { split, ratio }) => {
@@ -456,7 +461,7 @@ fn produce_execution_list_content<'a>(
                         .duration_since(script_status.start_time.unwrap_or(Instant::now()))
                         .as_secs();
                     text(format!(
-                        "{} {} ({:02}:{:02}){}",
+                        "  {} {} ({:02}:{:02}){}",
                         status,
                         script_name,
                         time_taken_sec / 60,
@@ -474,7 +479,7 @@ fn produce_execution_list_content<'a>(
                         .duration_since(script_status.start_time.unwrap_or(Instant::now()))
                         .as_secs();
                     text(format!(
-                        "[...] {} ({:02}:{:02}){}",
+                        "  [...] {} ({:02}:{:02}){}",
                         script_name,
                         time_taken_sec / 60,
                         time_taken_sec % 60,
@@ -482,16 +487,22 @@ fn produce_execution_list_content<'a>(
                     ))
                     .into()
                 } else {
-                    text(format!("{}", script_name)).into()
+                    text(format!("  {}", script_name)).into()
                 };
 
                 let mut row_data: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
                 row_data.push(name);
 
-                if !execution::has_started_execution(&execution_data) {
-                    row_data.push(text(" ").into());
-                    row_data
-                        .push(small_button("Edit", Message::OpenScriptEditing(i as isize)).into());
+                let is_enabled = !execution_data.has_started;
+                let is_selected = execution_data.currently_selected_script == i as isize;
+
+                if is_enabled && is_selected {
+                    row_data.push(text(" ").width(Length::Fill).into());
+                    row_data.push(
+                        small_button("del", Message::RemoveScript(i as isize))
+                            .style(theme::Button::Destructive)
+                            .into(),
+                    );
                 } else if execution::has_script_started(&script_status) {
                     let output_path = config::get_script_output_path(
                         path_caches.logs_path.clone(),
@@ -504,21 +515,36 @@ fn produce_execution_list_content<'a>(
                     }
                 }
 
-                row(row_data).into()
+                if is_enabled {
+                    let mut list_item = button(row(row_data)).width(Length::Fill).padding(4);
+                    if is_selected {
+                        list_item = list_item.on_press(Message::OpenScriptEditing(-1));
+                    } else {
+                        list_item = list_item.on_press(Message::OpenScriptEditing(i as isize));
+                    }
+
+                    list_item = list_item.style(if is_selected {
+                        theme::Button::Primary
+                    } else {
+                        theme::Button::Secondary
+                    });
+
+                    list_item.height(Length::Fixed(30.0)).into()
+                } else {
+                    row(row_data).height(Length::Fixed(30.0)).into()
+                }
             })
             .collect(),
     )
-    .spacing(10)
     .width(Length::Fill)
     .align_items(Alignment::Start)
-        .padding(10)
     .into();
 
     let controls = column![if execution::has_finished_execution(&execution_data) {
         if execution::has_finished_execution(&execution_data) {
             row![
                 main_button("Reschedule", Message::RescheduleScripts()),
-                main_button("Clear", Message::ClearScripts())
+                main_button("Clear", Message::ClearScripts()),
             ]
             .align_items(Alignment::Center)
             .spacing(5)
@@ -541,7 +567,7 @@ fn produce_execution_list_content<'a>(
     .width(Length::Fill)
     .align_items(Alignment::Center);
 
-    return column![title, scrollable(column![data, controls])]
+    return column![title, scrollable(column![data, text(" "), controls])]
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
@@ -697,19 +723,20 @@ fn produce_script_edit_content<'a>(
 
     let content = column![
         script_name,
-        button(
-            "Remove script",
-            Message::RemoveScript(execution_data.currently_selected_script)
-        ),
         text("Arguments line:"),
         arguments,
         text("Retry count:"),
         autorerun_count,
         ignore_failures_checkbox,
+        button(
+            "Remove script",
+            Message::RemoveScript(execution_data.currently_selected_script)
+        )
+        .style(theme::Button::Destructive),
     ]
     .spacing(10);
 
-    return column![scrollable(content),]
+    return column![scrollable(content)]
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
