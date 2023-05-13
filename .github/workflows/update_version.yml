@@ -20,6 +20,8 @@ jobs:
       run: cargo set-version ${{ inputs.version }}
     - name: Push
       run: |
+        git config --global user.email "workflow@github.com"
+        git config --global user.name "Github Workflow"
         git add Cargo.*
         git commit -m "Updated version to ${{ inputs.version }}"
         git pull -r
