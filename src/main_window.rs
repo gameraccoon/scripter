@@ -286,9 +286,9 @@ impl Application for MainWindow {
 
             let title = row![match variant {
                 PaneVariant::ScriptList => "Scripts",
-                PaneVariant::ExecutionList => "Executions",
+                PaneVariant::ExecutionList => "Execution",
                 PaneVariant::LogOutput => "Logs",
-                PaneVariant::ScriptEdit => "Script Properties",
+                PaneVariant::ScriptEdit => "Properties",
             }]
             .spacing(5);
 
