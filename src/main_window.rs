@@ -202,9 +202,7 @@ impl Application for MainWindow {
             }
             Message::RemoveScript(script_idx) => {
                 execution::remove_script_from_execution(&mut self.execution_data, script_idx);
-                set_selected_script(
-                    &mut self.execution_data,
-                    &mut self.visual_caches, -1);
+                set_selected_script(&mut self.execution_data, &mut self.visual_caches, -1);
             }
             Message::EditScriptName(new_name, script_idx) => {
                 if self.execution_data.currently_selected_script != -1 {

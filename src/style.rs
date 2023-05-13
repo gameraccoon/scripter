@@ -67,10 +67,30 @@ pub fn pane_focused(theme: &Theme) -> container::Appearance {
 
 pub fn get_custom_theme(custom_config: config::CustomTheme) -> Theme {
     Theme::custom(theme::Palette {
-        background: iced::Color::from_rgb(custom_config.background[0], custom_config.background[1], custom_config.background[2]),
-        text: iced::Color::from_rgb(custom_config.text[0], custom_config.text[1], custom_config.text[2]),
-        primary: iced::Color::from_rgb(custom_config.primary[0], custom_config.primary[1], custom_config.primary[2]),
-        success: iced::Color::from_rgb(custom_config.success[0], custom_config.success[1], custom_config.success[2]),
-        danger: iced::Color::from_rgb(custom_config.danger[0], custom_config.danger[1], custom_config.danger[2]),
+        background: iced::Color::from_rgb(
+            custom_config.background[0],
+            custom_config.background[1],
+            custom_config.background[2],
+        ),
+        text: iced::Color::from_rgb(
+            custom_config.text[0],
+            custom_config.text[1],
+            custom_config.text[2],
+        ),
+        primary: iced::Color::from_rgb(
+            custom_config.primary[0],
+            custom_config.primary[1],
+            custom_config.primary[2],
+        ),
+        success: iced::Color::from_rgb(
+            custom_config.success[0],
+            custom_config.success[1],
+            custom_config.success[2],
+        ),
+        danger: iced::Color::from_rgb(
+            custom_config.danger[0],
+            custom_config.danger[1],
+            custom_config.danger[2],
+        ),
     })
 }
