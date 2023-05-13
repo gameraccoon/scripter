@@ -3,6 +3,13 @@ name: Builds and Tests
 on:
   push:
     branches: '*'
+    paths-ignore:
+    - README.md
+    - LICENSE
+    - CONTRIBUTING.md
+    - .gitignore
+    - .github
+    - '!.github/rust.yml'
   pull_request:
     branches: '*'
 
