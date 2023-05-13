@@ -10,11 +10,17 @@ use iced_native::widget::checkbox;
 use rev_buf_reader::RevBufReader;
 use std::io::BufRead;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 use crate::config;
 use crate::execution;
 use crate::style;
+
+// caches for visual elements content
+pub struct VisualCaches {
+    autorerun_count: String,
+}
 
 pub struct MainWindow {
     panes: pane_grid::State<AppPane>,
@@ -23,6 +29,7 @@ pub struct MainWindow {
     scripts: Vec<config::ScriptDefinition>,
     app_config: config::AppConfig,
     theme: Theme,
+    visual_caches: VisualCaches,
 }
 
 #[derive(Debug, Clone)]
@@ -42,7 +49,7 @@ pub enum Message {
     RemoveScript(isize),
     EditScriptName(String, isize),
     EditArguments(String, isize),
-    EditAutorerunCount(usize, isize),
+    EditAutorerunCount(String, isize),
     OpenFile(PathBuf),
     ToggleIgnoreFailures(isize, bool),
 }
@@ -87,6 +94,9 @@ impl Application for MainWindow {
                     Theme::default()
                 },
                 app_config,
+                visual_caches: VisualCaches {
+                    autorerun_count: String::new(),
+                },
             },
             Command::none(),
         )
@@ -102,7 +112,7 @@ impl Application for MainWindow {
                 if self.panes.panes[&pane].variant == PaneVariant::ExecutionList
                     && !self.execution_data.has_started
                 {
-                    self.execution_data.currently_selected_script = -1;
+                    set_selected_script(&mut self.execution_data, &mut self.visual_caches, -1);
                 }
                 self.focus = Some(pane);
             }
@@ -121,8 +131,12 @@ impl Application for MainWindow {
                 if !execution::has_started_execution(&self.execution_data) {
                     execution::add_script_to_execution(&mut self.execution_data, script);
                 }
-                self.execution_data.currently_selected_script =
-                    (self.execution_data.scripts_to_run.len() - 1) as isize;
+                let script_idx = (self.execution_data.scripts_to_run.len() - 1) as isize;
+                set_selected_script(
+                    &mut self.execution_data,
+                    &mut self.visual_caches,
+                    script_idx,
+                );
             }
             Message::RunScripts() => {
                 if self.execution_data.scripts_to_run.is_empty() {
@@ -130,7 +144,7 @@ impl Application for MainWindow {
                 }
 
                 if !execution::has_started_execution(&self.execution_data) {
-                    self.execution_data.currently_selected_script = -1;
+                    set_selected_script(&mut self.execution_data, &mut self.visual_caches, -1);
                     execution::run_scripts(&mut self.execution_data, &self.app_config);
                 }
             }
@@ -174,18 +188,28 @@ impl Application for MainWindow {
                             if !execution::has_script_finished(progress_status)
                                 || progress_status.result != execution::ScriptResultStatus::Skipped
                             {
-                                self.execution_data.currently_selected_script = progress.0 as isize;
+                                set_selected_script(
+                                    &mut self.execution_data,
+                                    &mut self.visual_caches,
+                                    progress.0 as isize,
+                                );
                             }
                         }
                     }
                 }
             }
             Message::OpenScriptEditing(script_idx) => {
-                self.execution_data.currently_selected_script = script_idx;
+                set_selected_script(
+                    &mut self.execution_data,
+                    &mut self.visual_caches,
+                    script_idx,
+                );
             }
             Message::RemoveScript(script_idx) => {
                 execution::remove_script_from_execution(&mut self.execution_data, script_idx);
-                self.execution_data.currently_selected_script = -1;
+                set_selected_script(
+                    &mut self.execution_data,
+                    &mut self.visual_caches, -1);
             }
             Message::EditScriptName(new_name, script_idx) => {
                 if self.execution_data.currently_selected_script != -1 {
@@ -198,10 +222,25 @@ impl Application for MainWindow {
                         new_arguments;
                 }
             }
-            Message::EditAutorerunCount(new_autorerun_count, script_idx) => {
-                if self.execution_data.currently_selected_script != -1 {
+            Message::EditAutorerunCount(new_autorerun_count_str, script_idx) => {
+                let parse_result = usize::from_str(&new_autorerun_count_str);
+                let mut new_autorerun_count = None;
+                if parse_result.is_ok() {
+                    self.visual_caches.autorerun_count = new_autorerun_count_str;
+                    new_autorerun_count = Some(parse_result.unwrap());
+                } else {
+                    // if input is empty, then keep it empty and assume 0, otherwise keep the old value
+                    if new_autorerun_count_str.is_empty() {
+                        self.visual_caches.autorerun_count = new_autorerun_count_str;
+                        new_autorerun_count = Some(0);
+                    }
+                }
+
+                if self.execution_data.currently_selected_script != -1
+                    && new_autorerun_count.is_some()
+                {
                     self.execution_data.scripts_to_run[script_idx as usize].autorerun_count =
-                        new_autorerun_count;
+                        new_autorerun_count.unwrap();
                 }
             }
             Message::OpenFile(path) => {
@@ -282,6 +321,7 @@ impl Application for MainWindow {
                     &self.scripts,
                     &self.theme,
                     &self.app_config.paths,
+                    &self.visual_caches,
                 )
             }))
             .title_bar(title_bar)
@@ -311,6 +351,22 @@ impl Application for MainWindow {
 
     fn subscription(&self) -> Subscription<Message> {
         time::every(Duration::from_millis(10)).map(Message::Tick)
+    }
+}
+
+fn set_selected_script(
+    execution_data: &mut execution::ScriptExecutionData,
+    visual_caches: &mut VisualCaches,
+    script_idx: isize,
+) {
+    execution_data.currently_selected_script = script_idx;
+    if script_idx != -1 {
+        visual_caches.autorerun_count = execution_data
+            .scripts_to_run
+            .get(script_idx as usize)
+            .unwrap()
+            .autorerun_count
+            .to_string();
     }
 }
 
@@ -506,24 +562,20 @@ fn produce_execution_list_content<'a>(
                 } else if execution::has_script_started(&script_status) {
                     row_data.push(text(" ").into());
                     if script_status.retry_count > 0 {
-                        let log_dir_path = config::get_script_log_directory(
-                            &path_caches.logs_path,
-                            i as isize,
-                        );
+                        let log_dir_path =
+                            config::get_script_log_directory(&path_caches.logs_path, i as isize);
                         row_data.push(small_button("logs", Message::OpenFile(log_dir_path)).into());
-                    }
-                    else {
+                    } else {
                         let output_path = config::get_script_output_path(
                             &path_caches.logs_path,
                             i as isize,
                             script_status.retry_count,
                         );
                         if !is_file_empty(&output_path) {
-                            row_data.push(small_button("log", Message::OpenFile(output_path)).into());
+                            row_data
+                                .push(small_button("log", Message::OpenFile(output_path)).into());
                         }
                     }
-
-
                 }
 
                 if is_enabled {
@@ -690,6 +742,7 @@ fn produce_log_output_content<'a>(
 
 fn produce_script_edit_content<'a>(
     execution_data: &execution::ScriptExecutionData,
+    visual_caches: &VisualCaches,
 ) -> Column<'a, Message> {
     if execution::has_started_execution(&execution_data) {
         return Column::new();
@@ -717,13 +770,11 @@ fn produce_script_edit_content<'a>(
         .padding(5);
 
     let arguments = text_input("\"arg1\" \"arg2\"", &script.arguments_line)
-        .on_input(move |new_arg| Message::EditArguments(new_arg, script_idx))
+        .on_input(move |new_value| Message::EditArguments(new_value, script_idx))
         .padding(5);
 
-    let autorerun_count = text_input("0", &script.autorerun_count.to_string())
-        .on_input(move |new_arg| {
-            Message::EditAutorerunCount(new_arg.parse().unwrap_or_default(), script_idx)
-        })
+    let autorerun_count = text_input("0", &visual_caches.autorerun_count)
+        .on_input(move |new_value| Message::EditAutorerunCount(new_value, script_idx))
         .padding(5);
 
     let ignore_failures_checkbox = checkbox(
@@ -760,6 +811,7 @@ fn view_content<'a>(
     script_definitions: &Vec<config::ScriptDefinition>,
     theme: &Theme,
     paths: &config::PathCaches,
+    visual_caches: &VisualCaches,
 ) -> Element<'a, Message> {
     let content = match variant {
         PaneVariant::ScriptList => {
@@ -767,7 +819,7 @@ fn view_content<'a>(
         }
         PaneVariant::ExecutionList => produce_execution_list_content(execution_data, paths, theme),
         PaneVariant::LogOutput => produce_log_output_content(execution_data, paths),
-        PaneVariant::ScriptEdit => produce_script_edit_content(execution_data),
+        PaneVariant::ScriptEdit => produce_script_edit_content(execution_data, visual_caches),
     };
 
     container(content)
