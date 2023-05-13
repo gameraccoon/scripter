@@ -8,8 +8,8 @@ on:
     - LICENSE
     - CONTRIBUTING.md
     - .gitignore
-    - .github
-    - '!.github/rust.yml'
+    - '.github/**'
+    - '!.github/workflows/rust.yml'
   pull_request:
     branches: '*'
 
