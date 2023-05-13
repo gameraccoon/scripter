@@ -109,11 +109,6 @@ impl Application for MainWindow {
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::Clicked(pane) => {
-                if self.panes.panes[&pane].variant == PaneVariant::ExecutionList
-                    && !self.execution_data.has_started
-                {
-                    set_selected_script(&mut self.execution_data, &mut self.visual_caches, -1);
-                }
                 self.focus = Some(pane);
             }
             Message::Resized(pane_grid::ResizeEvent { split, ratio }) => {
