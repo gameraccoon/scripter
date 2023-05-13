@@ -87,7 +87,7 @@ Example of a dark theme:
 - `autorerun_count` - how many times the script will be retied before failing the execution
 - `ignore_previous_failures` - should this script be executed even if a script before failed
 
-### Tips and tricks
+## Advanced usage
 
 I wanted to keep the tool simple but at the same time useful for different situations. Every use case is a bit special, and here are some tricks you can do to achieve some desired behaviors (please share if you still lack some configuration options).
 
