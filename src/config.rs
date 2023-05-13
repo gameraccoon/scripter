@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 const DEFAULT_CONFIG_NAME: &str = "scripter_config.json";
 thread_local!(static GLOBAL_CONFIG: AppConfig = read_config());
@@ -8,9 +10,11 @@ thread_local!(static GLOBAL_CONFIG: AppConfig = read_config());
 pub struct AppConfig {
     pub script_definitions: Vec<ScriptDefinition>,
     pub always_on_top: bool,
+    pub custom_theme: Option<CustomTheme>,
     #[serde(skip)]
     pub paths: PathCaches,
-    pub custom_theme: Option<CustomTheme>,
+    #[serde(skip)]
+    pub env_vars: Vec<(OsString, OsString)>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -36,6 +40,7 @@ struct AppArguments {
     custom_config_path: Option<String>,
     custom_logs_path: Option<String>,
     custom_work_path: Option<String>,
+    env_vars: Vec<(OsString, OsString)>,
 }
 
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -91,6 +96,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             config_path,
         },
         custom_theme: None,
+        env_vars: app_arguments.env_vars,
     }
 }
 
@@ -136,6 +142,7 @@ fn read_config() -> AppConfig {
 
     let mut config: AppConfig = config.unwrap();
     config.paths = default_config.paths;
+    config.env_vars = app_arguments.env_vars;
     return config;
 }
 
@@ -143,11 +150,11 @@ fn get_app_arguments() -> AppArguments {
     let mut custom_config_path = None;
     let mut custom_logs_path = None;
     let mut custom_work_path = None;
+    let mut env_vars = Vec::new();
 
     let args: Vec<String> = std::env::args().collect();
     for i in 1..args.len() {
         let arg = &args[i];
-        println!("'{}'", &arg);
         if arg == "--config-path" {
             if i + 1 < args.len() {
                 custom_config_path = Some(args[i + 1].clone());
@@ -160,6 +167,13 @@ fn get_app_arguments() -> AppArguments {
             if i + 1 < args.len() {
                 custom_work_path = Some(args[i + 1].clone());
             }
+        } else if arg == "--env" {
+            if i + 2 < args.len() {
+                env_vars.push((
+                    OsString::from_str(&args[i + 1]).unwrap_or_default(),
+                    OsString::from_str(&args[i + 2]).unwrap_or_default(),
+                ));
+            }
         }
     }
 
@@ -167,6 +181,7 @@ fn get_app_arguments() -> AppArguments {
         custom_config_path,
         custom_logs_path,
         custom_work_path,
+        env_vars,
     }
 }
 

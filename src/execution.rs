@@ -118,6 +118,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
     let termination_condvar = execution_data.termination_condvar.clone();
     let logs_path = app_config.paths.logs_path.clone();
     let exe_folder_path = app_config.paths.exe_folder_path.clone();
+    let env_vars = app_config.env_vars.clone();
 
     std::thread::spawn(move || {
         std::fs::remove_dir_all(&logs_path).ok();
@@ -168,6 +169,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                             subprocess::Redirection::Pipe
                         })
                         .stderr(subprocess::Redirection::Merge)
+                        .env_extend(&env_vars)
                         .popen();
 
                 if child.is_err() {
