@@ -315,6 +315,7 @@ impl Application for MainWindow {
                     &self.theme,
                     &self.app_config.paths,
                     &self.visual_caches,
+                    &self.app_config.custom_title,
                 )
             }))
             .title_bar(title_bar)
@@ -448,6 +449,7 @@ fn produce_execution_list_content<'a>(
     execution_data: &execution::ScriptExecutionData,
     path_caches: &config::PathCaches,
     theme: &Theme,
+    custom_title: &Option<String>,
 ) -> Column<'a, Message> {
     let main_button = |label, message| {
         button(
@@ -471,9 +473,22 @@ fn produce_execution_list_content<'a>(
         .on_press(message)
     };
 
-    let title: Element<_> = text(path_caches.work_path.to_str().unwrap_or_default())
+    let mut title: Element<_> = text(path_caches.work_path.to_str().unwrap_or_default())
         .size(16)
+        .horizontal_alignment(alignment::Horizontal::Center)
+        .width(Length::Fill)
         .into();
+
+    if let Some(new_title) = custom_title {
+        title = column![
+            title,
+            text(new_title)
+                .size(16)
+                .horizontal_alignment(alignment::Horizontal::Center)
+                .width(Length::Fill)
+        ]
+        .into();
+    }
 
     let data: Element<_> = column(
         execution_data
@@ -805,12 +820,15 @@ fn view_content<'a>(
     theme: &Theme,
     paths: &config::PathCaches,
     visual_caches: &VisualCaches,
+    custom_title: &Option<String>,
 ) -> Element<'a, Message> {
     let content = match variant {
         PaneVariant::ScriptList => {
             produce_script_list_content(execution_data, script_definitions, paths)
         }
-        PaneVariant::ExecutionList => produce_execution_list_content(execution_data, paths, theme),
+        PaneVariant::ExecutionList => {
+            produce_execution_list_content(execution_data, paths, theme, custom_title)
+        }
         PaneVariant::LogOutput => produce_log_output_content(execution_data, paths),
         PaneVariant::ScriptEdit => produce_script_edit_content(execution_data, visual_caches),
     };

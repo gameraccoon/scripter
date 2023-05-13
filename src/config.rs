@@ -15,6 +15,8 @@ pub struct AppConfig {
     pub paths: PathCaches,
     #[serde(skip)]
     pub env_vars: Vec<(OsString, OsString)>,
+    #[serde(skip)]
+    pub custom_title: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -41,6 +43,7 @@ struct AppArguments {
     custom_logs_path: Option<String>,
     custom_work_path: Option<String>,
     env_vars: Vec<(OsString, OsString)>,
+    custom_title: Option<String>,
 }
 
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -97,6 +100,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
         },
         custom_theme: None,
         env_vars: app_arguments.env_vars,
+        custom_title: app_arguments.custom_title,
     }
 }
 
@@ -143,6 +147,7 @@ fn read_config() -> AppConfig {
     let mut config: AppConfig = config.unwrap();
     config.paths = default_config.paths;
     config.env_vars = app_arguments.env_vars;
+    config.custom_title = app_arguments.custom_title;
     return config;
 }
 
@@ -150,6 +155,7 @@ fn get_app_arguments() -> AppArguments {
     let mut custom_config_path = None;
     let mut custom_logs_path = None;
     let mut custom_work_path = None;
+    let mut custom_title = None;
     let mut env_vars = Vec::new();
 
     let args: Vec<String> = std::env::args().collect();
@@ -174,6 +180,10 @@ fn get_app_arguments() -> AppArguments {
                     OsString::from_str(&args[i + 2]).unwrap_or_default(),
                 ));
             }
+        } else if arg == "--title" {
+            if i + 1 < args.len() {
+                custom_title = Some(args[i + 1].clone());
+            }
         }
     }
 
@@ -182,6 +192,7 @@ fn get_app_arguments() -> AppArguments {
         custom_logs_path,
         custom_work_path,
         env_vars,
+        custom_title,
     }
 }
 
