@@ -7,6 +7,7 @@ use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::config;
+use crate::config::get_script_log_directory;
 
 #[derive(Clone)]
 pub struct ScheduledScript {
@@ -148,10 +149,13 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     break;
                 }
 
-                let _ = std::fs::create_dir_all(&logs_path);
+                let _ = std::fs::create_dir_all(get_script_log_directory(
+                    &logs_path,
+                    script_idx as isize,
+                ));
 
                 let output_file = std::fs::File::create(config::get_script_output_path(
-                    logs_path.clone(),
+                    &logs_path,
                     script_idx as isize,
                     script_state.retry_count,
                 ));

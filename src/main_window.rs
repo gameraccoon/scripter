@@ -504,15 +504,26 @@ fn produce_execution_list_content<'a>(
                             .into(),
                     );
                 } else if execution::has_script_started(&script_status) {
-                    let output_path = config::get_script_output_path(
-                        path_caches.logs_path.clone(),
-                        i as isize,
-                        script_status.retry_count,
-                    );
-                    if !is_file_empty(&output_path) {
-                        row_data.push(text(" ").into());
-                        row_data.push(small_button("log", Message::OpenFile(output_path)).into());
+                    row_data.push(text(" ").into());
+                    if script_status.retry_count > 0 {
+                        let log_dir_path = config::get_script_log_directory(
+                            &path_caches.logs_path,
+                            i as isize,
+                        );
+                        row_data.push(small_button("logs", Message::OpenFile(log_dir_path)).into());
                     }
+                    else {
+                        let output_path = config::get_script_output_path(
+                            &path_caches.logs_path,
+                            i as isize,
+                            script_status.retry_count,
+                        );
+                        if !is_file_empty(&output_path) {
+                            row_data.push(small_button("log", Message::OpenFile(output_path)).into());
+                        }
+                    }
+
+
                 }
 
                 if is_enabled {
@@ -614,7 +625,7 @@ fn produce_log_output_content<'a>(
     let script_status = &execution_data.scripts_status[current_script_idx as usize];
 
     let output_file_path = config::get_script_output_path(
-        path_caches.logs_path.clone(),
+        &path_caches.logs_path,
         current_script_idx,
         script_status.retry_count,
     );

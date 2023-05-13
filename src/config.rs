@@ -55,11 +55,20 @@ pub fn is_always_on_top() -> bool {
     GLOBAL_CONFIG.with(|config| config.always_on_top)
 }
 
-pub fn get_script_output_path(logs_path: PathBuf, script_idx: isize, retry_count: usize) -> PathBuf {
+pub fn get_script_log_directory(logs_path: &PathBuf, script_idx: isize) -> PathBuf {
+    logs_path.join(format!("script_{}", script_idx as isize))
+}
+
+pub fn get_script_output_path(
+    logs_path: &PathBuf,
+    script_idx: isize,
+    retry_count: usize,
+) -> PathBuf {
+    let path = get_script_log_directory(logs_path, script_idx);
     if retry_count == 0 {
-        logs_path.join(format!("script{}_output.log", script_idx))
+        path.join("output.log")
     } else {
-        logs_path.join(format!("script{}_retry{}_output.log", script_idx, retry_count))
+        path.join(format!("retry{}_output.log", retry_count))
     }
 }
 
