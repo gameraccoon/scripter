@@ -54,6 +54,39 @@ Now you can schedule the exact combination of scripts to run in just a few click
 1. Add the scripts you want to run to the queue, and specify their arguments if needed
 1. Start the execution
 
+### Available arguments
+- `--config-path <path>` - path to the json file with the configuration of scripter that should be used for this instance
+- `--work_path <path>` - path to the working directory that will be used to execute the scripts
+- `--logs-path <path>` - path to the folder where logs will be stored (requires write access)
+- `--env <key> <value>` - specify an environment variable that will be set to every sctipt (can have multiple `--env` arguments)
+- `--title <title>` - specify an additional line of title that goes under the path in Execution tab
+
+### Available configurations
+
+#### Global
+- `always_on_top` - true of false, specifies whether the window should try to be on top of other windows
+- `custom_theme` - specifies custom colors that forms a visual theme
+
+Example of a dark theme:
+```json
+"custom_theme": {
+	"background": [0.25, 0.26, 0.29],
+	"text": [0.0, 0.0, 0.0],
+	"primary": [0.44, 0.53, 0.855],
+	"success": [0.31, 0.50, 0.17],
+	"danger": [1.0, 0.0, 0.0]
+}
+```
+
+#### Per script
+
+- `name` - name of the script that will be shown in the list
+- `command` - path to a script, or name of a command that is going to be executed
+- `arguments` - list of arguments that is going to be passed to the scrip or the command
+- `path_relative_to_scripter` - whether the path for the script should be relatie to the executable (instead of working directory from where it was called)
+- `autorerun_count` - how many times the script will be retied before failing the execution
+- `ignore_previous_failures` - should this script be executed even if a script before failed
+
 ### Tips and tricks
 
 I wanted to keep the tool simple but at the same time useful for different situations. Every use case is a bit special, and here are some tricks you can do to achieve some desired behaviors (please share if you still lack some configuration options).
@@ -67,11 +100,8 @@ This allows to more reliably run scripts that depend on stable internet connecti
 This allows to bundle scripter with the scripts to share with other developers, and allowing everyone who gets your tools to have the same experience regardles of their local setup.
 - As arguments to scripter you can provide both the path to the configuration file and the path to folder where logs will be stored.  
 This makes it possible to have multiple lists of available scripts, or keep a split between bin/etc/temp folders.
-
-### Available arguments
-- `--config-path <path>` - path to the json file with the configuration of scripter that should be used for this instance
-- `--work_path <path>` - path to the working directory that will be used to execute the scripts
-- `--logs-path <path>` - path to the folder where logs will be stored (requires write access)
+- You can specify environment variables for scripts when you run scripter  
+This makes it possible to run the same scripts in different configurations (e.g. compiling in Debug/Release) and fine-tune the level of configurability. Using --title argument also allows to show the information about current context of the execution to the user of your scripts.
 
 ## Screenshots
 ![20230505_222428_scripter_L55OnW](https://user-images.githubusercontent.com/24990031/236622895-97782150-fa07-419e-acdc-9550d35e0407.png)
