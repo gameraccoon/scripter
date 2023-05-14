@@ -166,7 +166,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                         .stdout(if output_file.is_ok() {
                             subprocess::Redirection::File(output_file.unwrap())
                         } else {
-                            subprocess::Redirection::Pipe
+                            subprocess::Redirection::None
                         })
                         .stderr(subprocess::Redirection::Merge)
                         .env_extend(&env_vars)
