@@ -7,11 +7,12 @@ use iced::widget::{button, column, container, row, scrollable, text, text_input,
 use iced::{Application, Command, Element, Length, Subscription};
 use iced_lazy::responsive;
 use iced_native::widget::checkbox;
-use rev_buf_reader::RevBufReader;
-use std::io::BufRead;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 use crate::config;
 use crate::execution;
@@ -20,6 +21,7 @@ use crate::style;
 // caches for visual elements content
 pub struct VisualCaches {
     autorerun_count: String,
+    recent_logs: Vec<String>,
 }
 
 pub struct MainWindow {
@@ -96,6 +98,7 @@ impl Application for MainWindow {
                 app_config,
                 visual_caches: VisualCaches {
                     autorerun_count: String::new(),
+                    recent_logs: Vec::new(),
                 },
             },
             Command::none(),
@@ -139,6 +142,7 @@ impl Application for MainWindow {
                 }
 
                 if !execution::has_started_execution(&self.execution_data) {
+                    self.visual_caches.recent_logs.clear();
                     set_selected_script(&mut self.execution_data, &mut self.visual_caches, -1);
                     execution::run_scripts(&mut self.execution_data, &self.app_config);
                 }
@@ -192,6 +196,15 @@ impl Application for MainWindow {
                         }
                     }
                 }
+
+                if let Some(rx) = &self.execution_data.log_receiver {
+                    if let Ok(log) = rx.try_recv() {
+                        self.visual_caches.recent_logs.push(log);
+                        if self.visual_caches.recent_logs.len() > 30 {
+                            self.visual_caches.recent_logs.remove(0);
+                        }
+                    }
+                }
             }
             Message::OpenScriptEditing(script_idx) => {
                 set_selected_script(
@@ -239,12 +252,13 @@ impl Application for MainWindow {
             Message::OpenFile(path) => {
                 #[cfg(target_os = "windows")]
                 {
-                    let result = subprocess::Exec::cmd("explorer")
+                    let result = std::process::Command::new("explorer")
+                        .creation_flags(0x08000000) // CREATE_NO_WINDOW
                         .arg(path)
-                        .stdin(subprocess::Redirection::None)
-                        .stdout(subprocess::Redirection::None)
-                        .stderr(subprocess::Redirection::None)
-                        .join();
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn();
 
                     if result.is_err() {
                         return Command::none();
@@ -252,12 +266,12 @@ impl Application for MainWindow {
                 }
                 #[cfg(target_os = "linux")]
                 {
-                    let result = subprocess::Exec::cmd("xdg-open")
+                    let result = std::process::Command::new("xdg-open")
                         .arg(path)
-                        .stdin(subprocess::Redirection::None)
-                        .stdout(subprocess::Redirection::None)
-                        .stderr(subprocess::Redirection::None)
-                        .join();
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn();
 
                     if result.is_err() {
                         return Command::none();
@@ -380,17 +394,6 @@ impl AppPane {
     fn new(variant: PaneVariant) -> Self {
         Self { variant }
     }
-}
-
-fn is_file_empty(path: &PathBuf) -> bool {
-    let file = std::fs::File::open(path);
-    if let Ok(file) = file {
-        let metadata = file.metadata();
-        if let Ok(metadata) = metadata {
-            return metadata.len() == 0;
-        }
-    }
-    true
 }
 
 fn produce_script_list_content<'a>(
@@ -579,10 +582,7 @@ fn produce_execution_list_content<'a>(
                             i as isize,
                             script_status.retry_count,
                         );
-                        if !is_file_empty(&output_path) {
-                            row_data
-                                .push(small_button("log", Message::OpenFile(output_path)).into());
-                        }
+                        row_data.push(small_button("log", Message::OpenFile(output_path)).into());
                     }
                 }
 
@@ -645,31 +645,9 @@ fn produce_execution_list_content<'a>(
         .align_items(Alignment::Center);
 }
 
-fn get_last_n_lines_from_file(file_path: &PathBuf, lines_number: usize) -> Option<Vec<String>> {
-    let file = std::fs::File::open(file_path);
-
-    return if let Ok(file) = file {
-        Some(
-            RevBufReader::new(file)
-                .lines()
-                .take(lines_number)
-                .map(|l| {
-                    if let Ok(l) = l {
-                        l
-                    } else {
-                        "[line contain incorrect Unicode symbols]".to_string()
-                    }
-                })
-                .collect(),
-        )
-    } else {
-        None
-    };
-}
-
 fn produce_log_output_content<'a>(
     execution_data: &execution::ScriptExecutionData,
-    path_caches: &config::PathCaches,
+    visual_caches: &VisualCaches,
 ) -> Column<'a, Message> {
     if !execution::has_started_execution(&execution_data) {
         return Column::new();
@@ -682,31 +660,6 @@ fn produce_log_output_content<'a>(
     }
 
     let current_script = &execution_data.scripts_to_run[current_script_idx as usize];
-    let script_status = &execution_data.scripts_status[current_script_idx as usize];
-
-    let output_file_path = config::get_script_output_path(
-        &path_caches.logs_path,
-        current_script_idx,
-        script_status.retry_count,
-    );
-    let output_lines = get_last_n_lines_from_file(&output_file_path, 30);
-    let error_file_path = path_caches
-        .logs_path
-        .join(format!("{}_error.log", current_script_idx));
-    let error_lines = get_last_n_lines_from_file(&error_file_path, 10);
-
-    if output_lines.is_none() {
-        return column![text(
-            format!(
-                "Can't open script output '{}'",
-                output_file_path.to_str().unwrap_or_default()
-            )
-            .to_string()
-        )];
-    }
-
-    let output_lines = output_lines.unwrap();
-    let error_lines = error_lines.unwrap_or(Vec::new());
 
     let mut data_lines: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
 
@@ -725,18 +678,13 @@ fn produce_log_output_content<'a>(
         .into(),
     );
 
-    if !output_lines.is_empty() {
+    if !visual_caches.recent_logs.is_empty() {
         data_lines.extend(
-            output_lines
+            visual_caches
+                .recent_logs
                 .iter()
-                .rev()
                 .map(|element| text(element).into()),
         );
-    }
-
-    if !error_lines.is_empty() {
-        data_lines.push(text("RUN ERROR:").into());
-        data_lines.extend(error_lines.iter().rev().map(|element| text(element).into()));
     }
 
     let data: Element<_> = column(data_lines).spacing(10).into();
@@ -829,7 +777,7 @@ fn view_content<'a>(
         PaneVariant::ExecutionList => {
             produce_execution_list_content(execution_data, paths, theme, custom_title)
         }
-        PaneVariant::LogOutput => produce_log_output_content(execution_data, paths),
+        PaneVariant::LogOutput => produce_log_output_content(execution_data, visual_caches),
         PaneVariant::ScriptEdit => produce_script_edit_content(execution_data, visual_caches),
     };
 

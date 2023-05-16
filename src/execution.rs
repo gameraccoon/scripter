@@ -1,9 +1,10 @@
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-use std::io::Write;
+use crossbeam_channel::{unbounded, Receiver, RecvError, Sender};
+use std::io::{BufRead, Write};
 use std::path::Path;
-use std::sync::{mpsc, Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::config;
@@ -38,7 +39,8 @@ pub struct ScriptExecutionData {
     pub scripts_to_run: Vec<ScheduledScript>,
     pub scripts_status: Vec<ScriptExecutionStatus>,
     pub has_started: bool,
-    pub progress_receiver: Option<mpsc::Receiver<(usize, ScriptExecutionStatus)>>,
+    pub progress_receiver: Option<Receiver<(usize, ScriptExecutionStatus)>>,
+    pub log_receiver: Option<Receiver<String>>,
     pub termination_condvar: Arc<(Mutex<bool>, Condvar)>,
     pub currently_selected_script: isize,
     pub currently_outputting_script: isize,
@@ -51,6 +53,7 @@ pub fn new_execution_data() -> ScriptExecutionData {
         scripts_status: Vec::new(),
         has_started: false,
         progress_receiver: None,
+        log_receiver: None,
         termination_condvar: Arc::new((Mutex::new(false), Condvar::new())),
         currently_selected_script: -1,
         currently_outputting_script: -1,
@@ -110,9 +113,12 @@ pub fn remove_script_from_execution(execution_data: &mut ScriptExecutionData, in
 }
 
 pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config::AppConfig) {
-    let (tx, rx) = mpsc::channel();
-    execution_data.progress_receiver = Some(rx);
     execution_data.has_started = true;
+    let (progress_sender, process_receiver) = unbounded();
+    execution_data.progress_receiver = Some(process_receiver);
+    let (log_sender, log_receiver) = unbounded();
+    execution_data.log_receiver = Some(log_receiver);
+    let log_sender = Arc::new(log_sender);
 
     let scripts_to_run = execution_data.scripts_to_run.clone();
     let termination_condvar = execution_data.termination_condvar.clone();
@@ -140,10 +146,10 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
             if kill_requested || (has_previous_script_failed && !script.ignore_previous_failures) {
                 script_state.result = ScriptResultStatus::Skipped;
                 script_state.finish_time = Some(Instant::now());
-                send_script_execution_status(&tx, script_idx, script_state.clone());
+                send_script_execution_status(&progress_sender, script_idx, script_state.clone());
                 continue;
             }
-            send_script_execution_status(&tx, script_idx, script_state.clone());
+            send_script_execution_status(&progress_sender, script_idx, script_state.clone());
 
             'retry_loop: loop {
                 if kill_requested {
@@ -161,41 +167,76 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     script_state.retry_count,
                 ));
 
-                let child =
-                    subprocess::Exec::shell(get_script_with_arguments(&script, &exe_folder_path))
-                        .stdout(if output_file.is_ok() {
-                            subprocess::Redirection::File(output_file.unwrap())
-                        } else {
-                            subprocess::Redirection::None
-                        })
-                        .stderr(subprocess::Redirection::Merge)
-                        .env_extend(&env_vars)
-                        .popen();
+                let (stdout_type, stderr_type) = if output_file.is_ok() {
+                    (std::process::Stdio::piped(), std::process::Stdio::piped())
+                } else {
+                    (std::process::Stdio::null(), std::process::Stdio::null())
+                };
+
+                #[cfg(target_os = "windows")]
+                let mut command = std::process::Command::new("cmd");
+
+                #[cfg(target_os = "windows")]
+                {
+                    command
+                        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                        .arg("/C");
+                }
+                #[cfg(not(target_os = "windows"))]
+                let mut command = std::process::Command::new("sh");
+
+                #[cfg(not(target_os = "windows"))]
+                {
+                    command.arg("-c");
+                }
+
+                command
+                    .arg(get_script_with_arguments(&script, &exe_folder_path))
+                    .envs(env_vars.clone())
+                    .stdin(std::process::Stdio::null())
+                    .stdout(stdout_type)
+                    .stderr(stderr_type);
+
+                let child = command.spawn();
+
+                // avoid potential deadlocks (cargo culted from os_pipe readme)
+                drop(command);
 
                 if child.is_err() {
-                    let err = child.err().unwrap();
-                    let error_file = std::fs::File::create(
-                        logs_path.join(format!("{}_error.log", script_idx as isize)),
-                    );
-                    if let Ok(error_file) = error_file {
-                        let mut error_writer = std::io::BufWriter::new(error_file);
-                        let _ = write!(error_writer, "{}", err);
+                    if output_file.is_ok() {
+                        let err = child.err().unwrap();
+                        let mut output_writer = std::io::BufWriter::new(output_file.unwrap());
+                        send_log_line(err.to_string(), &log_sender, &mut output_writer);
                     }
                     // it doesn't make sense to retry if something is broken on this level
                     script_state.result = ScriptResultStatus::Failed;
                     script_state.finish_time = Some(Instant::now());
-                    send_script_execution_status(&tx, script_idx, script_state.clone());
+                    send_script_execution_status(
+                        &progress_sender,
+                        script_idx,
+                        script_state.clone(),
+                    );
                     has_previous_script_failed = true;
                     break 'retry_loop;
                 }
 
                 let mut child = child.unwrap();
 
+                if child.stdout.is_some() && child.stderr.is_some() && output_file.is_ok() {
+                    join_and_split_output(
+                        child.stdout.take().unwrap(),
+                        child.stderr.take().unwrap(),
+                        log_sender.clone(),
+                        output_file.unwrap(),
+                    );
+                }
+
                 loop {
                     let result = termination_condvar
                         .1
                         .wait_timeout(termination_requested, Duration::from_millis(100))
                         .unwrap();
+
                     // 100 milliseconds have passed, or maybe the value changed
                     termination_requested = result.0;
                     if *termination_requested == true {
@@ -204,12 +245,16 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                         *termination_requested = false;
                     }
 
-                    if let Some(status) = child.poll() {
+                    if let Ok(Some(status)) = child.try_wait() {
                         if status.success() {
                             // successfully finished the script, jump to the next script
                             script_state.finish_time = Some(Instant::now());
                             script_state.result = ScriptResultStatus::Success;
-                            send_script_execution_status(&tx, script_idx, script_state.clone());
+                            send_script_execution_status(
+                                &progress_sender,
+                                script_idx,
+                                script_state.clone(),
+                            );
                             has_previous_script_failed = false;
                             break 'retry_loop;
                         } else {
@@ -217,13 +262,21 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                             {
                                 // script failed, but we can retry
                                 script_state.retry_count += 1;
-                                send_script_execution_status(&tx, script_idx, script_state.clone());
+                                send_script_execution_status(
+                                    &progress_sender,
+                                    script_idx,
+                                    script_state.clone(),
+                                );
                                 break;
                             } else {
                                 // script failed and we can't retry
                                 script_state.finish_time = Some(Instant::now());
                                 script_state.result = ScriptResultStatus::Failed;
-                                send_script_execution_status(&tx, script_idx, script_state.clone());
+                                send_script_execution_status(
+                                    &progress_sender,
+                                    script_idx,
+                                    script_state.clone(),
+                                );
                                 has_previous_script_failed = true;
                                 break 'retry_loop;
                             }
@@ -246,7 +299,7 @@ pub fn reset_execution_progress(execution_data: &mut ScriptExecutionData) {
 }
 
 fn send_script_execution_status(
-    tx: &mpsc::Sender<(usize, ScriptExecutionStatus)>,
+    tx: &Sender<(usize, ScriptExecutionStatus)>,
     script_idx: usize,
     script_state: ScriptExecutionStatus,
 ) {
@@ -280,12 +333,87 @@ fn get_default_script_execution_status() -> ScriptExecutionStatus {
     }
 }
 
-fn kill_process(process: &mut subprocess::Popen) {
-    #[cfg(not(target_os = "windows"))]
-    {
-        let kill_result = process.kill();
-        if let Err(result) = kill_result {
-            println!("failed to kill child process: {}", result);
-        }
+fn kill_process(process: &mut std::process::Child) {
+    let kill_result = process.kill();
+    if let Err(result) = kill_result {
+        println!("failed to kill child process: {}", result);
     }
+}
+
+fn join_and_split_output(
+    stdout: std::process::ChildStdout,
+    stderr: std::process::ChildStderr,
+    out_channel: Arc<Sender<String>>,
+    output_file: std::fs::File,
+) {
+    let (sender_out, receiver_out) = unbounded();
+    let (sender_err, receiver_err) = unbounded();
+
+    let _ = std::thread::spawn(move || {
+        read_one_stdio(stdout, sender_out);
+    });
+
+    let _ = std::thread::spawn(move || {
+        read_one_stdio(stderr, sender_err);
+    });
+
+    let _ = std::thread::spawn(move || {
+        let mut output_writer = std::io::BufWriter::new(output_file);
+        loop {
+            crossbeam_channel::select! {
+                recv(receiver_out) -> log => {
+                    if try_split_log(log, &out_channel, &mut output_writer).is_err() {
+                        break;
+                    }
+                },
+                recv(receiver_err) -> log => {
+                    if try_split_log(log, &out_channel, &mut output_writer).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+}
+
+fn read_one_stdio<R: std::io::Read>(stdio: R, out_channel: Sender<(String, bool)>) {
+    let mut stdout_reader = std::io::BufReader::new(stdio);
+    loop {
+        let mut line = String::new();
+        let read_result = stdout_reader.read_line(&mut line);
+        if read_result.is_err() {
+            let _ = out_channel.try_send((line, true));
+            break;
+        }
+        if read_result.unwrap() == 0 {
+            let _ = out_channel.try_send((line, true));
+            break;
+        }
+
+        let _ = out_channel.try_send((line, false));
+    }
+}
+
+fn try_split_log(
+    log: Result<(String, bool), RecvError>,
+    out_channel: &Sender<String>,
+    output_writer: &mut std::io::BufWriter<std::fs::File>,
+) -> Result<(), ()> {
+    if let Ok((line, should_exit)) = log {
+        if should_exit {
+            return Err(());
+        }
+        else {
+            send_log_line(line, out_channel, output_writer);
+        }
+    } else {
+        return Err(());
+    }
+    return Ok(());
+}
+
+fn send_log_line(line: String, out_channel: &Sender<String>, output_writer: &mut std::io::BufWriter<std::fs::File>) {
+    let _ = write!(output_writer, "{}", line);
+    let _ = output_writer.flush();
+    let _ = out_channel.send(line);
 }
