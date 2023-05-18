@@ -3,8 +3,8 @@
 mod config;
 mod execution;
 mod main_window;
-mod style;
 mod ring_buffer;
+mod style;
 
 use iced::window::icon;
 use iced::{Application, Settings};

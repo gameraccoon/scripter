@@ -26,8 +26,7 @@ impl<T, const SIZE: usize> RingBuffer<T, SIZE> {
     pub fn push(&mut self, value: T) {
         if self.empty {
             self.empty = false;
-        }
-        else {
+        } else {
             self.head = (self.head + 1) % SIZE;
             if self.head == self.tail {
                 self.tail = (self.tail + 1) % SIZE;
@@ -136,7 +135,7 @@ mod tests {
         for i in 5..=20 {
             ring_buffer.push(i);
             let result: Vec<i32> = ring_buffer.iter().map(|&x| x).collect();
-            let expected: Vec<i32> = (i-2..=i).collect();
+            let expected: Vec<i32> = (i - 2..=i).collect();
             assert_eq!(result, expected);
         }
     }
