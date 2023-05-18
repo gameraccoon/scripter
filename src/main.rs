@@ -4,6 +4,7 @@ mod config;
 mod execution;
 mod main_window;
 mod style;
+mod ring_buffer;
 
 use iced::window::icon;
 use iced::{Application, Settings};

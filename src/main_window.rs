@@ -148,7 +148,9 @@ impl Application for MainWindow {
                 }
             }
             Message::StopScripts() => {
-                if execution::has_started_execution(&self.execution_data) {
+                if execution::has_started_execution(&self.execution_data)
+                    && !execution::has_finished_execution(&self.execution_data)
+                {
                     if let Ok(mut termination_requested) =
                         self.execution_data.termination_condvar.0.lock()
                     {
@@ -159,10 +161,12 @@ impl Application for MainWindow {
                 }
             }
             Message::ClearScripts() => {
+                join_execution_thread(&mut self.execution_data);
                 self.execution_data = execution::new_execution_data();
                 self.execution_data.has_started = false;
             }
             Message::RescheduleScripts() => {
+                join_execution_thread(&mut self.execution_data);
                 if !execution::has_started_execution(&self.execution_data) {
                     return Command::none();
                 }
@@ -193,15 +197,6 @@ impl Application for MainWindow {
                                     progress.0 as isize,
                                 );
                             }
-                        }
-                    }
-                }
-
-                if let Some(rx) = &self.execution_data.log_receiver {
-                    if let Ok(log) = rx.try_recv() {
-                        self.visual_caches.recent_logs.push(log);
-                        if self.visual_caches.recent_logs.len() > 30 {
-                            self.visual_caches.recent_logs.remove(0);
                         }
                     }
                 }
@@ -613,12 +608,16 @@ fn produce_execution_list_content<'a>(
 
     let controls = column![if execution::has_finished_execution(&execution_data) {
         if execution::has_finished_execution(&execution_data) {
-            row![
-                main_button("Reschedule", Message::RescheduleScripts()),
-                main_button("Clear", Message::ClearScripts()),
-            ]
-            .align_items(Alignment::Center)
-            .spacing(5)
+            if !execution::is_waiting_execution_thread_to_finish(&execution_data) {
+                row![
+                    main_button("Reschedule", Message::RescheduleScripts()),
+                    main_button("Clear", Message::ClearScripts()),
+                ]
+                .align_items(Alignment::Center)
+                .spacing(5)
+            } else {
+                row![text("Waiting for the execution to stop")].align_items(Alignment::Center)
+            }
         } else {
             row![main_button("Clear", Message::ClearScripts())].align_items(Alignment::Center)
         }
@@ -647,7 +646,6 @@ fn produce_execution_list_content<'a>(
 
 fn produce_log_output_content<'a>(
     execution_data: &execution::ScriptExecutionData,
-    visual_caches: &VisualCaches,
 ) -> Column<'a, Message> {
     if !execution::has_started_execution(&execution_data) {
         return Column::new();
@@ -678,13 +676,10 @@ fn produce_log_output_content<'a>(
         .into(),
     );
 
-    if !visual_caches.recent_logs.is_empty() {
-        data_lines.extend(
-            visual_caches
-                .recent_logs
-                .iter()
-                .map(|element| text(element).into()),
-        );
+    if let Ok(guard) = execution_data.recent_logs.lock() {
+        if !guard.is_empty() {
+            data_lines.extend(guard.iter().map(|element| text(element).into()));
+        }
     }
 
     let data: Element<_> = column(data_lines).spacing(10).into();
@@ -777,7 +772,7 @@ fn view_content<'a>(
         PaneVariant::ExecutionList => {
             produce_execution_list_content(execution_data, paths, theme, custom_title)
         }
-        PaneVariant::LogOutput => produce_log_output_content(execution_data, visual_caches),
+        PaneVariant::LogOutput => produce_log_output_content(execution_data),
         PaneVariant::ScriptEdit => produce_script_edit_content(execution_data, visual_caches),
     };
 
@@ -813,4 +808,12 @@ fn view_controls<'a>(
     }
 
     row.into()
+}
+
+fn join_execution_thread(execution_data: &mut execution::ScriptExecutionData) {
+    // this should never block, since the thread should be finished by now
+    // but we do it anyway to avoid missing bugs that create zombie threads
+    if let Some(join_handle) = execution_data.thread_join_handle.take() {
+        join_handle.join().unwrap();
+    };
 }

@@ -8,7 +8,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::config;
-use crate::config::get_script_log_directory;
+use crate::ring_buffer::RingBuffer;
 
 #[derive(Clone)]
 pub struct ScheduledScript {
@@ -35,16 +35,19 @@ pub struct ScriptExecutionStatus {
     pub retry_count: usize,
 }
 
+type LogBuffer = RingBuffer<String, 30>;
+
 pub struct ScriptExecutionData {
     pub scripts_to_run: Vec<ScheduledScript>,
     pub scripts_status: Vec<ScriptExecutionStatus>,
     pub has_started: bool,
+    pub recent_logs: Arc<Mutex<LogBuffer>>,
     pub progress_receiver: Option<Receiver<(usize, ScriptExecutionStatus)>>,
-    pub log_receiver: Option<Receiver<String>>,
     pub termination_condvar: Arc<(Mutex<bool>, Condvar)>,
     pub currently_selected_script: isize,
     pub currently_outputting_script: isize,
     pub has_failed_scripts: bool,
+    pub thread_join_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 pub fn new_execution_data() -> ScriptExecutionData {
@@ -53,11 +56,12 @@ pub fn new_execution_data() -> ScriptExecutionData {
         scripts_status: Vec::new(),
         has_started: false,
         progress_receiver: None,
-        log_receiver: None,
+        recent_logs: Arc::new(Mutex::new(RingBuffer::new(Default::default()))),
         termination_condvar: Arc::new((Mutex::new(false), Condvar::new())),
         currently_selected_script: -1,
         currently_outputting_script: -1,
         has_failed_scripts: false,
+        thread_join_handle: None,
     }
 }
 
@@ -84,8 +88,19 @@ pub fn has_finished_execution(execution_data: &ScriptExecutionData) -> bool {
     if !has_started_execution(&execution_data) {
         return false;
     }
+
     if let Some(last) = execution_data.scripts_status.last() {
         return has_script_finished(&last);
+    }
+    return false;
+}
+
+pub fn is_waiting_execution_thread_to_finish(execution_data: &ScriptExecutionData) -> bool {
+    // wait for the thread to finish, otherwise we can let the user to break their state
+    if let Some(join_handle) = &execution_data.thread_join_handle {
+        if !join_handle.is_finished() {
+            return true;
+        }
     }
     return false;
 }
@@ -116,9 +131,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
     execution_data.has_started = true;
     let (progress_sender, process_receiver) = unbounded();
     execution_data.progress_receiver = Some(process_receiver);
-    let (log_sender, log_receiver) = unbounded();
-    execution_data.log_receiver = Some(log_receiver);
-    let log_sender = Arc::new(log_sender);
+    let recent_logs = execution_data.recent_logs.clone();
 
     let scripts_to_run = execution_data.scripts_to_run.clone();
     let termination_condvar = execution_data.termination_condvar.clone();
@@ -126,7 +139,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
     let exe_folder_path = app_config.paths.exe_folder_path.clone();
     let env_vars = app_config.env_vars.clone();
 
-    std::thread::spawn(move || {
+    execution_data.thread_join_handle = Some(std::thread::spawn(move || {
         std::fs::remove_dir_all(&logs_path).ok();
 
         let termination_requested = termination_condvar.0.lock();
@@ -156,7 +169,9 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     break;
                 }
 
-                let _ = std::fs::create_dir_all(get_script_log_directory(
+                recent_logs.lock().unwrap().clear();
+
+                let _ = std::fs::create_dir_all(config::get_script_log_directory(
                     &logs_path,
                     script_idx as isize,
                 ));
@@ -206,7 +221,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     if output_file.is_ok() {
                         let err = child.err().unwrap();
                         let mut output_writer = std::io::BufWriter::new(output_file.unwrap());
-                        send_log_line(err.to_string(), &log_sender, &mut output_writer);
+                        send_log_line(err.to_string(), &recent_logs, &mut output_writer);
                     }
                     // it doesn't make sense to retry if something is broken on this level
                     script_state.result = ScriptResultStatus::Failed;
@@ -222,11 +237,12 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
 
                 let mut child = child.unwrap();
 
+                let mut threads_to_join = Vec::new();
                 if child.stdout.is_some() && child.stderr.is_some() && output_file.is_ok() {
-                    join_and_split_output(
+                    threads_to_join = join_and_split_output(
                         child.stdout.take().unwrap(),
                         child.stderr.take().unwrap(),
-                        log_sender.clone(),
+                        recent_logs.clone(),
                         output_file.unwrap(),
                     );
                 }
@@ -256,6 +272,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                                 script_state.clone(),
                             );
                             has_previous_script_failed = false;
+                            join_threads(threads_to_join);
                             break 'retry_loop;
                         } else {
                             if script_state.retry_count < script.autorerun_count && !kill_requested
@@ -278,14 +295,16 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                                     script_state.clone(),
                                 );
                                 has_previous_script_failed = true;
+                                join_threads(threads_to_join);
                                 break 'retry_loop;
                             }
                         }
                     }
                 }
+                join_threads(threads_to_join);
             }
         }
-    });
+    }));
 }
 
 pub fn reset_execution_progress(execution_data: &mut ScriptExecutionData) {
@@ -343,37 +362,39 @@ fn kill_process(process: &mut std::process::Child) {
 fn join_and_split_output(
     stdout: std::process::ChildStdout,
     stderr: std::process::ChildStderr,
-    out_channel: Arc<Sender<String>>,
+    recent_logs: Arc<Mutex<LogBuffer>>,
     output_file: std::fs::File,
-) {
+) -> Vec<std::thread::JoinHandle<()>> {
     let (sender_out, receiver_out) = unbounded();
     let (sender_err, receiver_err) = unbounded();
 
-    let _ = std::thread::spawn(move || {
+    let read_stdio_thread = std::thread::spawn(move || {
         read_one_stdio(stdout, sender_out);
     });
 
-    let _ = std::thread::spawn(move || {
+    let read_stderr_thread = std::thread::spawn(move || {
         read_one_stdio(stderr, sender_err);
     });
 
-    let _ = std::thread::spawn(move || {
+    let join_and_split_thread = std::thread::spawn(move || {
         let mut output_writer = std::io::BufWriter::new(output_file);
         loop {
             crossbeam_channel::select! {
                 recv(receiver_out) -> log => {
-                    if try_split_log(log, &out_channel, &mut output_writer).is_err() {
+                    if try_split_log(log, &recent_logs, &mut output_writer).is_err() {
                         break;
                     }
                 },
                 recv(receiver_err) -> log => {
-                    if try_split_log(log, &out_channel, &mut output_writer).is_err() {
+                    if try_split_log(log, &recent_logs, &mut output_writer).is_err() {
                         break;
                     }
                 }
             }
         }
     });
+
+    return vec![read_stdio_thread, read_stderr_thread, join_and_split_thread];
 }
 
 fn read_one_stdio<R: std::io::Read>(stdio: R, out_channel: Sender<(String, bool)>) {
@@ -396,15 +417,14 @@ fn read_one_stdio<R: std::io::Read>(stdio: R, out_channel: Sender<(String, bool)
 
 fn try_split_log(
     log: Result<(String, bool), RecvError>,
-    out_channel: &Sender<String>,
+    recent_logs: &Arc<Mutex<LogBuffer>>,
     output_writer: &mut std::io::BufWriter<std::fs::File>,
 ) -> Result<(), ()> {
     if let Ok((line, should_exit)) = log {
         if should_exit {
             return Err(());
-        }
-        else {
-            send_log_line(line, out_channel, output_writer);
+        } else {
+            send_log_line(line, recent_logs, output_writer);
         }
     } else {
         return Err(());
@@ -412,8 +432,19 @@ fn try_split_log(
     return Ok(());
 }
 
-fn send_log_line(line: String, out_channel: &Sender<String>, output_writer: &mut std::io::BufWriter<std::fs::File>) {
+fn send_log_line(
+    line: String,
+    recent_logs: &Arc<Mutex<LogBuffer>>,
+    output_writer: &mut std::io::BufWriter<std::fs::File>,
+) {
     let _ = write!(output_writer, "{}", line);
     let _ = output_writer.flush();
-    let _ = out_channel.send(line);
+
+    recent_logs.lock().unwrap().push(line);
+}
+
+fn join_threads(threads: Vec<std::thread::JoinHandle<()>>) {
+    for thread in threads {
+        let _ = thread.join();
+    }
 }
