@@ -121,7 +121,10 @@ impl Application for MainWindow {
                 self.panes.swap(&pane, &target);
             }
             Message::Dragged(_) => {}
-            Message::Maximize(pane) => self.panes.maximize(&pane),
+            Message::Maximize(pane) => {
+                self.focus = Some(pane);
+                self.panes.maximize(&pane)
+            }
             Message::Restore => {
                 self.panes.restore();
             }
@@ -293,16 +296,10 @@ impl Application for MainWindow {
 
             let variant = &self.panes.panes[&id].variant;
 
-            let title = row![match variant {
-                PaneVariant::ScriptList => "Scripts",
-                PaneVariant::ExecutionList => "Execution",
-                PaneVariant::LogOutput => "Logs",
-                PaneVariant::ScriptEdit => "Properties",
-            }]
-            .spacing(5);
+            let title = row![get_pane_name_from_variant(variant)].spacing(5);
 
             let title_bar = pane_grid::TitleBar::new(title)
-                .controls(view_controls(id, total_panes, is_maximized))
+                .controls(view_controls(id, total_panes, is_maximized, &self.panes))
                 .padding(10)
                 .style(if is_focused {
                     if self.execution_data.has_failed_scripts {
@@ -784,10 +781,16 @@ fn view_controls<'a>(
     pane: pane_grid::Pane,
     total_panes: usize,
     is_maximized: bool,
+    pane_grid: &pane_grid::State<AppPane>,
 ) -> Element<'a, Message> {
     let mut row = row![].spacing(5);
 
     if total_panes > 1 {
+        if is_maximized {
+            row = add_pane_switch_button(pane_grid, &pane, true, row);
+            row = add_pane_switch_button(pane_grid, &pane, false, row);
+        }
+
         let toggle = {
             let (content, message) = if is_maximized {
                 ("Restore", Message::Restore)
@@ -812,4 +815,47 @@ fn join_execution_thread(execution_data: &mut execution::ScriptExecutionData) {
     if let Some(join_handle) = execution_data.thread_join_handle.take() {
         join_handle.join().unwrap();
     };
+}
+
+fn get_pane_name_from_variant(variant: &PaneVariant) -> &str {
+    match variant {
+        PaneVariant::ScriptList => "Scripts",
+        PaneVariant::ExecutionList => "Execution",
+        PaneVariant::LogOutput => "Log",
+        PaneVariant::ScriptEdit => "Script details",
+    }
+}
+
+fn add_pane_switch_button<'a>(
+    pane_grid: &pane_grid::State<AppPane>,
+    pane: &pane_grid::Pane,
+    is_left: bool,
+    row: iced::widget::Row<'a, Message, iced::Renderer>,
+) -> iced::widget::Row<'a, Message, iced::Renderer> {
+    if let Some(neighbor) = pane_grid.adjacent(
+        &pane,
+        if is_left {
+            pane_grid::Direction::Left
+        } else {
+            pane_grid::Direction::Right
+        },
+    ) {
+        let variant = &pane_grid.panes[&neighbor].variant;
+        let pane_name = get_pane_name_from_variant(variant);
+        row.push(
+            button(
+                text(format!(
+                    "{} {}",
+                    if is_left { "<-" } else { "->" },
+                    pane_name
+                ))
+                .size(14),
+            )
+            .style(theme::Button::Secondary)
+            .padding(3)
+            .on_press(Message::Maximize(neighbor)),
+        )
+    } else {
+        row
+    }
 }
