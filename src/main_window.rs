@@ -659,32 +659,28 @@ fn produce_log_output_content<'a>(
 
     let current_script = &execution_data.scripts_to_run[current_script_idx as usize];
 
+    let header = text(format!(
+        "command: {} {}",
+        current_script
+            .path
+            .file_name()
+            .unwrap_or_default()
+            .to_str()
+            .unwrap_or("[error]")
+            .to_string(),
+        current_script.arguments_line,
+    ));
+
     let mut data_lines: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
-
-    data_lines.push(
-        text(format!(
-            "command: {} {}",
-            current_script
-                .path
-                .file_name()
-                .unwrap_or_default()
-                .to_str()
-                .unwrap_or("[error]")
-                .to_string(),
-            current_script.arguments_line,
-        ))
-        .into(),
-    );
-
     if let Ok(guard) = execution_data.recent_logs.lock() {
         if !guard.is_empty() {
             data_lines.extend(guard.iter().map(|element| text(element).into()));
         }
     }
 
-    let data: Element<_> = column(data_lines).spacing(10).into();
+    let data: Element<_> = column(data_lines).spacing(10).width(Length::Fill).into();
 
-    return column![scrollable(data)]
+    return column![header, scrollable(data)]
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
