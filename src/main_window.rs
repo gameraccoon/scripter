@@ -571,7 +571,7 @@ fn produce_execution_list_content<'a>(
                         let log_dir_path =
                             config::get_script_log_directory(&path_caches.logs_path, i as isize);
                         row_data.push(small_button("logs", Message::OpenFile(log_dir_path)).into());
-                    } else {
+                    } else if !execution::has_script_been_skipped(&script_status) {
                         let output_path = config::get_script_output_path(
                             &path_caches.logs_path,
                             i as isize,

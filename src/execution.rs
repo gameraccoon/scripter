@@ -80,6 +80,10 @@ pub fn has_script_failed(status: &ScriptExecutionStatus) -> bool {
     return has_script_finished(status) && status.result == ScriptResultStatus::Failed;
 }
 
+pub fn has_script_been_skipped(status: &ScriptExecutionStatus) -> bool {
+    return has_script_finished(status) && status.result == ScriptResultStatus::Skipped;
+}
+
 pub fn has_started_execution(execution_data: &ScriptExecutionData) -> bool {
     return execution_data.has_started;
 }
