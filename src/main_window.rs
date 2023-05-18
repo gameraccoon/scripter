@@ -353,7 +353,7 @@ impl Application for MainWindow {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        time::every(Duration::from_millis(10)).map(Message::Tick)
+        time::every(Duration::from_millis(100)).map(Message::Tick)
     }
 }
 
