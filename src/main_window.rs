@@ -49,6 +49,7 @@ pub enum Message {
     Tick(Instant),
     OpenScriptEditing(isize),
     RemoveScript(isize),
+    MoveScriptUp(usize),
     EditScriptName(String, isize),
     EditArguments(String, isize),
     EditAutorerunCount(String, isize),
@@ -214,6 +215,16 @@ impl Application for MainWindow {
             Message::RemoveScript(script_idx) => {
                 execution::remove_script_from_execution(&mut self.execution_data, script_idx);
                 set_selected_script(&mut self.execution_data, &mut self.visual_caches, -1);
+            }
+            Message::MoveScriptUp(script_idx) => {
+                self.execution_data
+                    .scripts_to_run
+                    .swap(script_idx, script_idx - 1);
+                set_selected_script(
+                    &mut self.execution_data,
+                    &mut self.visual_caches,
+                    script_idx as isize - 1,
+                );
             }
             Message::EditScriptName(new_name, script_idx) => {
                 if self.execution_data.currently_selected_script != -1 {
@@ -556,6 +567,13 @@ fn produce_execution_list_content<'a>(
                 let is_selected = execution_data.currently_selected_script == i as isize;
 
                 if is_enabled && is_selected {
+                    if i > 0 {
+                        row_data.push(
+                            small_button("^", Message::MoveScriptUp(i))
+                                .style(theme::Button::Primary)
+                                .into(),
+                        );
+                    }
                     row_data.push(text(" ").width(Length::Fill).into());
                     row_data.push(
                         small_button("del", Message::RemoveScript(i as isize))
