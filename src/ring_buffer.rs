@@ -41,9 +41,9 @@ impl<T, const SIZE: usize> RingBuffer<T, SIZE> {
         } else if self.head < self.tail {
             self.buffer[self.tail..]
                 .iter()
-                .chain(self.buffer[..self.head+1].iter())
+                .chain(self.buffer[..=self.head].iter())
         } else {
-            self.buffer[self.tail..self.head+1]
+            self.buffer[self.tail..=self.head]
                 .iter()
                 .chain(self.buffer[..0].iter())
         };
