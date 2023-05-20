@@ -23,7 +23,7 @@ pub struct AppConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ScriptDefinition {
     pub name: String,
-    pub icon: Option<PathBuf>,
+    pub icon: Option<String>,
     pub command: Box<Path>,
     pub arguments: String,
     pub path_relative_to_scripter: bool,
@@ -161,6 +161,12 @@ fn read_config() -> AppConfig {
 
     if !app_arguments.icons_path.is_some() && !config.icon_path_relative_to_scripter {
         config.paths.icons_path = config.paths.work_path.clone();
+    }
+
+    for script_definition in &mut config.script_definitions {
+        if script_definition.icon.is_some() && script_definition.icon.as_ref().unwrap().is_empty() {
+            script_definition.icon = None;
+        }
     }
 
     return config;
