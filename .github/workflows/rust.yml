@@ -10,8 +10,6 @@ on:
     - .gitignore
     - '.github/**'
     - '!.github/workflows/rust.yml'
-  pull_request:
-    branches: '*'
 
 env:
   CARGO_TERM_COLOR: always
@@ -27,12 +25,14 @@ jobs:
       run: cargo test --release --verbose
 
     - name: Move the executable to data folder
-      run: mv target/release/scripter data/scripter
+      run: mv target/release/scripter data/linux/scripter
+    - name: Copy common data to data folder
+      run: cp data/common/* data/linux/
     - name: Upload linux artifacts
       uses: actions/upload-artifact@v3
       with:
         name: Linux (Ubuntu)
-        path: data/*
+        path: data/linux/*
 
   build_windows:
     runs-on: windows-latest
@@ -46,9 +46,11 @@ jobs:
     - name: Add windows icon
       run: cargo rustc --release -- -C link-args="res/resources.res"
     - name: Move the executable to data folder
-      run: mv target/release/scripter.exe data/scripter.exe
+      run: mv target/release/scripter.exe data/windows/scripter.exe
+    - name: Copy common data to data folder
+      run: cp data/common/* data/windows/
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v3
       with:
         name: Windows
-        path: data/*
+        path: data/windows/*
