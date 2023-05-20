@@ -6,7 +6,7 @@ use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{button, column, container, row, scrollable, text, text_input, Column};
 use iced::{Application, Command, Element, Length, Subscription};
 use iced_lazy::responsive;
-use iced_native::widget::checkbox;
+use iced_native::widget::{checkbox, horizontal_space, vertical_space};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
@@ -430,7 +430,7 @@ fn produce_script_list_content<'a>(
                 if !execution::has_started_execution(&execution_data) {
                     row![
                         button("Add", Message::AddScriptToRun(script.clone()),),
-                        text(" "),
+                        horizontal_space(8),
                         text(&script.name),
                     ]
                 } else {
@@ -574,14 +574,14 @@ fn produce_execution_list_content<'a>(
                                 .into(),
                         );
                     }
-                    row_data.push(text(" ").width(Length::Fill).into());
+                    row_data.push(horizontal_space(Length::Fill).into());
                     row_data.push(
                         small_button("del", Message::RemoveScript(i as isize))
                             .style(theme::Button::Destructive)
                             .into(),
                     );
                 } else if execution::has_script_started(&script_status) {
-                    row_data.push(text(" ").into());
+                    row_data.push(horizontal_space(8).into());
                     if script_status.retry_count > 0 {
                         let log_dir_path =
                             config::get_script_log_directory(&path_caches.logs_path, i as isize);
@@ -610,9 +610,9 @@ fn produce_execution_list_content<'a>(
                         theme::Button::Secondary
                     });
 
-                    list_item.height(Length::Fixed(30.0)).into()
+                    list_item.height(30).into()
                 } else {
-                    row(row_data).height(Length::Fixed(30.0)).into()
+                    row(row_data).height(30).into()
                 }
             })
             .collect(),
@@ -652,11 +652,14 @@ fn produce_execution_list_content<'a>(
     .width(Length::Fill)
     .align_items(Alignment::Center);
 
-    return column![title, scrollable(column![data, text(" "), controls])]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .spacing(10)
-        .align_items(Alignment::Center);
+    return column![
+        title,
+        scrollable(column![data, vertical_space(8), controls])
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .spacing(10)
+    .align_items(Alignment::Center);
 }
 
 fn produce_log_output_content<'a>(
