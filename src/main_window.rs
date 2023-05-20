@@ -155,13 +155,7 @@ impl Application for MainWindow {
                 if execution::has_started_execution(&self.execution_data)
                     && !execution::has_finished_execution(&self.execution_data)
                 {
-                    if let Ok(mut termination_requested) =
-                        self.execution_data.termination_condvar.0.lock()
-                    {
-                        *termination_requested = true;
-                        // We notify the condvar that the value has changed.
-                        self.execution_data.termination_condvar.1.notify_one();
-                    }
+                    execution::request_stop_execution(&mut self.execution_data);
                 }
             }
             Message::ClearScripts() => {

@@ -4,7 +4,10 @@ use std::os::windows::process::CommandExt;
 use crossbeam_channel::{unbounded, Receiver, RecvError, Sender};
 use std::io::{BufRead, Write};
 use std::path::Path;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::time::{Duration, Instant};
 
 use crate::config;
@@ -43,7 +46,7 @@ pub struct ScriptExecutionData {
     pub has_started: bool,
     pub recent_logs: Arc<Mutex<LogBuffer>>,
     pub progress_receiver: Option<Receiver<(usize, ScriptExecutionStatus)>>,
-    pub termination_condvar: Arc<(Mutex<bool>, Condvar)>,
+    pub is_termination_requested: Arc<AtomicBool>,
     pub currently_selected_script: isize,
     pub currently_outputting_script: isize,
     pub has_failed_scripts: bool,
@@ -57,7 +60,7 @@ pub fn new_execution_data() -> ScriptExecutionData {
         has_started: false,
         progress_receiver: None,
         recent_logs: Arc::new(Mutex::new(RingBuffer::new(Default::default()))),
-        termination_condvar: Arc::new((Mutex::new(false), Condvar::new())),
+        is_termination_requested: Arc::new(AtomicBool::new(false)),
         currently_selected_script: -1,
         currently_outputting_script: -1,
         has_failed_scripts: false,
@@ -138,20 +141,13 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
     let recent_logs = execution_data.recent_logs.clone();
 
     let scripts_to_run = execution_data.scripts_to_run.clone();
-    let termination_condvar = execution_data.termination_condvar.clone();
+    let is_termination_requested = execution_data.is_termination_requested.clone();
     let logs_path = app_config.paths.logs_path.clone();
     let exe_folder_path = app_config.paths.exe_folder_path.clone();
     let env_vars = app_config.env_vars.clone();
 
     execution_data.thread_join_handle = Some(std::thread::spawn(move || {
         std::fs::remove_dir_all(&logs_path).ok();
-
-        let termination_requested = termination_condvar.0.lock();
-        if termination_requested.is_err() {
-            println!("Failed to lock termination mutex");
-            return;
-        }
-        let mut termination_requested = termination_requested.unwrap();
 
         let mut has_previous_script_failed = false;
         let mut kill_requested = false;
@@ -252,19 +248,6 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                 }
 
                 loop {
-                    let result = termination_condvar
-                        .1
-                        .wait_timeout(termination_requested, Duration::from_millis(100))
-                        .unwrap();
-
-                    // 100 milliseconds have passed, or maybe the value changed
-                    termination_requested = result.0;
-                    if *termination_requested == true {
-                        kill_process(&mut child);
-                        kill_requested = true;
-                        *termination_requested = false;
-                    }
-
                     if let Ok(Some(status)) = child.try_wait() {
                         if status.success() {
                             // successfully finished the script, jump to the next script
@@ -304,11 +287,25 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                             }
                         }
                     }
+
+                    if is_termination_requested.load(Ordering::Acquire) {
+                        kill_process(&mut child);
+                        kill_requested = true;
+                        is_termination_requested.store(false, Ordering::Release);
+                    }
+
+                    std::thread::sleep(Duration::from_millis(100));
                 }
                 join_threads(threads_to_join);
             }
         }
     }));
+}
+
+pub fn request_stop_execution(execution_data: &mut ScriptExecutionData) {
+    execution_data
+        .is_termination_requested
+        .store(true, Ordering::Relaxed);
 }
 
 pub fn reset_execution_progress(execution_data: &mut ScriptExecutionData) {
@@ -318,7 +315,7 @@ pub fn reset_execution_progress(execution_data: &mut ScriptExecutionData) {
     execution_data.has_started = false;
     execution_data.has_failed_scripts = false;
     execution_data.currently_outputting_script = -1;
-    execution_data.termination_condvar = Arc::new((Mutex::new(false), Condvar::new()));
+    execution_data.is_termination_requested = Arc::new(AtomicBool::new(false));
 }
 
 fn send_script_execution_status(
