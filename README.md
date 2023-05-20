@@ -1,5 +1,5 @@
 # scripter
-![scripter_small](https://user-images.githubusercontent.com/24990031/236623413-3db76595-c6df-4a23-bc7b-afb973204be3.gif)
+![scripter_small](https://github.com/gameraccoon/scripter/assets/24990031/77612c82-c440-4453-a29f-9126a11db56a)
 
 [![Builds and tests](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml/badge.svg)](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml)
 
@@ -60,11 +60,13 @@ Now you can schedule the exact combination of scripts to run in just a few click
 - `--logs-path <path>` - path to the folder where logs will be stored (requires write access)
 - `--env <key> <value>` - specify an environment variable that will be set to every sctipt (can have multiple `--env` arguments)
 - `--title <title>` - specify an additional line of title that goes under the path in Execution tab
+- `--icons-path <path>` - path to the folder that contains the app icons (if not specified, icon paths will be relative to the crafter folder)
 
 ### Available configurations
 
 #### Global
 - `always_on_top` - true of false, specifies whether the window should try to be on top of other windows
+- `icon_path_relative_to_scripter`: true or false, specify whether the path for icons should be relative to scripter (true) or to working directory (false). this option is ignored when `--icons-path` argument is provided.
 - `custom_theme` - specifies custom colors that forms a visual theme
 
 Example of a dark theme:
@@ -81,6 +83,7 @@ Example of a dark theme:
 #### Per script
 
 - `name` - name of the script that will be shown in the list
+- `icon` - path to the icon that will be shown next to the script name
 - `command` - path to a script, or name of a command that is going to be executed
 - `arguments` - list of arguments that is going to be passed to the scrip or the command
 - `path_relative_to_scripter` - whether the path for the script should be relatie to the executable (instead of working directory from where it was called)
@@ -104,8 +107,9 @@ This makes it possible to have multiple lists of available scripts, or keep a sp
 This makes it possible to run the same scripts in different configurations (e.g. compiling in Debug/Release) and fine-tune the level of configurability. Using --title argument also allows to show the information about current context of the execution to the user of your scripts.
 
 ## Screenshots
-![20230505_222428_scripter_L55OnW](https://user-images.githubusercontent.com/24990031/236622895-97782150-fa07-419e-acdc-9550d35e0407.png)
-![20230506_135829_scripter_AzxYkV](https://user-images.githubusercontent.com/24990031/236622897-4a7c9a67-1976-4cfe-b147-6a93f9406d9a.png)
+![20230520_170155_scripter_GfF0wI](https://github.com/gameraccoon/scripter/assets/24990031/cadde251-f97c-47c3-b17d-f28940eb7d6b)
+![20230520_170105_scripter_pLUQH5](https://github.com/gameraccoon/scripter/assets/24990031/e0060f9a-3a8e-467f-88aa-dbbff17081a8)
+
 
 ## License
 
