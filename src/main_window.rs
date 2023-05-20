@@ -616,22 +616,25 @@ fn produce_execution_list_content<'a>(
     .into();
 
     let controls = column![if execution::has_finished_execution(&execution_data) {
-        if execution::has_finished_execution(&execution_data) {
-            if !execution::is_waiting_execution_thread_to_finish(&execution_data) {
-                row![
-                    main_button("Reschedule", Message::RescheduleScripts()),
-                    main_button("Clear", Message::ClearScripts()),
-                ]
-                .align_items(Alignment::Center)
-                .spacing(5)
-            } else {
-                row![text("Waiting for the execution to stop")].align_items(Alignment::Center)
-            }
+        if !execution::is_waiting_execution_thread_to_finish(&execution_data) {
+            row![
+                main_button("Reschedule", Message::RescheduleScripts()),
+                main_button("Clear", Message::ClearScripts()),
+            ]
+            .align_items(Alignment::Center)
+            .spacing(5)
         } else {
-            row![main_button("Clear", Message::ClearScripts())].align_items(Alignment::Center)
+            row![text("Waiting for the execution to stop")].align_items(Alignment::Center)
         }
     } else if execution::has_started_execution(&execution_data) {
-        row![main_button("Stop", Message::StopScripts())].align_items(Alignment::Center)
+        let current_script = execution_data.currently_outputting_script;
+        if current_script != -1
+            && execution::has_script_failed(&execution_data.scripts_status[current_script as usize])
+        {
+            row![text("Waiting for the execution to stop")].align_items(Alignment::Center)
+        } else {
+            row![main_button("Stop", Message::StopScripts())].align_items(Alignment::Center)
+        }
     } else if !execution_data.scripts_to_run.is_empty() {
         row![
             main_button("Run", Message::RunScripts()),
