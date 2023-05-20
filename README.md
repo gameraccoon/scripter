@@ -45,8 +45,9 @@ Now you can schedule the exact combination of scripts to run in just a few click
 #### Building manually
 
 1. Clone the repository
-1. Build, copy `script_config.json` from `data` folder next to the built executable
-1. Add the scripts that you are planning to use and their default parameters to the config file
+1. Build using `cargo build --release`
+2. Copy `script_config.json` from `data/common` folder next to the built executable
+3. Add the scripts that you are planning to use and their default parameters to the config file
 
 ## Usage
 
@@ -83,7 +84,7 @@ Example of a dark theme:
 #### Per script
 
 - `name` - name of the script that will be shown in the list
-- `icon` - path to the icon that will be shown next to the script name
+- `icon` - optional path to the icon that will be shown next to the script name
 - `command` - path to a script, or name of a command that is going to be executed
 - `arguments` - list of arguments that is going to be passed to the scrip or the command
 - `path_relative_to_scripter` - whether the path for the script should be relatie to the executable (instead of working directory from where it was called)
