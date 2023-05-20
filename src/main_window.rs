@@ -438,7 +438,15 @@ fn produce_script_list_content<'a>(
                         ]
                     }
                 } else {
-                    row![text(&script.name)]
+                    if let Some(icon) = &script.icon {
+                        row![
+                            image(paths.icons_path.join(icon)).width(22),
+                            horizontal_space(6),
+                            text(&script.name)
+                        ]
+                    } else {
+                        row![text(&script.name)]
+                    }
                 }
                 .into()
             })
