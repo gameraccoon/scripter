@@ -3,7 +3,7 @@ use std::os::windows::process::CommandExt;
 
 use crossbeam_channel::{unbounded, Receiver, RecvError, Sender};
 use std::io::{BufRead, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -16,6 +16,7 @@ use crate::ring_buffer::RingBuffer;
 #[derive(Clone)]
 pub struct ScheduledScript {
     pub name: String,
+    pub icon: Option<PathBuf>,
     pub path: Box<Path>,
     pub arguments_line: String,
     path_relative_to_scripter: bool,
@@ -118,6 +119,7 @@ pub fn add_script_to_execution(
 ) {
     execution_data.scripts_to_run.push(ScheduledScript {
         name: script.name,
+        icon: script.icon,
         path: script.command,
         arguments_line: script.arguments,
         path_relative_to_scripter: script.path_relative_to_scripter,

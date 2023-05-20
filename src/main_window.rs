@@ -6,7 +6,7 @@ use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{button, column, container, row, scrollable, text, text_input, Column};
 use iced::{Application, Command, Element, Length, Subscription};
 use iced_lazy::responsive;
-use iced_native::widget::{checkbox, horizontal_space, vertical_space};
+use iced_native::widget::{checkbox, horizontal_space, image, vertical_space};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
@@ -422,11 +422,21 @@ fn produce_script_list_content<'a>(
             .iter()
             .map(|script| {
                 if !execution::has_started_execution(&execution_data) {
-                    row![
-                        button("Add", Message::AddScriptToRun(script.clone()),),
-                        horizontal_space(8),
-                        text(&script.name),
-                    ]
+                    if let Some(icon) = &script.icon {
+                        row![
+                            button("Add", Message::AddScriptToRun(script.clone())),
+                            horizontal_space(6),
+                            image(paths.icons_path.join(icon)).width(22),
+                            horizontal_space(6),
+                            text(&script.name),
+                        ]
+                    } else {
+                        row![
+                            button("Add", Message::AddScriptToRun(script.clone())),
+                            horizontal_space(6),
+                            text(&script.name),
+                        ]
+                    }
                 } else {
                     row![text(&script.name)]
                 }
@@ -495,67 +505,73 @@ fn produce_execution_list_content<'a>(
             .scripts_to_run
             .iter()
             .enumerate()
-            .map(|(i, element)| {
-                let script_name = &element.name;
+            .map(|(i, script)| {
+                let script_name = &script.name;
 
                 let script_status = &execution_data.scripts_status[i];
 
                 let repeat_text = if script_status.retry_count > 0 {
                     format!(
                         " [{}/{}]",
-                        script_status.retry_count, element.autorerun_count
+                        script_status.retry_count, script.autorerun_count
                     )
                 } else {
                     String::new()
                 };
 
-                let name = if execution::has_script_finished(script_status) {
-                    let mut failed = false;
-                    let status = match script_status.result {
-                        execution::ScriptResultStatus::Failed => {
-                            failed = true;
-                            "[FAILED]"
-                        }
-                        execution::ScriptResultStatus::Success => "[DONE]",
-                        execution::ScriptResultStatus::Skipped => "[SKIPPED]",
+                let status;
+                let progress;
+                let style = if execution::has_script_failed(script_status) {
+                    theme.extended_palette().danger.weak.color
+                } else {
+                    theme.extended_palette().background.strong.text
+                };
+
+                if execution::has_script_finished(script_status) {
+                    status = match script_status.result {
+                        execution::ScriptResultStatus::Failed => "[FAILED] ",
+                        execution::ScriptResultStatus::Success => "[DONE] ",
+                        execution::ScriptResultStatus::Skipped => "[SKIPPED] ",
                     };
                     let time_taken_sec = script_status
                         .finish_time
                         .unwrap_or(Instant::now())
                         .duration_since(script_status.start_time.unwrap_or(Instant::now()))
                         .as_secs();
-                    text(format!(
-                        "  {} {} ({:02}:{:02}){}",
-                        status,
-                        script_name,
+                    progress = text(format!(
+                        "({:02}:{:02}){}",
                         time_taken_sec / 60,
                         time_taken_sec % 60,
                         repeat_text,
                     ))
-                    .style(if failed {
-                        theme.extended_palette().danger.weak.color
-                    } else {
-                        theme.extended_palette().background.strong.text
-                    })
-                    .into()
+                    .style(style);
                 } else if execution::has_script_started(script_status) {
                     let time_taken_sec = Instant::now()
                         .duration_since(script_status.start_time.unwrap_or(Instant::now()))
                         .as_secs();
-                    text(format!(
-                        "  [...] {} ({:02}:{:02}){}",
-                        script_name,
+                    status = "[...] ";
+
+                    progress = text(format!(
+                        "({:02}:{:02}){}",
                         time_taken_sec / 60,
                         time_taken_sec % 60,
                         repeat_text,
                     ))
-                    .into()
+                    .style(style);
                 } else {
-                    text(format!("  {}", script_name)).into()
+                    status = "";
+                    progress = text("").style(style);
                 };
 
                 let mut row_data: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
-                row_data.push(name);
+
+                row_data.push(text(format!("  {}", status)).style(style).into());
+                if let Some(icon) = &script.icon {
+                    row_data.push(image(path_caches.icons_path.join(&icon)).width(22).into());
+                    row_data.push(horizontal_space(4).into());
+                }
+                row_data.push(text(script_name).style(style).into());
+                row_data.push(progress.into());
 
                 let is_enabled = !execution_data.has_started;
                 let is_selected = execution_data.currently_selected_script == i as isize;

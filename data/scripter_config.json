@@ -2,6 +2,7 @@
 	"script_definitions": [
 		{
 			"name": "test echo",
+			"icon": "",
 			"command": "echo",
 			"arguments": "test",
 			"path_relative_to_scripter": false,
@@ -10,6 +11,7 @@
 		}
 	],
 	"always_on_top": true,
+	"icon_path_relative_to_scripter": true,
 	"custom_theme": {
 		"background": [0.25, 0.26, 0.29],
 		"text": [0.0, 0.0, 0.0],

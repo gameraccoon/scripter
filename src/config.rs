@@ -10,6 +10,7 @@ thread_local!(static GLOBAL_CONFIG: AppConfig = read_config());
 pub struct AppConfig {
     pub script_definitions: Vec<ScriptDefinition>,
     pub always_on_top: bool,
+    pub icon_path_relative_to_scripter: bool,
     pub custom_theme: Option<CustomTheme>,
     #[serde(skip)]
     pub paths: PathCaches,
@@ -22,6 +23,7 @@ pub struct AppConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ScriptDefinition {
     pub name: String,
+    pub icon: Option<PathBuf>,
     pub command: Box<Path>,
     pub arguments: String,
     pub path_relative_to_scripter: bool,
@@ -35,6 +37,7 @@ pub struct PathCaches {
     pub work_path: PathBuf,
     pub exe_folder_path: PathBuf,
     pub config_path: PathBuf,
+    pub icons_path: PathBuf,
 }
 
 #[derive(Default, Clone)]
@@ -44,6 +47,7 @@ struct AppArguments {
     custom_work_path: Option<String>,
     env_vars: Vec<(OsString, OsString)>,
     custom_title: Option<String>,
+    icons_path: Option<String>,
 }
 
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -84,6 +88,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
     AppConfig {
         script_definitions: Vec::new(),
         always_on_top: true,
+        icon_path_relative_to_scripter: true,
         paths: PathCaches {
             logs_path: if let Some(custom_logs_path) = app_arguments.custom_logs_path.clone() {
                 PathBuf::from(custom_logs_path)
@@ -96,6 +101,11 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
                 get_default_work_path()
             },
             exe_folder_path: get_exe_folder_path(),
+            icons_path: if let Some(icons_path) = app_arguments.icons_path.clone() {
+                PathBuf::from(icons_path)
+            } else {
+                get_default_icons_path()
+            },
             config_path,
         },
         custom_theme: None,
@@ -148,6 +158,11 @@ fn read_config() -> AppConfig {
     config.paths = default_config.paths;
     config.env_vars = app_arguments.env_vars;
     config.custom_title = app_arguments.custom_title;
+
+    if !app_arguments.icons_path.is_some() && !config.icon_path_relative_to_scripter {
+        config.paths.icons_path = config.paths.work_path.clone();
+    }
+
     return config;
 }
 
@@ -155,8 +170,9 @@ fn get_app_arguments() -> AppArguments {
     let mut custom_config_path = None;
     let mut custom_logs_path = None;
     let mut custom_work_path = None;
-    let mut custom_title = None;
     let mut env_vars = Vec::new();
+    let mut custom_title = None;
+    let mut icons_path = None;
 
     let args: Vec<String> = std::env::args().collect();
     for i in 1..args.len() {
@@ -184,6 +200,10 @@ fn get_app_arguments() -> AppArguments {
             if i + 1 < args.len() {
                 custom_title = Some(args[i + 1].clone());
             }
+        } else if arg == "--icons-path" {
+            if i + 1 < args.len() {
+                icons_path = Some(args[i + 1].clone());
+            }
         }
     }
 
@@ -193,6 +213,7 @@ fn get_app_arguments() -> AppArguments {
         custom_work_path,
         env_vars,
         custom_title,
+        icons_path,
     }
 }
 
@@ -213,4 +234,8 @@ fn get_default_logs_path() -> PathBuf {
 
 fn get_default_work_path() -> PathBuf {
     return std::env::current_dir().unwrap_or_default();
+}
+
+fn get_default_icons_path() -> PathBuf {
+    return get_exe_folder_path();
 }
