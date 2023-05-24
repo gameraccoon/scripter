@@ -13,6 +13,9 @@ use std::time::{Duration, Instant};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+use iced_native::command::Action;
+use iced_native::window::Action::RequestUserAttention;
+use iced_native::window::UserAttention;
 
 use crate::config;
 use crate::execution;
@@ -194,6 +197,12 @@ impl Application for MainWindow {
                                     &mut self.visual_caches,
                                     progress.0 as isize,
                                 );
+                            }
+                        }
+
+                        if execution::has_finished_execution(&self.execution_data) {
+                            if self.app_config.window_status_reactions {
+                                return Command::single(Action::Window(RequestUserAttention(Some(UserAttention::Informational))));
                             }
                         }
                     }

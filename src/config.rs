@@ -10,6 +10,8 @@ thread_local!(static GLOBAL_CONFIG: AppConfig = read_config());
 pub struct AppConfig {
     pub script_definitions: Vec<ScriptDefinition>,
     pub always_on_top: bool,
+    #[serde(default)]
+    pub window_status_reactions: bool,
     pub icon_path_relative_to_scripter: bool,
     pub custom_theme: Option<CustomTheme>,
     #[serde(skip)]
@@ -88,6 +90,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
     AppConfig {
         script_definitions: Vec::new(),
         always_on_top: true,
+        window_status_reactions: false,
         icon_path_relative_to_scripter: true,
         paths: PathCaches {
             logs_path: if let Some(custom_logs_path) = app_arguments.custom_logs_path.clone() {
