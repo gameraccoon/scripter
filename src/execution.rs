@@ -39,7 +39,22 @@ pub struct ScriptExecutionStatus {
     pub retry_count: usize,
 }
 
-type LogBuffer = RingBuffer<String, 30>;
+#[derive(Default)]
+pub enum OutputType {
+    #[default]
+    StdOut,
+    StdErr,
+    Error,
+    Event,
+}
+
+#[derive(Default)]
+pub struct OutputLine {
+    pub text: String,
+    pub output_type: OutputType,
+}
+
+type LogBuffer = RingBuffer<OutputLine, 30>;
 
 pub struct ScriptExecutionData {
     pub scripts_to_run: Vec<ScheduledScript>,
@@ -171,7 +186,15 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     break;
                 }
 
-                recent_logs.lock().unwrap().clear();
+                recent_logs.lock().unwrap().push(OutputLine {
+                    text: format!(
+                        "Running \"{}\"\n[{} {}]",
+                        script.name,
+                        script.path.to_str().unwrap_or("[error]"),
+                        script.arguments_line
+                    ),
+                    output_type: OutputType::Event,
+                });
 
                 let _ = std::fs::create_dir_all(config::get_script_log_directory(
                     &logs_path,
@@ -223,7 +246,14 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     if output_file.is_ok() {
                         let err = child.err().unwrap();
                         let mut output_writer = std::io::BufWriter::new(output_file.unwrap());
-                        send_log_line(err.to_string(), &recent_logs, &mut output_writer);
+                        send_log_line(
+                            OutputLine {
+                                text: err.to_string(),
+                                output_type: OutputType::Error,
+                            },
+                            &recent_logs,
+                            &mut output_writer,
+                        );
                     }
                     // it doesn't make sense to retry if something is broken on this level
                     script_state.result = ScriptResultStatus::Failed;
@@ -384,12 +414,12 @@ fn join_and_split_output(
         loop {
             crossbeam_channel::select! {
                 recv(receiver_out) -> log => {
-                    if try_split_log(log, &recent_logs, &mut output_writer).is_err() {
+                    if try_split_log(log, OutputType::StdOut, &recent_logs, &mut output_writer).is_err() {
                         break;
                     }
                 },
                 recv(receiver_err) -> log => {
-                    if try_split_log(log, &recent_logs, &mut output_writer).is_err() {
+                    if try_split_log(log, OutputType::StdErr, &recent_logs, &mut output_writer).is_err() {
                         break;
                     }
                 }
@@ -420,14 +450,15 @@ fn read_one_stdio<R: std::io::Read>(stdio: R, out_channel: Sender<(String, bool)
 
 fn try_split_log(
     log: Result<(String, bool), RecvError>,
+    output_type: OutputType,
     recent_logs: &Arc<Mutex<LogBuffer>>,
     output_writer: &mut std::io::BufWriter<std::fs::File>,
 ) -> Result<(), ()> {
-    if let Ok((line, should_exit)) = log {
+    if let Ok((text, should_exit)) = log {
         if should_exit {
             return Err(());
         } else {
-            send_log_line(line, recent_logs, output_writer);
+            send_log_line(OutputLine { text, output_type }, recent_logs, output_writer);
         }
     } else {
         return Err(());
@@ -436,11 +467,11 @@ fn try_split_log(
 }
 
 fn send_log_line(
-    line: String,
+    line: OutputLine,
     recent_logs: &Arc<Mutex<LogBuffer>>,
     output_writer: &mut std::io::BufWriter<std::fs::File>,
 ) {
-    let _ = write!(output_writer, "{}", line);
+    let _ = write!(output_writer, "{}", line.text);
     let _ = output_writer.flush();
 
     recent_logs.lock().unwrap().push(line);

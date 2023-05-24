@@ -685,6 +685,7 @@ fn produce_execution_list_content<'a>(
 
 fn produce_log_output_content<'a>(
     execution_data: &execution::ScriptExecutionData,
+    theme: &Theme,
 ) -> Column<'a, Message> {
     if !execution::has_started_execution(&execution_data) {
         return Column::new();
@@ -696,30 +697,25 @@ fn produce_log_output_content<'a>(
         return Column::new();
     }
 
-    let current_script = &execution_data.scripts_to_run[current_script_idx as usize];
-
-    let header = text(format!(
-        "command: {} {}",
-        current_script
-            .path
-            .file_name()
-            .unwrap_or_default()
-            .to_str()
-            .unwrap_or("[error]")
-            .to_string(),
-        current_script.arguments_line,
-    ));
-
     let mut data_lines: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
     if let Ok(guard) = execution_data.recent_logs.lock() {
         if !guard.is_empty() {
-            data_lines.extend(guard.iter().map(|element| text(element).into()));
+            data_lines.extend(guard.iter().map(|element| {
+                text(&element.text)
+                    .style(match element.output_type {
+                        execution::OutputType::StdOut => theme.extended_palette().primary.weak.text,
+                        execution::OutputType::StdErr => theme.extended_palette().danger.weak.color,
+                        execution::OutputType::Error => theme.extended_palette().danger.weak.color,
+                        execution::OutputType::Event => theme.extended_palette().primary.strong.color,
+                    })
+                    .into()
+            }));
         }
     }
 
     let data: Element<_> = column(data_lines).spacing(10).width(Length::Fill).into();
 
-    return column![header, scrollable(data)]
+    return column![scrollable(data)]
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
@@ -807,7 +803,7 @@ fn view_content<'a>(
         PaneVariant::ExecutionList => {
             produce_execution_list_content(execution_data, paths, theme, custom_title)
         }
-        PaneVariant::LogOutput => produce_log_output_content(execution_data),
+        PaneVariant::LogOutput => produce_log_output_content(execution_data, theme),
         PaneVariant::ScriptEdit => produce_script_edit_content(execution_data, visual_caches),
     };
 

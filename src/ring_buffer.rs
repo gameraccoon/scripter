@@ -52,12 +52,6 @@ impl<T, const SIZE: usize> RingBuffer<T, SIZE> {
     pub fn is_empty(&self) -> bool {
         self.empty
     }
-
-    pub fn clear(&mut self) {
-        self.head = 0;
-        self.tail = 0;
-        self.empty = true;
-    }
 }
 
 #[cfg(test)]
@@ -77,16 +71,6 @@ mod tests {
         ring_buffer.push(1);
 
         assert!(!ring_buffer.is_empty());
-    }
-
-    #[test]
-    fn test_ring_buffer_after_clear_is_empty() {
-        let mut ring_buffer = RingBuffer::<i32, 3>::new([0; 3]);
-        ring_buffer.push(1);
-
-        ring_buffer.clear();
-
-        assert!(ring_buffer.is_empty());
     }
 
     #[test]
