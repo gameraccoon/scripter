@@ -188,8 +188,13 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
 
                 recent_logs.lock().unwrap().push(OutputLine {
                     text: format!(
-                        "Running \"{}\"\n[{} {}]",
+                        "Running \"{}\"{}\n[{} {}]",
                         script.name,
+                        if script_state.retry_count > 0 {
+                            format!(" retry #{}", script_state.retry_count)
+                        } else {
+                            "".to_string()
+                        },
                         script.path.to_str().unwrap_or("[error]"),
                         script.arguments_line
                     ),
