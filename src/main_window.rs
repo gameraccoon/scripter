@@ -1,3 +1,6 @@
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 use iced::alignment::{self, Alignment};
 use iced::executor;
 use iced::theme::{self, Theme};
@@ -10,9 +13,6 @@ use iced_native::widget::{checkbox, horizontal_space, image, vertical_space};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
-
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 use iced_native::command::Action;
 use iced_native::window::Action::RequestUserAttention;
 use iced_native::window::UserAttention;
@@ -435,7 +435,7 @@ fn produce_script_list_content<'a>(
                         row![
                             button("Add", Message::AddScriptToRun(script.clone())),
                             horizontal_space(6),
-                            image(paths.icons_path.join(icon)).width(22),
+                            image(paths.icons_path.join(icon)).width(22).height(22),
                             horizontal_space(6),
                             text(&script.name),
                         ]
@@ -449,7 +449,7 @@ fn produce_script_list_content<'a>(
                 } else {
                     if let Some(icon) = &script.icon {
                         row![
-                            image(paths.icons_path.join(icon)).width(22),
+                            image(paths.icons_path.join(icon)).width(22).height(22),
                             horizontal_space(6),
                             text(&script.name)
                         ]
@@ -584,7 +584,7 @@ fn produce_execution_list_content<'a>(
 
                 row_data.push(text(format!("  {}", status)).style(style).into());
                 if let Some(icon) = &script.icon {
-                    row_data.push(image(path_caches.icons_path.join(&icon)).width(22).into());
+                    row_data.push(image(path_caches.icons_path.join(&icon)).width(22).height(22).into());
                     row_data.push(horizontal_space(4).into());
                 }
                 row_data.push(text(script_name).style(style).into());
