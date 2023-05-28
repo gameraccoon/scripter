@@ -2,29 +2,39 @@
 use std::os::windows::process::CommandExt;
 
 use iced::alignment::{self, Alignment};
-use iced::executor;
 use iced::theme::{self, Theme};
 use iced::time;
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{button, column, container, row, scrollable, text, text_input, Column};
+use iced::{executor, ContentFit};
 use iced::{Application, Command, Element, Length, Subscription};
 use iced_lazy::responsive;
+use iced_native::command::Action;
+use iced_native::image::Handle;
 use iced_native::widget::{checkbox, horizontal_space, image, vertical_space};
+use iced_native::window::Action::RequestUserAttention;
+use iced_native::window::UserAttention;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
-use iced_native::command::Action;
-use iced_native::window::Action::RequestUserAttention;
-use iced_native::window::UserAttention;
 
 use crate::config;
 use crate::execution;
 use crate::style;
 
+struct IconCaches {
+    idle: Handle,
+    in_progress: Handle,
+    succeeded: Handle,
+    failed: Handle,
+    skipped: Handle,
+}
+
 // caches for visual elements content
 pub struct VisualCaches {
     autorerun_count: String,
     recent_logs: Vec<String>,
+    icons: IconCaches,
 }
 
 pub struct MainWindow {
@@ -103,6 +113,15 @@ impl Application for MainWindow {
                 visual_caches: VisualCaches {
                     autorerun_count: String::new(),
                     recent_logs: Vec::new(),
+                    icons: IconCaches {
+                        idle: Handle::from_memory(include_bytes!("../res/icons/idle.png")),
+                        in_progress: Handle::from_memory(include_bytes!(
+                            "../res/icons/in-progress.png"
+                        )),
+                        succeeded: Handle::from_memory(include_bytes!("../res/icons/positive.png")),
+                        failed: Handle::from_memory(include_bytes!("../res/icons/negative.png")),
+                        skipped: Handle::from_memory(include_bytes!("../res/icons/skip.png")),
+                    },
                 },
             },
             Command::none(),
@@ -202,7 +221,9 @@ impl Application for MainWindow {
 
                         if execution::has_finished_execution(&self.execution_data) {
                             if self.app_config.window_status_reactions {
-                                return Command::single(Action::Window(RequestUserAttention(Some(UserAttention::Informational))));
+                                return Command::single(Action::Window(RequestUserAttention(
+                                    Some(UserAttention::Informational),
+                                )));
                             }
                         }
                     }
@@ -477,6 +498,7 @@ fn produce_execution_list_content<'a>(
     path_caches: &config::PathCaches,
     theme: &Theme,
     custom_title: &Option<String>,
+    icons: &IconCaches,
 ) -> Column<'a, Message> {
     let main_button = |label, message| {
         button(
@@ -546,9 +568,9 @@ fn produce_execution_list_content<'a>(
 
                 if execution::has_script_finished(script_status) {
                     status = match script_status.result {
-                        execution::ScriptResultStatus::Failed => "[FAILED] ",
-                        execution::ScriptResultStatus::Success => "[DONE] ",
-                        execution::ScriptResultStatus::Skipped => "[SKIPPED] ",
+                        execution::ScriptResultStatus::Failed => image(icons.failed.clone()),
+                        execution::ScriptResultStatus::Success => image(icons.succeeded.clone()),
+                        execution::ScriptResultStatus::Skipped => image(icons.skipped.clone()),
                     };
                     let time_taken_sec = script_status
                         .finish_time
@@ -566,7 +588,7 @@ fn produce_execution_list_content<'a>(
                     let time_taken_sec = Instant::now()
                         .duration_since(script_status.start_time.unwrap_or(Instant::now()))
                         .as_secs();
-                    status = "[...] ";
+                    status = image(icons.in_progress.clone());
 
                     progress = text(format!(
                         "({:02}:{:02}){}",
@@ -576,15 +598,27 @@ fn produce_execution_list_content<'a>(
                     ))
                     .style(style);
                 } else {
-                    status = "";
+                    status = image(icons.idle.clone());
                     progress = text("").style(style);
                 };
 
                 let mut row_data: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
 
-                row_data.push(text(format!("  {}", status)).style(style).into());
+                row_data.push(
+                    status
+                        .width(22)
+                        .height(22)
+                        .content_fit(ContentFit::None)
+                        .into(),
+                );
+                row_data.push(horizontal_space(4).into());
                 if let Some(icon) = &script.icon {
-                    row_data.push(image(path_caches.icons_path.join(&icon)).width(22).height(22).into());
+                    row_data.push(
+                        image(path_caches.icons_path.join(&icon))
+                            .width(22)
+                            .height(22)
+                            .into(),
+                    );
                     row_data.push(horizontal_space(4).into());
                 }
                 row_data.push(text(script_name).style(style).into());
@@ -715,7 +749,9 @@ fn produce_log_output_content<'a>(
                         execution::OutputType::StdOut => theme.extended_palette().primary.weak.text,
                         execution::OutputType::StdErr => theme.extended_palette().danger.weak.color,
                         execution::OutputType::Error => theme.extended_palette().danger.weak.color,
-                        execution::OutputType::Event => theme.extended_palette().primary.strong.color,
+                        execution::OutputType::Event => {
+                            theme.extended_palette().primary.strong.color
+                        }
                     })
                     .into()
             }));
@@ -809,9 +845,13 @@ fn view_content<'a>(
         PaneVariant::ScriptList => {
             produce_script_list_content(execution_data, script_definitions, paths)
         }
-        PaneVariant::ExecutionList => {
-            produce_execution_list_content(execution_data, paths, theme, custom_title)
-        }
+        PaneVariant::ExecutionList => produce_execution_list_content(
+            execution_data,
+            paths,
+            theme,
+            custom_title,
+            &visual_caches.icons,
+        ),
         PaneVariant::LogOutput => produce_log_output_content(execution_data, theme),
         PaneVariant::ScriptEdit => produce_script_edit_content(execution_data, visual_caches),
     };
