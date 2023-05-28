@@ -5,7 +5,7 @@ use iced::alignment::{self, Alignment};
 use iced::theme::{self, Theme};
 use iced::time;
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
-use iced::widget::{button, column, container, row, scrollable, text, text_input, Column};
+use iced::widget::{button, column, container, row, scrollable, text, text_input, tooltip, Column};
 use iced::{executor, ContentFit};
 use iced::{Application, Command, Element, Length, Subscription};
 use iced_lazy::responsive;
@@ -559,6 +559,7 @@ fn produce_execution_list_content<'a>(
                 };
 
                 let status;
+                let status_tooltip;
                 let progress;
                 let style = if execution::has_script_failed(script_status) {
                     theme.extended_palette().danger.weak.color
@@ -571,6 +572,11 @@ fn produce_execution_list_content<'a>(
                         execution::ScriptResultStatus::Failed => image(icons.failed.clone()),
                         execution::ScriptResultStatus::Success => image(icons.succeeded.clone()),
                         execution::ScriptResultStatus::Skipped => image(icons.skipped.clone()),
+                    };
+                    status_tooltip = match script_status.result {
+                        execution::ScriptResultStatus::Failed => "Failed",
+                        execution::ScriptResultStatus::Success => "Success",
+                        execution::ScriptResultStatus::Skipped => "Skipped",
                     };
                     let time_taken_sec = script_status
                         .finish_time
@@ -589,6 +595,7 @@ fn produce_execution_list_content<'a>(
                         .duration_since(script_status.start_time.unwrap_or(Instant::now()))
                         .as_secs();
                     status = image(icons.in_progress.clone());
+                    status_tooltip = "In progress";
 
                     progress = text(format!(
                         "({:02}:{:02}){}",
@@ -599,18 +606,23 @@ fn produce_execution_list_content<'a>(
                     .style(style);
                 } else {
                     status = image(icons.idle.clone());
+                    status_tooltip = "Idle";
                     progress = text("").style(style);
                 };
 
                 let mut row_data: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
 
-                row_data.push(
-                    status
-                        .width(22)
-                        .height(22)
-                        .content_fit(ContentFit::None)
-                        .into(),
-                );
+                if execution_data.has_started {
+                    row_data.push(
+                        tooltip(
+                            status.width(22).height(22).content_fit(ContentFit::None),
+                            status_tooltip,
+                            tooltip::Position::Right,
+                        )
+                            .style(theme::Container::Box)
+                            .into(),
+                    );
+                }
                 row_data.push(horizontal_space(4).into());
                 if let Some(icon) = &script.icon {
                     row_data.push(
