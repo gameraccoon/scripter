@@ -61,7 +61,7 @@ Now you can schedule the exact combination of scripts to run in just a few click
 - `--logs-path <path>` - path to the folder where logs will be stored (requires write access)
 - `--env <key> <value>` - specify an environment variable that will be set to every sctipt (can have multiple `--env` arguments)
 - `--title <title>` - specify an additional line of title that goes under the path in Execution tab
-- `--icons-path <path>` - path to the folder that contains the app icons (if not specified, icon paths will be relative to the crafter folder)
+- `--icons-path <path>` - path to the folder that contains the app icons (if not specified, icon paths will be relative to the scripter folder)
 
 ### Available configurations
 
