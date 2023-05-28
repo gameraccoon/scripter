@@ -63,6 +63,7 @@ pub enum Message {
     OpenScriptEditing(isize),
     RemoveScript(isize),
     MoveScriptUp(usize),
+    MoveScriptDown(usize),
     EditScriptName(String, isize),
     EditArguments(String, isize),
     EditAutorerunCount(String, isize),
@@ -248,6 +249,16 @@ impl Application for MainWindow {
                     &mut self.execution_data,
                     &mut self.visual_caches,
                     script_idx as isize - 1,
+                );
+            }
+            Message::MoveScriptDown(script_idx) => {
+                self.execution_data
+                    .scripts_to_run
+                    .swap(script_idx, script_idx + 1);
+                set_selected_script(
+                    &mut self.execution_data,
+                    &mut self.visual_caches,
+                    script_idx as isize + 1,
                 );
             }
             Message::EditScriptName(new_name, script_idx) => {
@@ -619,8 +630,8 @@ fn produce_execution_list_content<'a>(
                             status_tooltip,
                             tooltip::Position::Right,
                         )
-                            .style(theme::Container::Box)
-                            .into(),
+                        .style(theme::Container::Box)
+                        .into(),
                     );
                 }
                 row_data.push(horizontal_space(4).into());
@@ -640,6 +651,7 @@ fn produce_execution_list_content<'a>(
                 let is_selected = execution_data.currently_selected_script == i as isize;
 
                 if is_enabled && is_selected {
+                    row_data.push(horizontal_space(Length::Fill).into());
                     if i > 0 {
                         row_data.push(
                             small_button("^", Message::MoveScriptUp(i))
@@ -647,7 +659,16 @@ fn produce_execution_list_content<'a>(
                                 .into(),
                         );
                     }
-                    row_data.push(horizontal_space(Length::Fill).into());
+                    if i < execution_data.scripts_to_run.len() - 1 {
+                        row_data.push(
+                            small_button("v", Message::MoveScriptDown(i))
+                                .style(theme::Button::Primary)
+                                .into(),
+                        );
+                    } else {
+                        row_data.push(horizontal_space(16).into());
+                    }
+                    row_data.push(horizontal_space(8).into());
                     row_data.push(
                         small_button("del", Message::RemoveScript(i as isize))
                             .style(theme::Button::Destructive)
