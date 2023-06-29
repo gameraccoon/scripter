@@ -52,6 +52,12 @@ impl<T, const SIZE: usize> RingBuffer<T, SIZE> {
     pub fn is_empty(&self) -> bool {
         self.empty
     }
+
+    pub fn set_empty(&mut self) {
+        self.empty = true;
+        self.head = 0;
+        self.tail = 0;
+    }
 }
 
 #[cfg(test)]

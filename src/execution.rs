@@ -353,6 +353,7 @@ pub fn reset_execution_progress(execution_data: &mut ScriptExecutionData) {
     execution_data.has_failed_scripts = false;
     execution_data.currently_outputting_script = -1;
     execution_data.is_termination_requested = Arc::new(AtomicBool::new(false));
+    execution_data.recent_logs.lock().unwrap().set_empty();
 }
 
 fn send_script_execution_status(
