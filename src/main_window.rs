@@ -448,11 +448,13 @@ fn produce_script_list_content<'a>(
         ))];
     }
 
+    let has_started_execution = execution::has_started_execution(&execution_data);
+
     let data: Element<_> = column(
         script_definitions
             .iter()
             .map(|script| {
-                if !execution::has_started_execution(&execution_data) {
+                if !has_started_execution {
                     row![button(if let Some(icon) = &script.icon {
                         row![
                             horizontal_space(6),
@@ -464,37 +466,40 @@ fn produce_script_list_content<'a>(
                     } else {
                         row![
                             horizontal_space(6),
-                            text(&script.name),
+                            text(&script.name).height(22),
                             horizontal_space(Length::Fill),
                         ]
-                    },)
+                    })
                     .padding(4)
                     .style(theme::Button::Secondary)
                     .on_press(Message::AddScriptToRun(script.clone()))]
                 } else {
                     if let Some(icon) = &script.icon {
                         row![
+                            horizontal_space(10),
                             image(paths.icons_path.join(icon)).width(22).height(22),
                             horizontal_space(6),
                             text(&script.name)
                         ]
                     } else {
-                        row![text(&script.name)]
+                        row![horizontal_space(10), text(&script.name).height(22)]
                     }
                 }
                 .into()
             })
             .collect(),
     )
-    .spacing(10)
+    .spacing(if has_started_execution { 8 } else { 0 })
     .width(Length::Fill)
     .into();
 
-    return column![scrollable(data)]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .spacing(10)
-        .align_items(Alignment::Start);
+    return column![
+        vertical_space(if has_started_execution { 4 } else { 0 }),
+        scrollable(data)
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .align_items(Alignment::Start);
 }
 
 fn produce_execution_list_content<'a>(
