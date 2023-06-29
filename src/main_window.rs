@@ -439,16 +439,6 @@ fn produce_script_list_content<'a>(
     script_definitions: &Vec<config::ScriptDefinition>,
     paths: &config::PathCaches,
 ) -> Column<'a, Message> {
-    let button = |label, message| {
-        button(
-            text(label)
-                .vertical_alignment(alignment::Vertical::Center)
-                .size(16),
-        )
-        .padding(4)
-        .on_press(message)
-    };
-
     if script_definitions.is_empty() {
         let config_path = paths.config_path.to_str().unwrap_or_default();
 
@@ -463,21 +453,24 @@ fn produce_script_list_content<'a>(
             .iter()
             .map(|script| {
                 if !execution::has_started_execution(&execution_data) {
-                    if let Some(icon) = &script.icon {
+                    row![button(if let Some(icon) = &script.icon {
                         row![
-                            button("Add", Message::AddScriptToRun(script.clone())),
                             horizontal_space(6),
                             image(paths.icons_path.join(icon)).width(22).height(22),
                             horizontal_space(6),
                             text(&script.name),
+                            horizontal_space(Length::Fill),
                         ]
                     } else {
                         row![
-                            button("Add", Message::AddScriptToRun(script.clone())),
                             horizontal_space(6),
                             text(&script.name),
+                            horizontal_space(Length::Fill),
                         ]
-                    }
+                    },)
+                    .padding(4)
+                    .style(theme::Button::Secondary)
+                    .on_press(Message::AddScriptToRun(script.clone()))]
                 } else {
                     if let Some(icon) = &script.icon {
                         row![
