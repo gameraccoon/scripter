@@ -772,19 +772,21 @@ fn produce_log_output_content<'a>(
     }
 
     let mut data_lines: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
-    if let Ok(guard) = execution_data.recent_logs.lock() {
-        if !guard.is_empty() {
-            data_lines.extend(guard.iter().map(|element| {
-                text(&element.text)
-                    .style(match element.output_type {
-                        execution::OutputType::StdOut => theme.extended_palette().primary.weak.text,
-                        execution::OutputType::StdErr => theme.extended_palette().danger.weak.color,
-                        execution::OutputType::Error => theme.extended_palette().danger.weak.color,
-                        execution::OutputType::Event => {
-                            theme.extended_palette().primary.strong.color
-                        }
-                    })
-                    .into()
+    if let Ok(logs) = execution_data.recent_logs.lock() {
+        if !logs.is_empty() {
+            data_lines.extend(logs.iter().map(|element| {
+                text(format!(
+                    "[{}] {}",
+                    element.timestamp.unwrap().format("%H:%M:%S"),
+                    element.text
+                ))
+                .style(match element.output_type {
+                    execution::OutputType::StdOut => theme.extended_palette().primary.weak.text,
+                    execution::OutputType::StdErr => theme.extended_palette().danger.weak.color,
+                    execution::OutputType::Error => theme.extended_palette().danger.weak.color,
+                    execution::OutputType::Event => theme.extended_palette().primary.strong.color,
+                })
+                .into()
             }));
         }
     }
