@@ -587,18 +587,22 @@ fn produce_execution_list_content<'a>(
                         execution::ScriptResultStatus::Success => "Success",
                         execution::ScriptResultStatus::Skipped => "Skipped",
                     };
-                    let time_taken_sec = script_status
-                        .finish_time
-                        .unwrap_or(Instant::now())
-                        .duration_since(script_status.start_time.unwrap_or(Instant::now()))
-                        .as_secs();
-                    progress = text(format!(
-                        " ({:02}:{:02}){}",
-                        time_taken_sec / 60,
-                        time_taken_sec % 60,
-                        repeat_text,
-                    ))
-                    .style(style);
+                    if script_status.result != execution::ScriptResultStatus::Skipped {
+                        let time_taken_sec = script_status
+                            .finish_time
+                            .unwrap_or(Instant::now())
+                            .duration_since(script_status.start_time.unwrap_or(Instant::now()))
+                            .as_secs();
+                        progress = text(format!(
+                            " ({:02}:{:02}){}",
+                            time_taken_sec / 60,
+                            time_taken_sec % 60,
+                            repeat_text,
+                        ))
+                        .style(style);
+                    } else {
+                        progress = text("").style(style);
+                    }
                 } else if execution::has_script_started(script_status) {
                     let time_taken_sec = Instant::now()
                         .duration_since(script_status.start_time.unwrap_or(Instant::now()))
