@@ -595,7 +595,7 @@ fn produce_execution_list_content<'a>(
                         .duration_since(script_status.start_time.unwrap_or(Instant::now()))
                         .as_secs();
                     progress = text(format!(
-                        "({:02}:{:02}){}",
+                        " ({:02}:{:02}){}",
                         time_taken_sec / 60,
                         time_taken_sec % 60,
                         repeat_text,
@@ -609,7 +609,7 @@ fn produce_execution_list_content<'a>(
                     status_tooltip = "In progress";
 
                     progress = text(format!(
-                        "({:02}:{:02}){}",
+                        " ({:02}:{:02}){}",
                         time_taken_sec / 60,
                         time_taken_sec % 60,
                         repeat_text,
