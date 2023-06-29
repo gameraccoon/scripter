@@ -129,4 +129,17 @@ mod tests {
             assert_eq!(result, expected);
         }
     }
+
+    #[test]
+    fn test_ring_buffer_set_empty() {
+        let mut ring_buffer = RingBuffer::<i32, 3>::new([0; 3]);
+        ring_buffer.push(1);
+        ring_buffer.push(2);
+        ring_buffer.push(3);
+
+        ring_buffer.set_empty();
+
+        assert!(ring_buffer.is_empty());
+        assert_eq!(ring_buffer.iter().count(), 0);
+    }
 }
