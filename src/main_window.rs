@@ -368,6 +368,7 @@ impl Application for MainWindow {
                     &self.app_config.paths,
                     &self.visual_caches,
                     &self.app_config.custom_title,
+                    &self.app_config.config_read_error,
                 )
             }))
             .title_bar(title_bar)
@@ -438,14 +439,19 @@ fn produce_script_list_content<'a>(
     execution_data: &execution::ScriptExecutionData,
     script_definitions: &Vec<config::ScriptDefinition>,
     paths: &config::PathCaches,
+    config_read_error: &Option<String>,
 ) -> Column<'a, Message> {
+    if let Some(error) = config_read_error {
+        return column![text(format!("Error: {}", error))];
+    }
+
     if script_definitions.is_empty() {
         let config_path = paths.config_path.to_str().unwrap_or_default();
 
         return column![text(format!(
-            "No scripts found in config file \"{}\", or the config file is invalid.",
+            "No scripts found in config file \"{}\".\nAdd scripts to the config file and restart the application.",
             &config_path
-        ))];
+        )), button("Open config file").on_press(Message::OpenFile(paths.config_path.clone()))];
     }
 
     let has_started_execution = execution::has_started_execution(&execution_data);
@@ -877,11 +883,15 @@ fn view_content<'a>(
     paths: &config::PathCaches,
     visual_caches: &VisualCaches,
     custom_title: &Option<String>,
+    config_read_error: &Option<String>,
 ) -> Element<'a, Message> {
     let content = match variant {
-        PaneVariant::ScriptList => {
-            produce_script_list_content(execution_data, script_definitions, paths)
-        }
+        PaneVariant::ScriptList => produce_script_list_content(
+            execution_data,
+            script_definitions,
+            paths,
+            config_read_error,
+        ),
         PaneVariant::ExecutionList => produce_execution_list_content(
             execution_data,
             paths,

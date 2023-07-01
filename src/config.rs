@@ -1,3 +1,5 @@
+use crate::config_updaters::{update_config_to_the_latest_version, LATEST_CONFIG_VERSION};
+use crate::json_config_updater::UpdateResult;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -9,8 +11,8 @@ thread_local!(static GLOBAL_CONFIG: AppConfig = read_config());
 #[derive(Default, Clone, Deserialize, Serialize)]
 pub struct AppConfig {
     pub script_definitions: Vec<ScriptDefinition>,
+    pub version: String,
     pub always_on_top: bool,
-    #[serde(default)]
     pub window_status_reactions: bool,
     pub icon_path_relative_to_scripter: bool,
     pub custom_theme: Option<CustomTheme>,
@@ -20,6 +22,8 @@ pub struct AppConfig {
     pub env_vars: Vec<(OsString, OsString)>,
     #[serde(skip)]
     pub custom_title: Option<String>,
+    #[serde(skip)]
+    pub config_read_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -70,7 +74,7 @@ pub fn is_always_on_top() -> bool {
 }
 
 pub fn get_script_log_directory(logs_path: &PathBuf, script_idx: isize) -> PathBuf {
-    logs_path.join(format!("script_{}", script_idx as isize))
+    logs_path.join(format!("script_{}", script_idx))
 }
 
 pub fn get_script_output_path(
@@ -89,8 +93,9 @@ pub fn get_script_output_path(
 fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppConfig {
     AppConfig {
         script_definitions: Vec::new(),
-        always_on_top: true,
-        window_status_reactions: false,
+        version: LATEST_CONFIG_VERSION.to_string(),
+        always_on_top: false,
+        window_status_reactions: true,
         icon_path_relative_to_scripter: true,
         paths: PathCaches {
             logs_path: if let Some(custom_logs_path) = app_arguments.custom_logs_path.clone() {
@@ -114,6 +119,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
         custom_theme: None,
         env_vars: app_arguments.env_vars,
         custom_title: app_arguments.custom_title,
+        config_read_error: None,
     }
 }
 
@@ -129,32 +135,109 @@ fn get_config_path(app_arguments: &AppArguments) -> PathBuf {
     }
 }
 
+fn default_config_with_error(config: &AppConfig, error: String) -> AppConfig {
+    AppConfig {
+        config_read_error: Some(error),
+        ..config.clone()
+    }
+}
+
 fn read_config() -> AppConfig {
     let app_arguments = get_app_arguments();
 
     let config_path = get_config_path(&app_arguments);
 
+    // create default config with all the non-serializable fields set
     let default_config = get_default_config(app_arguments.clone(), config_path);
+    // if config file doesn't exist, create it
     if !default_config.paths.config_path.exists() {
         let data = serde_json::to_string_pretty(&default_config);
         if data.is_err() {
-            return default_config;
+            return default_config_with_error(
+                &default_config,
+                "Failed to serialize default config.\nNotify the developer about this error"
+                    .to_string(),
+            );
         }
         let data = data.unwrap();
         let result = std::fs::write(&default_config.paths.config_path, data);
         if result.is_err() {
-            return default_config;
+            return default_config_with_error(
+                &default_config,
+                format!(
+                    "Failed to write default config to '{}'.\nMake sure you have write rights to that folder",
+                    default_config.paths.config_path.to_string_lossy()
+                ),
+            );
         }
     }
 
+    // read the config file from the disk
     let data = std::fs::read_to_string(&default_config.paths.config_path);
     if data.is_err() {
-        return default_config;
+        return default_config_with_error(
+            &default_config,
+            format!(
+                "Config file '{}' can't be read.\nMake sure you have read rights to that file",
+                default_config.paths.config_path.to_string_lossy()
+            ),
+        );
     }
     let data = data.unwrap();
-    let config = serde_json::from_str(&data);
+    let config_json = serde_json::from_str(&data);
+    if config_json.is_err() {
+        return default_config_with_error(
+            &default_config,
+            format!(
+                "Config file '{}' has incorrect json format:\n{}",
+                default_config.paths.config_path.to_string_lossy(),
+                config_json.err().unwrap()
+            ),
+        );
+    }
+    let mut config_json = config_json.unwrap();
+    let update_result = update_config_to_the_latest_version(&mut config_json);
+    let config = serde_json::from_value(config_json);
     if config.is_err() {
-        return default_config;
+        return default_config_with_error(
+            &default_config,
+            format!(
+                "Config file '{}' can't be read.\nMake sure your manual edits were correct.\nError: {}",
+                default_config.paths.config_path.to_string_lossy(),
+                config.err().unwrap()
+            ),
+        );
+    }
+
+    if update_result == UpdateResult::Updated {
+        let data = serde_json::to_string_pretty(&config.as_ref().unwrap());
+        if data.is_err() {
+            return default_config_with_error(
+                &default_config,
+                "Failed to serialize the updated config.\nNotify the developer about this error"
+                    .to_string(),
+            );
+        }
+        let data = data.unwrap();
+        let result = std::fs::write(&default_config.paths.config_path, data);
+        if result.is_err() {
+            return default_config_with_error(
+                &default_config,
+                format!(
+                    "Failed to write the updated config to '{}'.\nMake sure you have write rights to that folder and file",
+                    default_config.paths.config_path.to_string_lossy()
+                ),
+            );
+        }
+    } else if let UpdateResult::Error(error) = update_result {
+        return default_config_with_error(
+            &default_config,
+            format!(
+                "Failed to update config file '{}'.\nError: {}",
+                default_config.paths.config_path.to_string_lossy(),
+                error
+            ),
+        );
     }
 
     let mut config: AppConfig = config.unwrap();
