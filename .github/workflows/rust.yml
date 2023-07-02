@@ -27,7 +27,7 @@ jobs:
     - name: Move the executable to data folder
       run: mv target/release/scripter data/linux/scripter
     - name: Copy common data to data folder
-      run: cp data/common/* data/linux/
+      run: cp -r data/common/* data/linux/
     - name: Upload linux artifacts
       uses: actions/upload-artifact@v3
       with:
@@ -48,7 +48,7 @@ jobs:
     - name: Move the executable to data folder
       run: mv target/release/scripter.exe data/windows/scripter.exe
     - name: Copy common data to data folder
-      run: cp data/common/* data/windows/
+      run: cp -r data/common/* data/windows/
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v3
       with:
