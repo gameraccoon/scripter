@@ -18,7 +18,7 @@ use crate::ring_buffer::RingBuffer;
 pub struct ScheduledScript {
     pub name: String,
     pub icon: Option<String>,
-    pub path: Box<Path>,
+    pub path: String,
     pub arguments_line: String,
     path_relative_to_scripter: bool,
     pub autorerun_count: usize,
@@ -197,7 +197,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                         } else {
                             "".to_string()
                         },
-                        script.path.to_str().unwrap_or("[error]"),
+                        script.path,
                         script.arguments_line
                     ),
                     output_type: OutputType::Event,
@@ -221,6 +221,8 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     (std::process::Stdio::null(), std::process::Stdio::null())
                 };
 
+                let command_line = get_script_with_arguments(&script, &exe_folder_path);
+
                 #[cfg(target_os = "windows")]
                 let mut command = std::process::Command::new("cmd");
 
@@ -239,7 +241,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                 }
 
                 command
-                    .arg(get_script_with_arguments(&script, &exe_folder_path))
+                    .arg(command_line)
                     .envs(env_vars.clone())
                     .stdin(std::process::Stdio::null())
                     .stdout(stdout_type)
@@ -376,13 +378,15 @@ fn get_script_with_arguments(script: &ScheduledScript, exe_folder_path: &Path) -
             .unwrap_or_default()
             .to_string()
     } else {
-        script.path.to_str().unwrap_or_default().to_string()
+        script.path.clone()
     };
 
+    let escaped_path = escape_path(path);
+
     if script.arguments_line.is_empty() {
-        path
+        escaped_path
     } else {
-        format!("{} {}", path, script.arguments_line)
+        format!("{} {}", escaped_path, script.arguments_line)
     }
 }
 
@@ -392,6 +396,38 @@ fn get_default_script_execution_status() -> ScriptExecutionStatus {
         finish_time: None,
         result: ScriptResultStatus::Skipped,
         retry_count: 0,
+    }
+}
+
+fn escape_path(path: String) -> String {
+    #[cfg(not(target_os = "windows"))]
+    return path;
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut escaped_path = String::with_capacity(path.len() + 9);
+
+        for c in path.chars() {
+            if c == ' '
+                || c == '&'
+                || c == '('
+                || c == ')'
+                || c == ','
+                || c == ';'
+                || c == '='
+                || c == '^'
+                || c == '['
+                || c == ']'
+            {
+                escaped_path.push('^');
+            }
+            if c == '/' {
+                escaped_path.push('\\');
+            } else {
+                escaped_path.push(c);
+            }
+        }
+        return escaped_path;
     }
 }
 

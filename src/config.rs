@@ -30,7 +30,7 @@ pub struct AppConfig {
 pub struct ScriptDefinition {
     pub name: String,
     pub icon: Option<String>,
-    pub command: Box<Path>,
+    pub command: String,
     pub arguments: String,
     pub path_relative_to_scripter: bool,
     pub autorerun_count: usize,
@@ -310,11 +310,15 @@ fn get_app_arguments() -> AppArguments {
 }
 
 fn get_exe_folder_path() -> PathBuf {
-    return std::env::current_exe()
+    std::env::current_exe()
         .unwrap_or_default()
         .parent()
         .unwrap_or(&PathBuf::from(""))
-        .to_path_buf();
+        .to_str()
+        .unwrap_or_default()
+        .to_string()
+        .trim_start_matches("\\\\?\\")
+        .into()
 }
 
 fn get_default_logs_path() -> PathBuf {
