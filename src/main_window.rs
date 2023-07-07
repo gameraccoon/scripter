@@ -3,16 +3,16 @@ use std::os::windows::process::CommandExt;
 
 use iced::alignment::{self, Alignment};
 use iced::theme::{self, Theme};
-use iced::time;
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{button, column, container, row, scrollable, text, text_input, tooltip, Column};
 use iced::{executor, ContentFit};
+use iced::{time, Size};
 use iced::{Application, Command, Element, Length, Subscription};
 use iced_lazy::responsive;
 use iced_native::command::Action;
 use iced_native::image::Handle;
 use iced_native::widget::{checkbox, horizontal_space, image, vertical_space};
-use iced_native::window::Action::RequestUserAttention;
+use iced_native::window::Action::{RequestUserAttention, Resize};
 use iced_native::window::UserAttention;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -45,6 +45,7 @@ pub struct MainWindow {
     app_config: config::AppConfig,
     theme: Theme,
     visual_caches: VisualCaches,
+    full_window_size: Size,
 }
 
 #[derive(Debug, Clone)]
@@ -52,7 +53,7 @@ pub enum Message {
     Clicked(pane_grid::Pane),
     Dragged(pane_grid::DragEvent),
     Resized(pane_grid::ResizeEvent),
-    Maximize(pane_grid::Pane),
+    Maximize(pane_grid::Pane, Size),
     Restore,
     AddScriptToRun(config::ScriptDefinition),
     RunScripts(),
@@ -124,6 +125,7 @@ impl Application for MainWindow {
                         skipped: Handle::from_memory(include_bytes!("../res/icons/skip.png")),
                     },
                 },
+                full_window_size: Size::new(0.0, 0.0),
             },
             Command::none(),
         )
@@ -145,12 +147,28 @@ impl Application for MainWindow {
                 self.panes.swap(&pane, &target);
             }
             Message::Dragged(_) => {}
-            Message::Maximize(pane) => {
+            Message::Maximize(pane, window_size) => {
                 self.focus = Some(pane);
-                self.panes.maximize(&pane)
+                self.panes.maximize(&pane);
+                self.full_window_size = window_size.clone();
+                let size = self
+                    .panes
+                    .layout()
+                    .pane_regions(1.0, Size::new(window_size.width, window_size.height))
+                    .get(&pane)
+                    .unwrap()
+                    .clone();
+                return Command::single(Action::Window(Resize {
+                    height: size.height as u32,
+                    width: size.width as u32,
+                }));
             }
             Message::Restore => {
                 self.panes.restore();
+                return Command::single(Action::Window(Resize {
+                    height: self.full_window_size.height as u32,
+                    width: self.full_window_size.width as u32,
+                }));
             }
             Message::AddScriptToRun(script) => {
                 if !execution::has_started_execution(&self.execution_data) {
@@ -337,53 +355,63 @@ impl Application for MainWindow {
         let focus = self.focus;
         let total_panes = self.panes.len();
 
-        let pane_grid = PaneGrid::new(&self.panes, |id, _pane, is_maximized| {
-            let is_focused = focus == Some(id);
+        let pane_grid = responsive(move |size| {
+            PaneGrid::new(&self.panes, |id, _pane, is_maximized| {
+                let is_focused = focus == Some(id);
 
-            let variant = &self.panes.panes[&id].variant;
+                let variant = &self.panes.panes[&id].variant;
 
-            let title = row![get_pane_name_from_variant(variant)].spacing(5);
+                let title = row![get_pane_name_from_variant(variant)].spacing(5);
 
-            let title_bar = pane_grid::TitleBar::new(title)
-                .controls(view_controls(id, total_panes, is_maximized, &self.panes))
-                .padding(10)
-                .style(if is_focused {
-                    if self.execution_data.has_failed_scripts {
-                        style::title_bar_focused_failed
-                    } else if execution::has_finished_execution(&self.execution_data) {
-                        style::title_bar_focused_completed
+                let title_bar = pane_grid::TitleBar::new(title)
+                    .controls(view_controls(
+                        id,
+                        total_panes,
+                        is_maximized,
+                        &self.panes,
+                        size,
+                        &self.full_window_size,
+                    ))
+                    .padding(10)
+                    .style(if is_focused {
+                        if self.execution_data.has_failed_scripts {
+                            style::title_bar_focused_failed
+                        } else if execution::has_finished_execution(&self.execution_data) {
+                            style::title_bar_focused_completed
+                        } else {
+                            style::title_bar_focused
+                        }
                     } else {
-                        style::title_bar_focused
-                    }
-                } else {
-                    style::title_bar_active
-                });
+                        style::title_bar_active
+                    });
 
-            pane_grid::Content::new(responsive(move |_size| {
-                view_content(
-                    &self.execution_data,
-                    variant,
-                    &self.scripts,
-                    &self.theme,
-                    &self.app_config.paths,
-                    &self.visual_caches,
-                    &self.app_config.custom_title,
-                    &self.app_config.config_read_error,
-                )
-            }))
-            .title_bar(title_bar)
-            .style(if is_focused {
-                style::pane_focused
-            } else {
-                style::pane_active
+                pane_grid::Content::new(responsive(move |_size| {
+                    view_content(
+                        &self.execution_data,
+                        variant,
+                        &self.scripts,
+                        &self.theme,
+                        &self.app_config.paths,
+                        &self.visual_caches,
+                        &self.app_config.custom_title,
+                        &self.app_config.config_read_error,
+                    )
+                }))
+                .title_bar(title_bar)
+                .style(if is_focused {
+                    style::pane_focused
+                } else {
+                    style::pane_active
+                })
             })
-        })
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .spacing(1)
-        .on_click(Message::Clicked)
-        .on_drag(Message::Dragged)
-        .on_resize(10, Message::Resized);
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .spacing(1)
+            .on_click(Message::Clicked)
+            .on_drag(Message::Dragged)
+            .on_resize(10, Message::Resized)
+            .into()
+        });
 
         container(pane_grid)
             .width(Length::Fill)
@@ -916,20 +944,27 @@ fn view_controls<'a>(
     total_panes: usize,
     is_maximized: bool,
     pane_grid: &pane_grid::State<AppPane>,
+    size: Size,
+    saved_window_size: &Size,
 ) -> Element<'a, Message> {
     let mut row = row![].spacing(5);
 
     if total_panes > 1 {
         if is_maximized {
-            row = add_pane_switch_button(pane_grid, &pane, true, row);
-            row = add_pane_switch_button(pane_grid, &pane, false, row);
+            row = add_pane_switch_button(pane_grid, &pane, true, row, saved_window_size.clone());
+            row = add_pane_switch_button(pane_grid, &pane, false, row, saved_window_size.clone());
         }
-
         let toggle = {
             let (content, message) = if is_maximized {
-                ("Restore", Message::Restore)
+                ("All panes", Message::Restore)
             } else {
-                ("Maximize", Message::Maximize(pane))
+                // adjust for window decorations
+                let window_size = Size {
+                    width: size.width + 3.0,
+                    height: size.height + 3.0,
+                };
+
+                ("Focus", Message::Maximize(pane, window_size))
             };
             button(text(content).size(14))
                 .style(theme::Button::Secondary)
@@ -965,6 +1000,7 @@ fn add_pane_switch_button<'a>(
     pane: &pane_grid::Pane,
     is_left: bool,
     row: iced::widget::Row<'a, Message, iced::Renderer>,
+    size: Size,
 ) -> iced::widget::Row<'a, Message, iced::Renderer> {
     if let Some(neighbor) = pane_grid.adjacent(
         &pane,
@@ -987,7 +1023,7 @@ fn add_pane_switch_button<'a>(
             )
             .style(theme::Button::Secondary)
             .padding(3)
-            .on_press(Message::Maximize(neighbor)),
+            .on_press(Message::Maximize(neighbor, size)),
         )
     } else {
         row
