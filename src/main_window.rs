@@ -54,6 +54,7 @@ pub enum Message {
     Dragged(pane_grid::DragEvent),
     Resized(pane_grid::ResizeEvent),
     Maximize(pane_grid::Pane, Size),
+    SwitchMaximized(PaneVariant),
     Restore,
     AddScriptToRun(config::ScriptDefinition),
     RunScripts(),
@@ -162,6 +163,16 @@ impl Application for MainWindow {
                     height: size.height as u32,
                     width: size.width as u32,
                 }));
+            }
+            Message::SwitchMaximized(pane_variant) => {
+                let pane = self.panes.iter().find(|pane| {
+                    pane.1.variant == pane_variant
+                });
+                if let Some((pane, _app_pane)) = pane {
+                    let pane = pane.clone();
+                    self.panes.maximize(&pane);
+                    self.focus = Some(pane);
+                }
             }
             Message::Restore => {
                 self.panes.restore();
@@ -366,11 +377,10 @@ impl Application for MainWindow {
                 let title_bar = pane_grid::TitleBar::new(title)
                     .controls(view_controls(
                         id,
+                        variant,
                         total_panes,
                         is_maximized,
-                        &self.panes,
                         size,
-                        &self.full_window_size,
                     ))
                     .padding(10)
                     .style(if is_focused {
@@ -445,8 +455,8 @@ fn set_selected_script(
     }
 }
 
-#[derive(PartialEq)]
-enum PaneVariant {
+#[derive(Debug, Clone, PartialEq)]
+pub enum PaneVariant {
     ScriptList,
     ExecutionList,
     LogOutput,
@@ -941,22 +951,22 @@ fn view_content<'a>(
 
 fn view_controls<'a>(
     pane: pane_grid::Pane,
+    variant: &PaneVariant,
     total_panes: usize,
     is_maximized: bool,
-    pane_grid: &pane_grid::State<AppPane>,
     size: Size,
-    saved_window_size: &Size,
 ) -> Element<'a, Message> {
     let mut row = row![].spacing(5);
 
     if total_panes > 1 {
         if is_maximized {
-            row = add_pane_switch_button(pane_grid, &pane, true, row, saved_window_size.clone());
-            row = add_pane_switch_button(pane_grid, &pane, false, row, saved_window_size.clone());
+            row = add_pane_switch_button(variant, PaneVariant::ScriptList, row);
+            row = add_pane_switch_button(variant, PaneVariant::ExecutionList, row);
+            row = add_pane_switch_button(variant, PaneVariant::LogOutput, row);
         }
         let toggle = {
             let (content, message) = if is_maximized {
-                ("All panes", Message::Restore)
+                ("Back to full window", Message::Restore)
             } else {
                 // adjust for window decorations
                 let window_size = Size {
@@ -996,36 +1006,25 @@ fn get_pane_name_from_variant(variant: &PaneVariant) -> &str {
 }
 
 fn add_pane_switch_button<'a>(
-    pane_grid: &pane_grid::State<AppPane>,
-    pane: &pane_grid::Pane,
-    is_left: bool,
+    focused_variant: &PaneVariant,
+    variant: PaneVariant,
     row: iced::widget::Row<'a, Message, iced::Renderer>,
-    size: Size,
 ) -> iced::widget::Row<'a, Message, iced::Renderer> {
-    if let Some(neighbor) = pane_grid.adjacent(
-        &pane,
-        if is_left {
-            pane_grid::Direction::Left
-        } else {
-            pane_grid::Direction::Right
-        },
-    ) {
-        let variant = &pane_grid.panes[&neighbor].variant;
-        let pane_name = get_pane_name_from_variant(variant);
-        row.push(
-            button(
-                text(format!(
-                    "{} {}",
-                    if is_left { "<-" } else { "->" },
-                    pane_name
-                ))
-                .size(14),
-            )
-            .style(theme::Button::Secondary)
-            .padding(3)
-            .on_press(Message::Maximize(neighbor, size)),
-        )
-    } else {
-        row
+    if *focused_variant == variant {
+        return row;
     }
+
+    let pane_name = get_pane_name_from_variant(&variant);
+    row.push(
+        button(
+            text(format!(
+                "{}",
+                pane_name
+            ))
+            .size(14),
+        )
+        .style(theme::Button::Secondary)
+        .padding(3)
+        .on_press(Message::SwitchMaximized(variant)),
+    )
 }
