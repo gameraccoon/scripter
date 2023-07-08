@@ -23,6 +23,7 @@
   "always_on_top": false,
   "window_status_reactions": true,
   "icon_path_relative_to_scripter": true,
+  "keep_window_size": false,
   "custom_theme": {
     "background": [
       0.25,

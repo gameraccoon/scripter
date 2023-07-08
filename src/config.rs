@@ -15,6 +15,7 @@ pub struct AppConfig {
     pub always_on_top: bool,
     pub window_status_reactions: bool,
     pub icon_path_relative_to_scripter: bool,
+    pub keep_window_size: bool,
     pub custom_theme: Option<CustomTheme>,
     #[serde(skip)]
     pub paths: PathCaches,
@@ -117,6 +118,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             config_path,
         },
         custom_theme: None,
+        keep_window_size: false,
         env_vars: app_arguments.env_vars,
         custom_title: app_arguments.custom_title,
         config_read_error: None,

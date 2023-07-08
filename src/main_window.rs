@@ -151,18 +151,20 @@ impl Application for MainWindow {
             Message::Maximize(pane, window_size) => {
                 self.focus = Some(pane);
                 self.panes.maximize(&pane);
-                self.full_window_size = window_size.clone();
-                let size = self
-                    .panes
-                    .layout()
-                    .pane_regions(1.0, Size::new(window_size.width, window_size.height))
-                    .get(&pane)
-                    .unwrap()
-                    .clone();
-                return Command::single(Action::Window(Resize {
-                    height: size.height as u32,
-                    width: size.width as u32,
-                }));
+                if !self.app_config.keep_window_size {
+                    self.full_window_size = window_size.clone();
+                    let size = self
+                        .panes
+                        .layout()
+                        .pane_regions(1.0, Size::new(window_size.width, window_size.height))
+                        .get(&pane)
+                        .unwrap()
+                        .clone();
+                    return Command::single(Action::Window(Resize {
+                        height: size.height as u32,
+                        width: size.width as u32,
+                    }));
+                }
             }
             Message::SwitchMaximized(pane_variant) => {
                 let pane = self.panes.iter().find(|pane| {
@@ -176,10 +178,12 @@ impl Application for MainWindow {
             }
             Message::Restore => {
                 self.panes.restore();
-                return Command::single(Action::Window(Resize {
-                    height: self.full_window_size.height as u32,
-                    width: self.full_window_size.width as u32,
-                }));
+                if !self.app_config.keep_window_size {
+                    return Command::single(Action::Window(Resize {
+                        height: self.full_window_size.height as u32,
+                        width: self.full_window_size.width as u32,
+                    }));
+                }
             }
             Message::AddScriptToRun(script) => {
                 if !execution::has_started_execution(&self.execution_data) {
