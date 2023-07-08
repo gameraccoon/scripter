@@ -6,8 +6,10 @@ pub static LATEST_CONFIG_VERSION: &str = "0.7.0";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
-    if version.is_some() && version.unwrap() == LATEST_CONFIG_VERSION {
-        return UpdateResult::NoUpdateNeeded;
+    if let Some(version) = version {
+        if version == LATEST_CONFIG_VERSION {
+            return UpdateResult::NoUpdateNeeded;
+        }
     }
 
     let json_config_updater = register_updaters();

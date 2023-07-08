@@ -53,7 +53,7 @@ pub enum OutputType {
 pub struct OutputLine {
     pub text: String,
     pub output_type: OutputType,
-    pub timestamp: Option<DateTime<Utc>>,
+    pub timestamp: DateTime<Utc>,
 }
 
 type LogBuffer = RingBuffer<OutputLine, 30>;
@@ -188,21 +188,24 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     break;
                 }
 
-                recent_logs.lock().unwrap().push(OutputLine {
-                    text: format!(
-                        "Running \"{}\"{}\n[{} {}]",
-                        script.name,
-                        if script_state.retry_count > 0 {
-                            format!(" retry #{}", script_state.retry_count)
-                        } else {
-                            "".to_string()
-                        },
-                        script.path,
-                        script.arguments_line
-                    ),
-                    output_type: OutputType::Event,
-                    timestamp: Some(Utc::now()),
-                });
+                {
+                    let mut recent_logs = recent_logs.lock().unwrap(); // it is fine to panic on a poisoned mutex
+                    recent_logs.push(OutputLine {
+                        text: format!(
+                            "Running \"{}\"{}\n[{} {}]",
+                            script.name,
+                            if script_state.retry_count > 0 {
+                                format!(" retry #{}", script_state.retry_count)
+                            } else {
+                                "".to_string()
+                            },
+                            script.path,
+                            script.arguments_line
+                        ),
+                        output_type: OutputType::Event,
+                        timestamp: Utc::now(),
+                    });
+                }
 
                 let _ = std::fs::create_dir_all(config::get_script_log_directory(
                     &logs_path,
@@ -253,14 +256,18 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                 drop(command);
 
                 if child.is_err() {
-                    if output_file.is_ok() {
-                        let err = child.err().unwrap();
-                        let mut output_writer = std::io::BufWriter::new(output_file.unwrap());
+                    if let Ok(output_file) = output_file {
+                        let error_text = if let Some(err) = child.err() {
+                            format!("Failed to start the process: {}", err)
+                        } else {
+                            "Failed to start the process".to_string()
+                        };
+                        let mut output_writer = std::io::BufWriter::new(output_file);
                         send_log_line(
                             OutputLine {
-                                text: err.to_string(),
+                                text: error_text,
                                 output_type: OutputType::Error,
-                                timestamp: Some(Utc::now()),
+                                timestamp: Utc::now(),
                             },
                             &recent_logs,
                             &mut output_writer,
@@ -278,15 +285,15 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     break 'retry_loop;
                 }
 
-                let mut child = child.unwrap();
+                let mut child = child.unwrap(); // checked above
 
                 let mut threads_to_join = Vec::new();
                 if child.stdout.is_some() && child.stderr.is_some() && output_file.is_ok() {
                     threads_to_join = join_and_split_output(
-                        child.stdout.take().unwrap(),
-                        child.stderr.take().unwrap(),
+                        child.stdout.take().unwrap(), // checked above
+                        child.stderr.take().unwrap(), // checked above
                         recent_logs.clone(),
-                        output_file.unwrap(),
+                        output_file.unwrap(), // checked above
                     );
                 }
 
@@ -359,7 +366,7 @@ pub fn reset_execution_progress(execution_data: &mut ScriptExecutionData) {
     execution_data.has_failed_scripts = false;
     execution_data.currently_outputting_script = -1;
     execution_data.is_termination_requested = Arc::new(AtomicBool::new(false));
-    execution_data.recent_logs.lock().unwrap().set_empty();
+    execution_data.recent_logs.lock().unwrap().set_empty(); // it is fine to panic on a poisoned mutex
 }
 
 fn send_script_execution_status(
@@ -481,16 +488,12 @@ fn read_one_stdio<R: std::io::Read>(stdio: R, out_channel: Sender<(String, bool)
     loop {
         let mut line = String::new();
         let read_result = stdout_reader.read_line(&mut line);
-        if read_result.is_err() {
-            let _ = out_channel.try_send((line, true));
-            break;
-        }
-        if read_result.unwrap() == 0 {
-            let _ = out_channel.try_send((line, true));
-            break;
-        }
+        let should_stop = read_result.unwrap_or(0) == 0;
 
-        let _ = out_channel.try_send((line, false));
+        let _ = out_channel.try_send((line, should_stop));
+        if should_stop {
+            break;
+        }
     }
 }
 
@@ -508,7 +511,7 @@ fn try_split_log(
                 OutputLine {
                     text,
                     output_type,
-                    timestamp: Some(Utc::now()),
+                    timestamp: Utc::now(),
                 },
                 recent_logs,
                 output_writer,
@@ -528,7 +531,7 @@ fn send_log_line(
     let _ = write!(output_writer, "{}", line.text);
     let _ = output_writer.flush();
 
-    recent_logs.lock().unwrap().push(line);
+    recent_logs.lock().unwrap().push(line); // it is fine to panic on a poisoned mutex
 }
 
 fn join_threads(threads: Vec<std::thread::JoinHandle<()>>) {

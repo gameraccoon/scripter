@@ -161,7 +161,7 @@ fn read_config() -> AppConfig {
                     .to_string(),
             );
         }
-        let data = data.unwrap();
+        let data = data.unwrap(); // checked above
         let result = std::fs::write(&default_config.paths.config_path, data);
         if result.is_err() {
             return default_config_with_error(
@@ -185,34 +185,55 @@ fn read_config() -> AppConfig {
             ),
         );
     }
-    let data = data.unwrap();
+    let data = data.unwrap(); // checked above
     let config_json = serde_json::from_str(&data);
     if config_json.is_err() {
-        return default_config_with_error(
-            &default_config,
-            format!(
-                "Config file '{}' has incorrect json format:\n{}",
-                default_config.paths.config_path.to_string_lossy(),
-                config_json.err().unwrap()
-            ),
-        );
+        return if let Some(error) = config_json.err() {
+            default_config_with_error(
+                &default_config,
+                format!(
+                    "Config file '{}' has incorrect json format:\n{}",
+                    default_config.paths.config_path.to_string_lossy(),
+                    error
+                ),
+            )
+        } else {
+            default_config_with_error(
+                &default_config,
+                format!(
+                    "Config file '{}' has incorrect json format",
+                    default_config.paths.config_path.to_string_lossy()
+                ),
+            )
+        };
     }
-    let mut config_json = config_json.unwrap();
+    let mut config_json = config_json.unwrap(); // checked above
     let update_result = update_config_to_the_latest_version(&mut config_json);
     let config = serde_json::from_value(config_json);
     if config.is_err() {
-        return default_config_with_error(
-            &default_config,
-            format!(
-                "Config file '{}' can't be read.\nMake sure your manual edits were correct.\nError: {}",
-                default_config.paths.config_path.to_string_lossy(),
-                config.err().unwrap()
-            ),
-        );
+        return if let Some(error) = config.err() {
+            default_config_with_error(
+                &default_config,
+                format!(
+                    "Config file '{}' can't be read.\nMake sure your manual edits were correct.\nError: {}",
+                    default_config.paths.config_path.to_string_lossy(),
+                    error
+                ),
+            )
+        } else {
+            default_config_with_error(
+                &default_config,
+                format!(
+                    "Config file '{}' can't be read.\nMake sure your manual edits were correct.",
+                    default_config.paths.config_path.to_string_lossy()
+                ),
+            )
+        };
     }
+    let mut config: AppConfig = config.unwrap(); // checked above
 
     if update_result == UpdateResult::Updated {
-        let data = serde_json::to_string_pretty(&config.as_ref().unwrap());
+        let data = serde_json::to_string_pretty(&config);
         if data.is_err() {
             return default_config_with_error(
                 &default_config,
@@ -220,7 +241,7 @@ fn read_config() -> AppConfig {
                     .to_string(),
             );
         }
-        let data = data.unwrap();
+        let data = data.unwrap(); // checked above
         let result = std::fs::write(&default_config.paths.config_path, data);
         if result.is_err() {
             return default_config_with_error(
@@ -242,7 +263,6 @@ fn read_config() -> AppConfig {
         );
     }
 
-    let mut config: AppConfig = config.unwrap();
     config.paths = default_config.paths;
     config.env_vars = app_arguments.env_vars;
     config.custom_title = app_arguments.custom_title;
@@ -252,8 +272,10 @@ fn read_config() -> AppConfig {
     }
 
     for script_definition in &mut config.script_definitions {
-        if script_definition.icon.is_some() && script_definition.icon.as_ref().unwrap().is_empty() {
-            script_definition.icon = None;
+        if let Some(icon) = &script_definition.icon {
+            if icon.is_empty() {
+                script_definition.icon = None;
+            }
         }
     }
 

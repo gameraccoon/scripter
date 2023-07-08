@@ -107,8 +107,8 @@ impl Application for MainWindow {
                 focus: None,
                 scripts: app_config.script_definitions.clone(),
                 execution_data: execution::new_execution_data(),
-                theme: if app_config.custom_theme.is_some() {
-                    style::get_custom_theme(app_config.custom_theme.clone().unwrap())
+                theme: if let Some(theme) = app_config.custom_theme.clone() {
+                    style::get_custom_theme(theme)
                 } else {
                     Theme::default()
                 },
@@ -158,7 +158,7 @@ impl Application for MainWindow {
                         .layout()
                         .pane_regions(1.0, Size::new(window_size.width, window_size.height))
                         .get(&pane)
-                        .unwrap()
+                        .unwrap() // tried to get an non-existing pane, this should never happen, so panic
                         .clone();
                     return Command::single(Action::Window(Resize {
                         height: size.height as u32,
@@ -167,9 +167,10 @@ impl Application for MainWindow {
                 }
             }
             Message::SwitchMaximized(pane_variant) => {
-                let pane = self.panes.iter().find(|pane| {
-                    pane.1.variant == pane_variant
-                });
+                let pane = self
+                    .panes
+                    .iter()
+                    .find(|pane| pane.1.variant == pane_variant);
                 if let Some((pane, _app_pane)) = pane {
                     let pane = pane.clone();
                     self.panes.maximize(&pane);
@@ -308,9 +309,9 @@ impl Application for MainWindow {
             Message::EditAutorerunCount(new_autorerun_count_str, script_idx) => {
                 let parse_result = usize::from_str(&new_autorerun_count_str);
                 let mut new_autorerun_count = None;
-                if parse_result.is_ok() {
+                if let Ok(parse_result) = parse_result {
                     self.visual_caches.autorerun_count = new_autorerun_count_str;
-                    new_autorerun_count = Some(parse_result.unwrap());
+                    new_autorerun_count = Some(parse_result);
                 } else {
                     // if input is empty, then keep it empty and assume 0, otherwise keep the old value
                     if new_autorerun_count_str.is_empty() {
@@ -319,11 +320,11 @@ impl Application for MainWindow {
                     }
                 }
 
-                if self.execution_data.currently_selected_script != -1
-                    && new_autorerun_count.is_some()
-                {
-                    self.execution_data.scripts_to_run[script_idx as usize].autorerun_count =
-                        new_autorerun_count.unwrap();
+                if self.execution_data.currently_selected_script != -1 {
+                    if let Some(new_autorerun_count) = new_autorerun_count {
+                        self.execution_data.scripts_to_run[script_idx as usize].autorerun_count =
+                            new_autorerun_count;
+                    }
                 }
             }
             Message::OpenFile(path) => {
@@ -379,13 +380,7 @@ impl Application for MainWindow {
                 let title = row![get_pane_name_from_variant(variant)].spacing(5);
 
                 let title_bar = pane_grid::TitleBar::new(title)
-                    .controls(view_controls(
-                        id,
-                        variant,
-                        total_panes,
-                        is_maximized,
-                        size,
-                    ))
+                    .controls(view_controls(id, variant, total_panes, is_maximized, size))
                     .padding(10)
                     .style(if is_focused {
                         if self.execution_data.has_failed_scripts {
@@ -453,7 +448,7 @@ fn set_selected_script(
         visual_caches.autorerun_count = execution_data
             .scripts_to_run
             .get(script_idx as usize)
-            .unwrap()
+            .unwrap() // access out of bounds, should never happen, it's OK to crash
             .autorerun_count
             .to_string();
     }
@@ -829,7 +824,7 @@ fn produce_log_output_content<'a>(
             data_lines.extend(logs.iter().map(|element| {
                 text(format!(
                     "[{}] {}",
-                    element.timestamp.unwrap().format("%H:%M:%S"),
+                    element.timestamp.format("%H:%M:%S"),
                     element.text
                 ))
                 .style(match element.output_type {
@@ -996,7 +991,7 @@ fn join_execution_thread(execution_data: &mut execution::ScriptExecutionData) {
     // this should never block, since the thread should be finished by now
     // but we do it anyway to avoid missing bugs that create zombie threads
     if let Some(join_handle) = execution_data.thread_join_handle.take() {
-        join_handle.join().unwrap();
+        join_handle.join().unwrap(); // have no idea what to do if this fails, crashing is probably fine
     };
 }
 
@@ -1020,15 +1015,9 @@ fn add_pane_switch_button<'a>(
 
     let pane_name = get_pane_name_from_variant(&variant);
     row.push(
-        button(
-            text(format!(
-                "{}",
-                pane_name
-            ))
-            .size(14),
-        )
-        .style(theme::Button::Secondary)
-        .padding(3)
-        .on_press(Message::SwitchMaximized(variant)),
+        button(text(format!("{}", pane_name)).size(14))
+            .style(theme::Button::Secondary)
+            .padding(3)
+            .on_press(Message::SwitchMaximized(variant)),
     )
 }
