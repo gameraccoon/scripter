@@ -57,10 +57,10 @@ pub enum Message {
     SwitchMaximized(PaneVariant),
     Restore,
     AddScriptToRun(config::ScriptDefinition),
-    RunScripts(),
-    StopScripts(),
-    ClearScripts(),
-    RescheduleScripts(),
+    RunScripts,
+    StopScripts,
+    ClearScripts,
+    RescheduleScripts,
     Tick(Instant),
     OpenScriptEditing(isize),
     RemoveScript(isize),
@@ -197,7 +197,7 @@ impl Application for MainWindow {
                     script_idx,
                 );
             }
-            Message::RunScripts() => {
+            Message::RunScripts => {
                 if self.execution_data.scripts_to_run.is_empty() {
                     return Command::none();
                 }
@@ -208,19 +208,19 @@ impl Application for MainWindow {
                     execution::run_scripts(&mut self.execution_data, &self.app_config);
                 }
             }
-            Message::StopScripts() => {
+            Message::StopScripts => {
                 if execution::has_started_execution(&self.execution_data)
                     && !execution::has_finished_execution(&self.execution_data)
                 {
                     execution::request_stop_execution(&mut self.execution_data);
                 }
             }
-            Message::ClearScripts() => {
+            Message::ClearScripts => {
                 join_execution_thread(&mut self.execution_data);
                 self.execution_data = execution::new_execution_data();
                 self.execution_data.has_started = false;
             }
-            Message::RescheduleScripts() => {
+            Message::RescheduleScripts => {
                 join_execution_thread(&mut self.execution_data);
                 if !execution::has_started_execution(&self.execution_data) {
                     return Command::none();
@@ -763,8 +763,8 @@ fn produce_execution_list_content<'a>(
     let controls = column![if execution::has_finished_execution(&execution_data) {
         if !execution::is_waiting_execution_thread_to_finish(&execution_data) {
             row![
-                main_button("Reschedule", Message::RescheduleScripts()),
-                main_button("Clear", Message::ClearScripts()),
+                main_button("Reschedule", Message::RescheduleScripts),
+                main_button("Clear", Message::ClearScripts),
             ]
             .align_items(Alignment::Center)
             .spacing(5)
@@ -778,12 +778,12 @@ fn produce_execution_list_content<'a>(
         {
             row![text("Waiting for the execution to stop")].align_items(Alignment::Center)
         } else {
-            row![main_button("Stop", Message::StopScripts())].align_items(Alignment::Center)
+            row![main_button("Stop", Message::StopScripts)].align_items(Alignment::Center)
         }
     } else if !execution_data.scripts_to_run.is_empty() {
         row![
-            main_button("Run", Message::RunScripts()),
-            main_button("Clear", Message::ClearScripts()),
+            main_button("Run", Message::RunScripts),
+            main_button("Clear", Message::ClearScripts),
         ]
         .align_items(Alignment::Center)
         .spacing(5)
