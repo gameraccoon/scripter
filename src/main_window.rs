@@ -989,7 +989,7 @@ fn view_controls<'a>(
 
 fn join_execution_thread(execution_data: &mut execution::ScriptExecutionData) {
     // this should never block, since the thread should be finished by now
-    // but we do it anyway to avoid missing bugs that create zombie threads
+    // but we do it anyway not to miss bugs that create zombie threads
     if let Some(join_handle) = execution_data.thread_join_handle.take() {
         join_handle.join().unwrap(); // have no idea what to do if this fails, crashing is probably fine
     };
