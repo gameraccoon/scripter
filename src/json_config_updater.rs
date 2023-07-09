@@ -75,8 +75,11 @@ impl JsonConfigUpdater {
         for patcher in &self.patchers[first_patcher_idx..] {
             (patcher.function)(json);
         }
+
+        // bound check is done above
         json[&self.version_field_name] =
             serde_json::Value::String(self.patchers.last().unwrap().version_to.clone());
+
         return UpdateResult::Updated;
     }
 }

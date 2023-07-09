@@ -154,14 +154,18 @@ fn read_config() -> AppConfig {
     // if config file doesn't exist, create it
     if !default_config.paths.config_path.exists() {
         let data = serde_json::to_string_pretty(&default_config);
-        if data.is_err() {
-            return default_config_with_error(
-                &default_config,
-                "Failed to serialize default config.\nNotify the developer about this error"
-                    .to_string(),
-            );
-        }
-        let data = data.unwrap(); // checked above
+        let data = match data {
+            Ok(data) => data,
+            Err(err) => {
+                return default_config_with_error(
+                    &default_config,
+                    format!(
+                        "Failed to serialize default config.\nNotify the developer about this error.\nError: {}",
+                        err,
+                    )
+                )
+            },
+        };
         let result = std::fs::write(&default_config.paths.config_path, data);
         if result.is_err() {
             return default_config_with_error(
@@ -176,72 +180,64 @@ fn read_config() -> AppConfig {
 
     // read the config file from the disk
     let data = std::fs::read_to_string(&default_config.paths.config_path);
-    if data.is_err() {
-        return default_config_with_error(
-            &default_config,
-            format!(
-                "Config file '{}' can't be read.\nMake sure you have read rights to that file",
-                default_config.paths.config_path.to_string_lossy()
-            ),
-        );
-    }
-    let data = data.unwrap(); // checked above
+    let data = match data {
+        Ok(data) => data,
+        Err(err) => {
+            return default_config_with_error(
+                &default_config,
+                format!(
+                    "Config file '{}' can't be read.\nMake sure you have read rights to that file.\nError: {}",
+                    default_config.paths.config_path.to_string_lossy(),
+                    err
+                ),
+            )
+        }
+    };
     let config_json = serde_json::from_str(&data);
-    if config_json.is_err() {
-        return if let Some(error) = config_json.err() {
-            default_config_with_error(
+    let mut config_json = match config_json {
+        Ok(config_json) => config_json,
+        Err(err) => {
+            return default_config_with_error(
                 &default_config,
                 format!(
                     "Config file '{}' has incorrect json format:\n{}",
                     default_config.paths.config_path.to_string_lossy(),
-                    error
+                    err
                 ),
             )
-        } else {
-            default_config_with_error(
-                &default_config,
-                format!(
-                    "Config file '{}' has incorrect json format",
-                    default_config.paths.config_path.to_string_lossy()
-                ),
-            )
-        };
-    }
-    let mut config_json = config_json.unwrap(); // checked above
+        }
+    };
+
     let update_result = update_config_to_the_latest_version(&mut config_json);
     let config = serde_json::from_value(config_json);
-    if config.is_err() {
-        return if let Some(error) = config.err() {
+    let mut config = match config {
+        Ok(config) => config,
+        Err(err) => {
             default_config_with_error(
                 &default_config,
                 format!(
                     "Config file '{}' can't be read.\nMake sure your manual edits were correct.\nError: {}",
                     default_config.paths.config_path.to_string_lossy(),
-                    error
+                    err
                 ),
             )
-        } else {
-            default_config_with_error(
-                &default_config,
-                format!(
-                    "Config file '{}' can't be read.\nMake sure your manual edits were correct.",
-                    default_config.paths.config_path.to_string_lossy()
-                ),
-            )
-        };
-    }
-    let mut config: AppConfig = config.unwrap(); // checked above
+        }
+    };
 
     if update_result == UpdateResult::Updated {
         let data = serde_json::to_string_pretty(&config);
-        if data.is_err() {
-            return default_config_with_error(
-                &default_config,
-                "Failed to serialize the updated config.\nNotify the developer about this error"
-                    .to_string(),
-            );
-        }
-        let data = data.unwrap(); // checked above
+        let data = match data {
+            Ok(data) => data,
+            Err(err) => {
+                return default_config_with_error(
+                    &default_config,
+                    format!(
+                        "Failed to serialize the updated config.\nNotify the developer about this error.\nError: {}",
+                        err
+                    ),
+                )
+            }
+        };
         let result = std::fs::write(&default_config.paths.config_path, data);
         if result.is_err() {
             return default_config_with_error(

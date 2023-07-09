@@ -255,46 +255,46 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                 // avoid potential deadlocks (cargo culted from os_pipe readme)
                 drop(command);
 
-                if child.is_err() {
-                    if let Ok(output_file) = output_file {
-                        let error_text = if let Some(err) = child.err() {
-                            format!("Failed to start the process: {}", err)
-                        } else {
-                            "Failed to start the process".to_string()
-                        };
-                        let mut output_writer = std::io::BufWriter::new(output_file);
-                        send_log_line(
-                            OutputLine {
-                                text: error_text,
-                                output_type: OutputType::Error,
-                                timestamp: Utc::now(),
-                            },
-                            &recent_logs,
-                            &mut output_writer,
+                let mut child = match child {
+                    Ok(child) => child,
+                    Err(err) => {
+                        if let Ok(output_file) = output_file {
+                            let error_text = format!("Failed to start the process: {}", err);
+                            let mut output_writer = std::io::BufWriter::new(output_file);
+                            send_log_line(
+                                OutputLine {
+                                    text: error_text,
+                                    output_type: OutputType::Error,
+                                    timestamp: Utc::now(),
+                                },
+                                &recent_logs,
+                                &mut output_writer,
+                            );
+                        }
+                        // it doesn't make sense to retry if something is broken on this level
+                        script_state.result = ScriptResultStatus::Failed;
+                        script_state.finish_time = Some(Instant::now());
+                        send_script_execution_status(
+                            &progress_sender,
+                            script_idx,
+                            script_state.clone(),
                         );
+                        has_previous_script_failed = true;
+                        break 'retry_loop;
                     }
-                    // it doesn't make sense to retry if something is broken on this level
-                    script_state.result = ScriptResultStatus::Failed;
-                    script_state.finish_time = Some(Instant::now());
-                    send_script_execution_status(
-                        &progress_sender,
-                        script_idx,
-                        script_state.clone(),
-                    );
-                    has_previous_script_failed = true;
-                    break 'retry_loop;
-                }
-
-                let mut child = child.unwrap(); // checked above
+                };
 
                 let mut threads_to_join = Vec::new();
-                if child.stdout.is_some() && child.stderr.is_some() && output_file.is_ok() {
-                    threads_to_join = join_and_split_output(
-                        child.stdout.take().unwrap(), // checked above
-                        child.stderr.take().unwrap(), // checked above
-                        recent_logs.clone(),
-                        output_file.unwrap(), // checked above
-                    );
+                match (child.stdout.take(), child.stderr.take(), output_file) {
+                    (Some(stdout), Some(stderr), Ok(output_file)) => {
+                        threads_to_join =
+                            join_and_split_output(stdout, stderr, recent_logs.clone(), output_file);
+                    }
+                    _ => {
+                        println!(
+                            "Failed to redirect stdout/stderr. No diagnostic is provided for now"
+                        );
+                    }
                 }
 
                 loop {
