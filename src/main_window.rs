@@ -82,21 +82,21 @@ impl Application for MainWindow {
     fn new(_flags: ()) -> (Self, Command<Message>) {
         let pane_configuration = Configuration::Split {
             axis: pane_grid::Axis::Vertical,
-            ratio: 0.6,
+            ratio: 0.25,
             a: Box::new(Configuration::Split {
+                axis: pane_grid::Axis::Horizontal,
+                ratio: 0.65,
+                a: Box::new(Configuration::Pane(AppPane::new(PaneVariant::ScriptList))),
+                b: Box::new(Configuration::Pane(AppPane::new(PaneVariant::ScriptEdit))),
+            }),
+            b: Box::new(Configuration::Split {
                 axis: pane_grid::Axis::Vertical,
-                ratio: 0.4,
-                a: Box::new(Configuration::Split {
-                    axis: pane_grid::Axis::Horizontal,
-                    ratio: 0.7,
-                    a: Box::new(Configuration::Pane(AppPane::new(PaneVariant::ScriptList))),
-                    b: Box::new(Configuration::Pane(AppPane::new(PaneVariant::ScriptEdit))),
-                }),
-                b: Box::new(Configuration::Pane(AppPane::new(
+                ratio: 0.5,
+                a: Box::new(Configuration::Pane(AppPane::new(
                     PaneVariant::ExecutionList,
                 ))),
+                b: Box::new(Configuration::Pane(AppPane::new(PaneVariant::LogOutput))),
             }),
-            b: Box::new(Configuration::Pane(AppPane::new(PaneVariant::LogOutput))),
         };
         let panes = pane_grid::State::with_configuration(pane_configuration);
         let app_config = config::get_app_config_copy();
