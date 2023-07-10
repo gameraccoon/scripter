@@ -41,7 +41,7 @@ pub struct MainWindow {
     panes: pane_grid::State<AppPane>,
     focus: Option<pane_grid::Pane>,
     execution_data: execution::ScriptExecutionData,
-    scripts: Vec<config::ScriptDefinition>,
+    script_definitions: Vec<config::ScriptDefinition>,
     app_config: config::AppConfig,
     theme: Theme,
     visual_caches: VisualCaches,
@@ -98,7 +98,7 @@ pub enum Message {
     ToggleIgnoreFailures(bool),
     EnterWindowEditMode,
     ExitWindowEditMode,
-    OpenScriptConfigEditing,
+    OpenScriptConfigEditing(usize),
     MoveConfigScriptUp(usize),
     MoveConfigScriptDown(usize),
 }
@@ -135,7 +135,7 @@ impl Application for MainWindow {
             MainWindow {
                 panes,
                 focus: None,
-                scripts: app_config.script_definitions.clone(),
+                script_definitions: app_config.script_definitions.clone(),
                 execution_data: execution::new_execution_data(),
                 theme: if let Some(theme) = app_config.custom_theme.clone() {
                     style::get_custom_theme(theme)
@@ -242,6 +242,7 @@ impl Application for MainWindow {
                 set_selected_script(
                     &mut self.edit_data.currently_edited_script,
                     &self.execution_data,
+                    &self.script_definitions,
                     &mut self.visual_caches,
                     script_idx,
                     EditScriptType::ExecutionList,
@@ -302,6 +303,7 @@ impl Application for MainWindow {
                 set_selected_script(
                     &mut self.edit_data.currently_edited_script,
                     &self.execution_data,
+                    &self.script_definitions,
                     &mut self.visual_caches,
                     script_idx,
                     EditScriptType::ExecutionList,
@@ -310,15 +312,20 @@ impl Application for MainWindow {
             Message::CloseScriptEditing => {
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
             }
-            Message::RemoveScript(script_id) => {
-                match script_id.script_type {
-                    EditScriptType::ScriptConfig => {}
-                    EditScriptType::ExecutionList => {
-                        execution::remove_script_from_execution(&mut self.execution_data, script_id.idx);
-                        reset_selected_script(&mut self.edit_data.currently_edited_script);
-                    }
+            Message::RemoveScript(script_id) => match script_id.script_type {
+                EditScriptType::ScriptConfig => {
+                    self.script_definitions.remove(script_id.idx);
+                    self.app_config.script_definitions.remove(script_id.idx);
+                    reset_selected_script(&mut self.edit_data.currently_edited_script);
                 }
-            }
+                EditScriptType::ExecutionList => {
+                    execution::remove_script_from_execution(
+                        &mut self.execution_data,
+                        script_id.idx,
+                    );
+                    reset_selected_script(&mut self.edit_data.currently_edited_script);
+                }
+            },
             Message::MoveScriptUp(script_idx) => {
                 self.execution_data
                     .scripts_to_run
@@ -326,6 +333,7 @@ impl Application for MainWindow {
                 set_selected_script(
                     &mut self.edit_data.currently_edited_script,
                     &self.execution_data,
+                    &self.script_definitions,
                     &mut self.visual_caches,
                     script_idx - 1,
                     EditScriptType::ExecutionList,
@@ -338,22 +346,17 @@ impl Application for MainWindow {
                 set_selected_script(
                     &mut self.edit_data.currently_edited_script,
                     &self.execution_data,
+                    &self.script_definitions,
                     &mut self.visual_caches,
                     script_idx + 1,
                     EditScriptType::ExecutionList,
                 );
             }
             Message::EditScriptName(new_name) => {
-                apply_script_edit(
-                    self,
-                    move |script| script.name = new_name.clone(),
-                )
+                apply_script_edit(self, move |script| script.name = new_name.clone())
             }
             Message::EditArguments(new_arguments) => {
-                apply_script_edit(
-                    self,
-                    move |script| script.arguments = new_arguments.clone(),
-                )
+                apply_script_edit(self, move |script| script.arguments = new_arguments.clone())
             }
             Message::EditAutorerunCount(new_autorerun_count_str) => {
                 let parse_result = usize::from_str(&new_autorerun_count_str);
@@ -370,10 +373,7 @@ impl Application for MainWindow {
                 }
 
                 if let Some(new_autorerun_count) = new_autorerun_count {
-                    apply_script_edit(
-                        self,
-                        |script| script.autorerun_count = new_autorerun_count,
-                    )
+                    apply_script_edit(self, |script| script.autorerun_count = new_autorerun_count)
                 }
             }
             Message::OpenFile(path) => {
@@ -406,28 +406,36 @@ impl Application for MainWindow {
                 }
             }
             Message::ToggleIgnoreFailures(value) => {
-                apply_script_edit(
-                    self,
-                    |script| script.ignore_previous_failures = value,
-                )
+                apply_script_edit(self, |script| script.ignore_previous_failures = value)
             }
             Message::EnterWindowEditMode => {
                 self.edit_data.window_edit_data = Some(WindowEditData {});
+                reset_selected_script(&mut self.edit_data.currently_edited_script);
             }
             Message::ExitWindowEditMode => {
                 self.edit_data.window_edit_data = None;
+                reset_selected_script(&mut self.edit_data.currently_edited_script);
             }
-            Message::OpenScriptConfigEditing => {}
+            Message::OpenScriptConfigEditing(script_idx) => {
+                set_selected_script(
+                    &mut self.edit_data.currently_edited_script,
+                    &self.execution_data,
+                    &self.script_definitions,
+                    &mut self.visual_caches,
+                    script_idx,
+                    EditScriptType::ScriptConfig,
+                );
+            }
             Message::MoveConfigScriptUp(index) => {
                 if index >= 1 && index < self.app_config.script_definitions.len() {
                     self.app_config.script_definitions.swap(index, index - 1);
-                    self.scripts.swap(index, index - 1);
+                    self.script_definitions.swap(index, index - 1);
                 }
             }
             Message::MoveConfigScriptDown(index) => {
                 if index < self.app_config.script_definitions.len() - 1 {
                     self.app_config.script_definitions.swap(index, index + 1);
-                    self.scripts.swap(index, index + 1);
+                    self.script_definitions.swap(index, index + 1);
                 }
             }
         }
@@ -466,7 +474,7 @@ impl Application for MainWindow {
                     view_content(
                         &self.execution_data,
                         variant,
-                        &self.scripts,
+                        &self.script_definitions,
                         &self.theme,
                         &self.app_config.paths,
                         &self.visual_caches,
@@ -510,15 +518,23 @@ impl Application for MainWindow {
 fn set_selected_script(
     currently_edited_script: &mut Option<EditScriptId>,
     execution_data: &execution::ScriptExecutionData,
+    script_definitions: &Vec<config::ScriptDefinition>,
     visual_caches: &mut VisualCaches,
     script_idx: usize,
     script_type: EditScriptType,
 ) {
-    *currently_edited_script = Some(EditScriptId{idx: script_idx, script_type});
+    *currently_edited_script = Some(EditScriptId {
+        idx: script_idx,
+        script_type: script_type.clone(),
+    });
+
+    let scripts_list = match &script_type {
+        EditScriptType::ScriptConfig => script_definitions,
+        EditScriptType::ExecutionList => &execution_data.scripts_to_run,
+    };
 
     // get autorerun count text from value
-    visual_caches.autorerun_count = execution_data
-        .scripts_to_run
+    visual_caches.autorerun_count = scripts_list
         .get(script_idx)
         .unwrap() // access out of bounds, should never happen, it's OK to crash
         .autorerun_count
@@ -595,7 +611,16 @@ fn produce_script_list_content<'a>(
                         row![]
                     };
 
-                    row![button(if let Some(icon) = &script.icon {
+                    let is_selected = match &edit_data.currently_edited_script {
+                        Some(EditScriptId { idx, script_type })
+                            if *idx == i && *script_type == EditScriptType::ScriptConfig =>
+                        {
+                            true
+                        }
+                        _ => false,
+                    };
+
+                    let item_button = button(if let Some(icon) = &script.icon {
                         row![
                             horizontal_space(6),
                             image(paths.icons_path.join(icon)).width(22).height(22),
@@ -613,12 +638,18 @@ fn produce_script_list_content<'a>(
                         ]
                     })
                     .padding(4)
-                    .style(theme::Button::Secondary)
+                    .style(if is_selected {
+                        theme::Button::Primary
+                    } else {
+                        theme::Button::Secondary
+                    })
                     .on_press(if edit_data.window_edit_data.is_none() {
                         Message::AddScriptToRun(script.clone())
                     } else {
-                        Message::OpenScriptConfigEditing
-                    })]
+                        Message::OpenScriptConfigEditing(i)
+                    });
+
+                    row![item_button]
                 } else {
                     if let Some(icon) = &script.icon {
                         row![
@@ -826,8 +857,10 @@ fn produce_execution_list_content<'a>(
                 let is_enabled = !execution_data.has_started;
 
                 let is_selected = match &edit_data.currently_edited_script {
-                    Some(selected_script) => selected_script.idx == i
-                        && selected_script.script_type == EditScriptType::ExecutionList,
+                    Some(selected_script) => {
+                        selected_script.idx == i
+                            && selected_script.script_type == EditScriptType::ExecutionList
+                    }
                     None => false,
                 };
 
@@ -851,12 +884,15 @@ fn produce_execution_list_content<'a>(
                     }
                     row_data.push(horizontal_space(8).into());
                     row_data.push(
-                        small_button("del", Message::RemoveScript(EditScriptId{
-                            idx: i,
-                            script_type: EditScriptType::ExecutionList,
-                        }))
-                            .style(theme::Button::Destructive)
-                            .into(),
+                        small_button(
+                            "del",
+                            Message::RemoveScript(EditScriptId {
+                                idx: i,
+                                script_type: EditScriptType::ExecutionList,
+                            }),
+                        )
+                        .style(theme::Button::Destructive)
+                        .into(),
                     );
                 } else if execution::has_script_started(&script_status) {
                     row_data.push(horizontal_space(8).into());
@@ -984,6 +1020,7 @@ fn produce_log_output_content<'a>(
 
 fn produce_script_edit_content<'a>(
     execution_data: &execution::ScriptExecutionData,
+    script_definitions: &Vec<config::ScriptDefinition>,
     visual_caches: &VisualCaches,
     edit_data: &EditData,
 ) -> Column<'a, Message> {
@@ -1005,7 +1042,12 @@ fn produce_script_edit_content<'a>(
         .on_press(message)
     };
 
-    let script = &execution_data.scripts_to_run[currently_edited_script.idx];
+    let script = match currently_edited_script.script_type {
+        EditScriptType::ScriptConfig => &script_definitions[currently_edited_script.idx],
+        EditScriptType::ExecutionList => {
+            &execution_data.scripts_to_run[currently_edited_script.idx]
+        }
+    };
 
     let script_name = text_input("name", &script.name)
         .on_input(move |new_arg| Message::EditScriptName(new_arg))
@@ -1075,7 +1117,12 @@ fn view_content<'a>(
             edit_data,
         ),
         PaneVariant::LogOutput => produce_log_output_content(execution_data, theme),
-        PaneVariant::ScriptEdit => produce_script_edit_content(execution_data, visual_caches, edit_data),
+        PaneVariant::ScriptEdit => produce_script_edit_content(
+            execution_data,
+            script_definitions,
+            visual_caches,
+            edit_data,
+        ),
     };
 
     container(content)
@@ -1165,7 +1212,7 @@ fn apply_script_edit(app: &mut MainWindow, edit_fn: impl Fn(&mut config::ScriptD
         match script.script_type {
             EditScriptType::ScriptConfig => {
                 edit_fn(&mut app.app_config.script_definitions[script.idx]);
-                edit_fn(&mut app.scripts[script.idx]);
+                edit_fn(&mut app.script_definitions[script.idx]);
             }
             EditScriptType::ExecutionList => {
                 edit_fn(&mut app.execution_data.scripts_to_run[script.idx]);
