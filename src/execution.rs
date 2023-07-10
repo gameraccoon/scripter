@@ -14,17 +14,6 @@ use std::time::{Duration, Instant};
 use crate::config;
 use crate::ring_buffer::RingBuffer;
 
-#[derive(Clone)]
-pub struct ScheduledScript {
-    pub name: String,
-    pub icon: Option<String>,
-    pub path: String,
-    pub arguments_line: String,
-    path_relative_to_scripter: bool,
-    pub autorerun_count: usize,
-    pub ignore_previous_failures: bool,
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ScriptResultStatus {
     Success,
@@ -59,13 +48,12 @@ pub struct OutputLine {
 type LogBuffer = RingBuffer<OutputLine, 30>;
 
 pub struct ScriptExecutionData {
-    pub scripts_to_run: Vec<ScheduledScript>,
+    pub scripts_to_run: Vec<config::ScriptDefinition>,
     pub scripts_status: Vec<ScriptExecutionStatus>,
     pub has_started: bool,
     pub recent_logs: Arc<Mutex<LogBuffer>>,
     pub progress_receiver: Option<Receiver<(usize, ScriptExecutionStatus)>>,
     pub is_termination_requested: Arc<AtomicBool>,
-    pub currently_selected_script: isize,
     pub currently_outputting_script: isize,
     pub has_failed_scripts: bool,
     pub thread_join_handle: Option<std::thread::JoinHandle<()>>,
@@ -79,7 +67,6 @@ pub fn new_execution_data() -> ScriptExecutionData {
         progress_receiver: None,
         recent_logs: Arc::new(Mutex::new(RingBuffer::new(Default::default()))),
         is_termination_requested: Arc::new(AtomicBool::new(false)),
-        currently_selected_script: -1,
         currently_outputting_script: -1,
         has_failed_scripts: false,
         thread_join_handle: None,
@@ -134,11 +121,11 @@ pub fn add_script_to_execution(
     execution_data: &mut ScriptExecutionData,
     script: config::ScriptDefinition,
 ) {
-    execution_data.scripts_to_run.push(ScheduledScript {
+    execution_data.scripts_to_run.push(config::ScriptDefinition {
         name: script.name,
         icon: script.icon,
-        path: script.command,
-        arguments_line: script.arguments,
+        command: script.command,
+        arguments: script.arguments,
         path_relative_to_scripter: script.path_relative_to_scripter,
         autorerun_count: script.autorerun_count,
         ignore_previous_failures: script.ignore_previous_failures,
@@ -148,9 +135,9 @@ pub fn add_script_to_execution(
         .push(get_default_script_execution_status());
 }
 
-pub fn remove_script_from_execution(execution_data: &mut ScriptExecutionData, index: isize) {
-    execution_data.scripts_to_run.remove(index as usize);
-    execution_data.scripts_status.remove(index as usize);
+pub fn remove_script_from_execution(execution_data: &mut ScriptExecutionData, index: usize) {
+    execution_data.scripts_to_run.remove(index);
+    execution_data.scripts_status.remove(index);
 }
 
 pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config::AppConfig) {
@@ -199,8 +186,8 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                             } else {
                                 "".to_string()
                             },
-                            script.path,
-                            script.arguments_line
+                            script.command,
+                            script.arguments
                         ),
                         output_type: OutputType::Event,
                         timestamp: Utc::now(),
@@ -377,23 +364,23 @@ fn send_script_execution_status(
     let _result = tx.send((script_idx, script_state));
 }
 
-fn get_script_with_arguments(script: &ScheduledScript, exe_folder_path: &Path) -> String {
+fn get_script_with_arguments(script: &config::ScriptDefinition, exe_folder_path: &Path) -> String {
     let path = if script.path_relative_to_scripter {
         exe_folder_path
-            .join(&script.path)
+            .join(&script.command)
             .to_str()
             .unwrap_or_default()
             .to_string()
     } else {
-        script.path.clone()
+        script.command.clone()
     };
 
     let escaped_path = escape_path(path);
 
-    if script.arguments_line.is_empty() {
+    if script.arguments.is_empty() {
         escaped_path
     } else {
-        format!("{} {}", escaped_path, script.arguments_line)
+        format!("{} {}", escaped_path, script.arguments)
     }
 }
 
