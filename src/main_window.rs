@@ -22,6 +22,8 @@ use crate::config;
 use crate::execution;
 use crate::style;
 
+const EMPTY_STRING: &str = "";
+
 struct IconCaches {
     idle: Handle,
     in_progress: Handle,
@@ -89,13 +91,17 @@ pub enum Message {
     OpenScriptEditing(usize),
     CloseScriptEditing,
     RemoveScript(EditScriptId),
+    AddScriptToConfig,
     MoveScriptUp(usize),
     MoveScriptDown(usize),
     EditScriptName(String),
+    EditScriptCommand(String),
+    EditScriptIconPath(String),
     EditArguments(String),
     EditAutorerunCount(String),
     OpenFile(PathBuf),
     ToggleIgnoreFailures(bool),
+    TogglePathRelativeToScripter(bool),
     EnterWindowEditMode,
     ExitWindowEditMode,
     OpenScriptConfigEditing(usize),
@@ -326,6 +332,28 @@ impl Application for MainWindow {
                     reset_selected_script(&mut self.edit_data.currently_edited_script);
                 }
             },
+            Message::AddScriptToConfig => {
+                let script = config::ScriptDefinition {
+                    name: "new script".to_string(),
+                    icon: None,
+                    command: "".to_string(),
+                    arguments: "".to_string(),
+                    path_relative_to_scripter: false,
+                    autorerun_count: 0,
+                    ignore_previous_failures: false,
+                };
+                self.script_definitions.push(script.clone());
+                self.app_config.script_definitions.push(script);
+                let script_idx = self.script_definitions.len() - 1;
+                set_selected_script(
+                    &mut self.edit_data.currently_edited_script,
+                    &self.execution_data,
+                    &self.script_definitions,
+                    &mut self.visual_caches,
+                    script_idx,
+                    EditScriptType::ScriptConfig,
+                );
+            }
             Message::MoveScriptUp(script_idx) => {
                 self.execution_data
                     .scripts_to_run
@@ -355,6 +383,16 @@ impl Application for MainWindow {
             Message::EditScriptName(new_name) => {
                 apply_script_edit(self, move |script| script.name = new_name.clone())
             }
+            Message::EditScriptCommand(new_command) => {
+                apply_script_edit(self, move |script| script.command = new_command.clone())
+            }
+            Message::EditScriptIconPath(new_icon_path) => apply_script_edit(self, move |script| {
+                script.icon = if new_icon_path.is_empty() {
+                    None
+                } else {
+                    Some(new_icon_path.clone())
+                }
+            }),
             Message::EditArguments(new_arguments) => {
                 apply_script_edit(self, move |script| script.arguments = new_arguments.clone())
             }
@@ -407,6 +445,9 @@ impl Application for MainWindow {
             }
             Message::ToggleIgnoreFailures(value) => {
                 apply_script_edit(self, |script| script.ignore_previous_failures = value)
+            }
+            Message::TogglePathRelativeToScripter(value) => {
+                apply_script_edit(self, |script| script.path_relative_to_scripter = value)
             }
             Message::EnterWindowEditMode => {
                 self.edit_data.window_edit_data = Some(WindowEditData {});
@@ -606,6 +647,7 @@ fn produce_script_list_content<'a>(
                             small_button("^", Message::MoveConfigScriptUp(i)),
                             horizontal_space(5),
                             small_button("v", Message::MoveConfigScriptDown(i)),
+                            horizontal_space(5),
                         ]
                     } else {
                         row![]
@@ -676,29 +718,39 @@ fn produce_script_list_content<'a>(
             scrollable(data),
         ]
     } else {
-        let edit_button = if edit_data.window_edit_data.is_none() {
-            button(
-                text("Edit")
-                    .width(Length::Fill)
-                    .horizontal_alignment(alignment::Horizontal::Center)
-                    .size(12),
-            )
-            .on_press(Message::EnterWindowEditMode)
+        let data_column = if edit_data.window_edit_data.is_none() {
+            column![
+                data,
+                vertical_space(Length::Fixed(4.0)),
+                button(
+                    text("Edit")
+                        .width(Length::Fill)
+                        .horizontal_alignment(alignment::Horizontal::Center)
+                        .size(12),
+                )
+                .on_press(Message::EnterWindowEditMode)
+            ]
         } else {
-            button(
-                text("Stop editing")
-                    .width(Length::Fill)
-                    .horizontal_alignment(alignment::Horizontal::Center)
-                    .size(16),
-            )
-            .on_press(Message::ExitWindowEditMode)
+            column![
+                data,
+                vertical_space(Length::Fixed(4.0)),
+                row![
+                    button(text("Add script").size(16)).on_press(Message::AddScriptToConfig),
+                    horizontal_space(Length::Fixed(4.0)),
+                    button(
+                        text("Stop editing")
+                            .width(Length::Fill)
+                            .horizontal_alignment(alignment::Horizontal::Center)
+                            .size(16),
+                    )
+                    .on_press(Message::ExitWindowEditMode)
+                ]
+            ]
         };
 
         column![
             vertical_space(if has_started_execution { 4 } else { 0 }),
-            scrollable(data),
-            vertical_space(Length::Fill),
-            edit_button,
+            scrollable(data_column),
         ]
     }
     .width(Length::Fill)
@@ -1049,38 +1101,80 @@ fn produce_script_edit_content<'a>(
         }
     };
 
-    let script_name = text_input("name", &script.name)
-        .on_input(move |new_arg| Message::EditScriptName(new_arg))
-        .padding(5);
-
-    let arguments = text_input("\"arg1\" \"arg2\"", &script.arguments)
-        .on_input(move |new_value| Message::EditArguments(new_value))
-        .padding(5);
-
-    let autorerun_count = text_input("0", &visual_caches.autorerun_count)
-        .on_input(move |new_value| Message::EditAutorerunCount(new_value))
-        .padding(5);
-
-    let ignore_failures_checkbox = checkbox(
-        "Ignore previous failures",
-        script.ignore_previous_failures,
-        move |val| Message::ToggleIgnoreFailures(val),
+    let mut parameters: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
+    parameters.push(
+        text_input("name", &script.name)
+            .on_input(move |new_arg| Message::EditScriptName(new_arg))
+            .padding(5)
+            .into(),
     );
 
-    let content = column![
-        script_name,
-        text("Arguments line:"),
-        arguments,
-        text("Retry count:"),
-        autorerun_count,
-        ignore_failures_checkbox,
+    if currently_edited_script.script_type == EditScriptType::ScriptConfig {
+        parameters.push(text("Command:").into());
+        parameters.push(
+            text_input("command", &script.command)
+                .on_input(move |new_arg| Message::EditScriptCommand(new_arg))
+                .padding(5)
+                .into(),
+        );
+
+        parameters.push(
+            checkbox(
+                "Is path relative to the scripter executable",
+                script.path_relative_to_scripter,
+                move |val| Message::TogglePathRelativeToScripter(val),
+            )
+            .into(),
+        );
+
+        let icon_path = match &script.icon {
+            Some(path) => path.as_str(),
+            None => EMPTY_STRING,
+        };
+        parameters.push(text("Path to the icon:").into());
+        parameters.push(
+            text_input("icon path", &icon_path)
+                .on_input(move |new_arg| Message::EditScriptIconPath(new_arg))
+                .padding(5)
+                .into(),
+        );
+    }
+
+    parameters.push(text("Arguments line:").into());
+    parameters.push(
+        text_input("\"arg1\" \"arg2\"", &script.arguments)
+            .on_input(move |new_value| Message::EditArguments(new_value))
+            .padding(5)
+            .into(),
+    );
+
+    parameters.push(text("Retry count:").into());
+    parameters.push(
+        text_input("0", &visual_caches.autorerun_count)
+            .on_input(move |new_value| Message::EditAutorerunCount(new_value))
+            .padding(5)
+            .into(),
+    );
+
+    parameters.push(
+        checkbox(
+            "Ignore previous failures",
+            script.ignore_previous_failures,
+            move |val| Message::ToggleIgnoreFailures(val),
+        )
+        .into(),
+    );
+
+    parameters.push(
         button(
             "Remove script",
-            Message::RemoveScript(currently_edited_script.clone())
+            Message::RemoveScript(currently_edited_script.clone()),
         )
-        .style(theme::Button::Destructive),
-    ]
-    .spacing(10);
+        .style(theme::Button::Destructive)
+        .into(),
+    );
+
+    let content = column(parameters).spacing(10);
 
     return column![scrollable(content)]
         .width(Length::Fill)
