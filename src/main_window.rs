@@ -56,6 +56,8 @@ pub struct EditData {
     currently_edited_script: Option<EditScriptId>,
     // state of the global to the window editing mode
     window_edit_data: Option<WindowEditData>,
+    // do we have unsaved changes
+    is_dirty: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -103,6 +105,7 @@ pub enum Message {
     TogglePathRelativeToScripter(bool),
     EnterWindowEditMode,
     ExitWindowEditMode,
+    SaveConfig,
     OpenScriptConfigEditing(usize),
     MoveConfigScriptUp(usize),
     MoveConfigScriptDown(usize),
@@ -164,6 +167,7 @@ impl Application for MainWindow {
                 edit_data: EditData {
                     window_edit_data: None,
                     currently_edited_script: None,
+                    is_dirty: false,
                 },
             },
             Command::none(),
@@ -319,6 +323,7 @@ impl Application for MainWindow {
             Message::RemoveScript(script_id) => match script_id.script_type {
                 EditScriptType::ScriptConfig => {
                     self.app_config.script_definitions.remove(script_id.idx);
+                    self.edit_data.is_dirty = true;
                     reset_selected_script(&mut self.edit_data.currently_edited_script);
                 }
                 EditScriptType::ExecutionList => {
@@ -349,6 +354,7 @@ impl Application for MainWindow {
                     script_idx,
                     EditScriptType::ScriptConfig,
                 );
+                self.edit_data.is_dirty = true;
             }
             Message::MoveScriptUp(script_idx) => {
                 self.execution_data
@@ -453,6 +459,10 @@ impl Application for MainWindow {
                 self.edit_data.window_edit_data = None;
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
             }
+            Message::SaveConfig => {
+                config::save_config_to_file(&self.app_config);
+                self.edit_data.is_dirty = false;
+            }
             Message::OpenScriptConfigEditing(script_idx) => {
                 set_selected_script(
                     &mut self.edit_data.currently_edited_script,
@@ -466,11 +476,13 @@ impl Application for MainWindow {
             Message::MoveConfigScriptUp(index) => {
                 if index >= 1 && index < self.app_config.script_definitions.len() {
                     self.app_config.script_definitions.swap(index, index - 1);
+                    self.edit_data.is_dirty = true;
                 }
             }
             Message::MoveConfigScriptDown(index) => {
                 if index < self.app_config.script_definitions.len() - 1 {
                     self.app_config.script_definitions.swap(index, index + 1);
+                    self.edit_data.is_dirty = true;
                 }
             }
         }
@@ -717,12 +729,12 @@ fn produce_script_list_content<'a>(
                 data,
                 vertical_space(Length::Fixed(4.0)),
                 button(
-                    text("Edit")
+                    text(if !edit_data.is_dirty { "Edit" } else { "Edit (unsaved changes)" })
                         .width(Length::Fill)
                         .horizontal_alignment(alignment::Horizontal::Center)
                         .size(12),
                 )
-                .on_press(Message::EnterWindowEditMode)
+                .on_press(Message::EnterWindowEditMode),
             ]
         } else {
             column![
@@ -737,7 +749,16 @@ fn produce_script_list_content<'a>(
                             .horizontal_alignment(alignment::Horizontal::Center)
                             .size(16),
                     )
-                    .on_press(Message::ExitWindowEditMode)
+                    .on_press(Message::ExitWindowEditMode),
+                    horizontal_space(Length::Fixed(4.0)),
+                    button(
+                        text("Save")
+                            .width(Length::Fill)
+                            .horizontal_alignment(alignment::Horizontal::Center)
+                            .size(16),
+                    )
+                    .style(if edit_data.is_dirty { theme::Button::Positive } else { theme::Button::Primary })
+                    .on_press(Message::SaveConfig)
                 ]
             ]
         };
@@ -1300,6 +1321,7 @@ fn apply_script_edit(app: &mut MainWindow, edit_fn: impl FnOnce(&mut config::Scr
         match script.script_type {
             EditScriptType::ScriptConfig => {
                 edit_fn(&mut app.app_config.script_definitions[script.idx]);
+                app.edit_data.is_dirty = true;
             }
             EditScriptType::ExecutionList => {
                 edit_fn(&mut app.execution_data.scripts_to_run[script.idx]);

@@ -91,6 +91,18 @@ pub fn get_script_output_path(
     }
 }
 
+pub fn save_config_to_file(config: &AppConfig) {
+    let data = serde_json::to_string_pretty(&config);
+    let data = match data {
+        Ok(data) => data,
+        Err(err) => { eprintln!("Can't serialize config file {}", err); return; }
+    };
+    let result = std::fs::write(&config.paths.config_path, data);
+    if let Err(err) = result {
+        eprintln!("Can't write config file {}, error {}", config.paths.config_path.display(), err);
+    }
+}
+
 fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppConfig {
     AppConfig {
         script_definitions: Vec::new(),
