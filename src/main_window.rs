@@ -73,7 +73,35 @@ pub struct EditScriptId {
 }
 
 #[derive(Debug, Clone)]
-struct WindowEditData {}
+struct WindowEditData {
+    is_editing_config: bool,
+
+    // theme color temp strings
+    theme_color_background: String,
+    theme_color_text: String,
+    theme_color_primary: String,
+    theme_color_success: String,
+    theme_color_danger: String,
+}
+
+impl WindowEditData {
+    fn from_config(config: &config::AppConfig, is_editing: bool) -> Self {
+        let theme = if let Some(theme) = &config.custom_theme {
+            theme.clone()
+        } else {
+            config::CustomTheme::default()
+        };
+
+        Self {
+            is_editing_config: is_editing,
+            theme_color_background: rgb_to_hex(&theme.background),
+            theme_color_text: rgb_to_hex(&theme.text),
+            theme_color_primary: rgb_to_hex(&theme.primary),
+            theme_color_success: rgb_to_hex(&theme.success),
+            theme_color_danger: rgb_to_hex(&theme.danger),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -109,6 +137,17 @@ pub enum Message {
     OpenScriptConfigEditing(usize),
     MoveConfigScriptUp(usize),
     MoveConfigScriptDown(usize),
+    ToggleConfigEditing,
+    ConfigToggleAlwaysOnTop(bool),
+    ConfigToggleWindowStatusReactions(bool),
+    ConfigToggleIconPathRelativeToScripter(bool),
+    ConfigToggleKeepWindowSize(bool),
+    ConfigToggleUseCustomTheme(bool),
+    ConfigEditThemeBackground(String),
+    ConfigEditThemeText(String),
+    ConfigEditThemePrimary(String),
+    ConfigEditThemeSuccess(String),
+    ConfigEditThemeDanger(String),
 }
 
 impl Application for MainWindow {
@@ -125,7 +164,7 @@ impl Application for MainWindow {
                 axis: pane_grid::Axis::Horizontal,
                 ratio: 0.65,
                 a: Box::new(Configuration::Pane(AppPane::new(PaneVariant::ScriptList))),
-                b: Box::new(Configuration::Pane(AppPane::new(PaneVariant::ScriptEdit))),
+                b: Box::new(Configuration::Pane(AppPane::new(PaneVariant::Parameters))),
             }),
             b: Box::new(Configuration::Split {
                 axis: pane_grid::Axis::Vertical,
@@ -144,11 +183,7 @@ impl Application for MainWindow {
                 panes,
                 focus: None,
                 execution_data: execution::new_execution_data(),
-                theme: if let Some(theme) = app_config.custom_theme.clone() {
-                    style::get_custom_theme(theme)
-                } else {
-                    Theme::default()
-                },
+                theme: get_theme(&app_config),
                 app_config,
                 visual_caches: VisualCaches {
                     autorerun_count: String::new(),
@@ -452,7 +487,8 @@ impl Application for MainWindow {
                 apply_script_edit(self, |script| script.path_relative_to_scripter = value)
             }
             Message::EnterWindowEditMode => {
-                self.edit_data.window_edit_data = Some(WindowEditData {});
+                self.edit_data.window_edit_data =
+                    Some(WindowEditData::from_config(&self.app_config, false));
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
             }
             Message::ExitWindowEditMode => {
@@ -484,6 +520,115 @@ impl Application for MainWindow {
                     self.app_config.script_definitions.swap(index, index + 1);
                     self.edit_data.is_dirty = true;
                 }
+            }
+            Message::ToggleConfigEditing => {
+                match &mut self.edit_data.window_edit_data {
+                    Some(window_edit_data) => {
+                        window_edit_data.is_editing_config = !window_edit_data.is_editing_config;
+                    }
+                    None => {
+                        self.edit_data.window_edit_data =
+                            Some(WindowEditData::from_config(&self.app_config, true));
+                    }
+                };
+                reset_selected_script(&mut self.edit_data.currently_edited_script);
+            }
+            Message::ConfigToggleAlwaysOnTop(is_checked) => {
+                self.app_config.always_on_top = is_checked;
+                self.edit_data.is_dirty = true;
+            }
+            Message::ConfigToggleWindowStatusReactions(is_checked) => {
+                self.app_config.window_status_reactions = is_checked;
+                self.edit_data.is_dirty = true;
+            }
+            Message::ConfigToggleIconPathRelativeToScripter(is_checked) => {
+                self.app_config.icon_path_relative_to_scripter = is_checked;
+                self.edit_data.is_dirty = true;
+            }
+            Message::ConfigToggleKeepWindowSize(is_checked) => {
+                self.app_config.keep_window_size = is_checked;
+                self.edit_data.is_dirty = true;
+            }
+            Message::ConfigToggleUseCustomTheme(is_checked) => {
+                self.app_config.custom_theme = if is_checked {
+                    Some(
+                        if let Some(window_edit_data) = &self.edit_data.window_edit_data {
+                            config::CustomTheme {
+                                background: hex_to_rgb(&window_edit_data.theme_color_background)
+                                    .unwrap_or_default(),
+                                text: hex_to_rgb(&window_edit_data.theme_color_text)
+                                    .unwrap_or_default(),
+                                primary: hex_to_rgb(&window_edit_data.theme_color_primary)
+                                    .unwrap_or_default(),
+                                success: hex_to_rgb(&window_edit_data.theme_color_success)
+                                    .unwrap_or_default(),
+                                danger: hex_to_rgb(&window_edit_data.theme_color_danger)
+                                    .unwrap_or_default(),
+                            }
+                        } else {
+                            config::CustomTheme::default()
+                        },
+                    )
+                } else {
+                    None
+                };
+                self.theme = get_theme(&self.app_config);
+                self.edit_data.is_dirty = true;
+            }
+            Message::ConfigEditThemeBackground(new_value) => {
+                apply_theme_color_from_string(
+                    self,
+                    new_value,
+                    |theme, value| theme.background = value,
+                    |edit_data, value| {
+                        edit_data.theme_color_background = value;
+                        &edit_data.theme_color_background
+                    },
+                );
+            }
+            Message::ConfigEditThemeText(new_value) => {
+                apply_theme_color_from_string(
+                    self,
+                    new_value,
+                    |theme, value| theme.text = value,
+                    |edit_data, value| {
+                        edit_data.theme_color_text = value;
+                        &edit_data.theme_color_text
+                    },
+                );
+            }
+            Message::ConfigEditThemePrimary(new_value) => {
+                apply_theme_color_from_string(
+                    self,
+                    new_value,
+                    |theme, value| theme.primary = value,
+                    |edit_data, value| {
+                        edit_data.theme_color_primary = value;
+                        &edit_data.theme_color_primary
+                    },
+                );
+            }
+            Message::ConfigEditThemeSuccess(new_value) => {
+                apply_theme_color_from_string(
+                    self,
+                    new_value,
+                    |theme, value| theme.success = value,
+                    |edit_data, value| {
+                        edit_data.theme_color_success = value;
+                        &edit_data.theme_color_success
+                    },
+                );
+            }
+            Message::ConfigEditThemeDanger(new_value) => {
+                apply_theme_color_from_string(
+                    self,
+                    new_value,
+                    |theme, value| theme.danger = value,
+                    |edit_data, value| {
+                        edit_data.theme_color_danger = value;
+                        &edit_data.theme_color_danger
+                    },
+                );
             }
         }
 
@@ -521,12 +666,10 @@ impl Application for MainWindow {
                     view_content(
                         &self.execution_data,
                         variant,
-                        &self.app_config.script_definitions,
                         &self.theme,
                         &self.app_config.paths,
                         &self.visual_caches,
-                        &self.app_config.custom_title,
-                        &self.app_config.config_read_error,
+                        &self.app_config,
                         &self.edit_data,
                     )
                 }))
@@ -597,7 +740,7 @@ pub enum PaneVariant {
     ScriptList,
     ExecutionList,
     LogOutput,
-    ScriptEdit,
+    Parameters,
 }
 
 struct AppPane {
@@ -729,10 +872,14 @@ fn produce_script_list_content<'a>(
                 data,
                 vertical_space(Length::Fixed(4.0)),
                 button(
-                    text(if !edit_data.is_dirty { "Edit" } else { "Edit (unsaved changes)" })
-                        .width(Length::Fill)
-                        .horizontal_alignment(alignment::Horizontal::Center)
-                        .size(12),
+                    text(if !edit_data.is_dirty {
+                        "Edit"
+                    } else {
+                        "Edit (unsaved changes)"
+                    })
+                    .width(Length::Fill)
+                    .horizontal_alignment(alignment::Horizontal::Center)
+                    .size(12),
                 )
                 .on_press(Message::EnterWindowEditMode),
             ]
@@ -741,25 +888,22 @@ fn produce_script_list_content<'a>(
                 data,
                 vertical_space(Length::Fixed(4.0)),
                 row![
+                    button(text("Stop editing").size(16),).on_press(Message::ExitWindowEditMode),
+                    horizontal_space(Length::Fixed(4.0)),
                     button(text("Add script").size(16)).on_press(Message::AddScriptToConfig),
                     horizontal_space(Length::Fixed(4.0)),
-                    button(
-                        text("Stop editing")
-                            .width(Length::Fill)
-                            .horizontal_alignment(alignment::Horizontal::Center)
-                            .size(16),
-                    )
-                    .on_press(Message::ExitWindowEditMode),
-                    horizontal_space(Length::Fixed(4.0)),
-                    button(
-                        text("Save")
-                            .width(Length::Fill)
-                            .horizontal_alignment(alignment::Horizontal::Center)
-                            .size(16),
-                    )
-                    .style(if edit_data.is_dirty { theme::Button::Positive } else { theme::Button::Primary })
-                    .on_press(Message::SaveConfig)
-                ]
+                    button(text("Options").size(16),).on_press(Message::ToggleConfigEditing),
+                ],
+                if edit_data.is_dirty {
+                    column![
+                        vertical_space(Length::Fixed(4.0)),
+                        button(text("Save").size(16))
+                            .style(theme::Button::Positive)
+                            .on_press(Message::SaveConfig)
+                    ]
+                } else {
+                    column![]
+                }
             ]
         };
 
@@ -1198,40 +1342,116 @@ fn produce_script_edit_content<'a>(
         .align_items(Alignment::Start);
 }
 
+fn produce_config_edit_content<'a>(
+    config: &config::AppConfig,
+    window_edit: &WindowEditData,
+) -> Column<'a, Message> {
+    let always_on_top_checkbox = checkbox(
+        "Always on top (requires restart)",
+        config.always_on_top,
+        move |val| Message::ConfigToggleAlwaysOnTop(val),
+    );
+
+    let window_status_reactions_checkbox = checkbox(
+        "Window status reactions",
+        config.window_status_reactions,
+        move |val| Message::ConfigToggleWindowStatusReactions(val),
+    );
+    let icon_path_relative_to_scripter_checkbox = checkbox(
+        "Icon path relative to scripter executable",
+        config.icon_path_relative_to_scripter,
+        move |val| Message::ConfigToggleIconPathRelativeToScripter(val),
+    );
+    let keep_window_size_checkbox =
+        checkbox("Keep window size", config.keep_window_size, move |val| {
+            Message::ConfigToggleKeepWindowSize(val)
+        });
+    let custom_theme_checkbox = checkbox(
+        "Use custom theme",
+        config.custom_theme.is_some(),
+        move |val| Message::ConfigToggleUseCustomTheme(val),
+    );
+
+    let theme_edit_column = if let Some(_theme) = &config.custom_theme {
+        column![
+            text("Background:"),
+            text_input("#000000", &window_edit.theme_color_background)
+                .on_input(move |new_value| Message::ConfigEditThemeBackground(new_value))
+                .padding(5),
+            text("Text:"),
+            text_input("#000000", &window_edit.theme_color_text)
+                .on_input(move |new_value| Message::ConfigEditThemeText(new_value))
+                .padding(5),
+            text("Primary:"),
+            text_input("#000000", &window_edit.theme_color_primary)
+                .on_input(move |new_value| Message::ConfigEditThemePrimary(new_value))
+                .padding(5),
+            text("Success:"),
+            text_input("#000000", &window_edit.theme_color_success)
+                .on_input(move |new_value| Message::ConfigEditThemeSuccess(new_value))
+                .padding(5),
+            text("Danger:"),
+            text_input("#000000", &window_edit.theme_color_danger)
+                .on_input(move |new_value| Message::ConfigEditThemeDanger(new_value))
+                .padding(5),
+        ]
+    } else {
+        column![]
+    };
+
+    let content = column![
+        always_on_top_checkbox,
+        window_status_reactions_checkbox,
+        icon_path_relative_to_scripter_checkbox,
+        keep_window_size_checkbox,
+        custom_theme_checkbox,
+        theme_edit_column,
+    ];
+
+    return column![scrollable(content)]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .spacing(10)
+        .align_items(Alignment::Start);
+}
+
 fn view_content<'a>(
     execution_data: &execution::ScriptExecutionData,
     variant: &PaneVariant,
-    script_definitions: &Vec<config::ScriptDefinition>,
     theme: &Theme,
     paths: &config::PathCaches,
     visual_caches: &VisualCaches,
-    custom_title: &Option<String>,
-    config_read_error: &Option<String>,
+    config: &config::AppConfig,
     edit_data: &EditData,
 ) -> Element<'a, Message> {
     let content = match variant {
         PaneVariant::ScriptList => produce_script_list_content(
             execution_data,
-            script_definitions,
+            &config.script_definitions,
             paths,
-            config_read_error,
+            &config.config_read_error,
             edit_data,
         ),
         PaneVariant::ExecutionList => produce_execution_list_content(
             execution_data,
             paths,
             theme,
-            custom_title,
+            &config.custom_title,
             &visual_caches.icons,
             edit_data,
         ),
         PaneVariant::LogOutput => produce_log_output_content(execution_data, theme),
-        PaneVariant::ScriptEdit => produce_script_edit_content(
-            execution_data,
-            script_definitions,
-            visual_caches,
-            edit_data,
-        ),
+        PaneVariant::Parameters => match &edit_data.window_edit_data {
+            Some(window_edit_data) if window_edit_data.is_editing_config => {
+                produce_config_edit_content(config, window_edit_data)
+            }
+            _ => produce_script_edit_content(
+                execution_data,
+                &config.script_definitions,
+                visual_caches,
+                edit_data,
+            ),
+        },
     };
 
     container(content)
@@ -1294,7 +1514,7 @@ fn get_pane_name_from_variant(variant: &PaneVariant) -> &str {
         PaneVariant::ScriptList => "Scripts",
         PaneVariant::ExecutionList => "Execution",
         PaneVariant::LogOutput => "Log",
-        PaneVariant::ScriptEdit => "Script details",
+        PaneVariant::Parameters => "Parameters",
     }
 }
 
@@ -1325,6 +1545,53 @@ fn apply_script_edit(app: &mut MainWindow, edit_fn: impl FnOnce(&mut config::Scr
             }
             EditScriptType::ExecutionList => {
                 edit_fn(&mut app.execution_data.scripts_to_run[script.idx]);
+            }
+        }
+    }
+}
+
+fn get_theme(config: &config::AppConfig) -> Theme {
+    if let Some(theme) = config.custom_theme.clone() {
+        style::get_custom_theme(theme)
+    } else {
+        Theme::default()
+    }
+}
+
+fn hex_to_rgb(hex: &str) -> Option<[f32; 3]> {
+    if hex.len() != 7 {
+        return None;
+    }
+
+    let hex = hex.trim_start_matches('#');
+    let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
+    let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
+    let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
+    return Some([r as f32 / 256.0, g as f32 / 256.0, b as f32 / 256.0]);
+}
+
+fn rgb_to_hex(rgb: &[f32; 3]) -> String {
+    let rgb = rgb.map(|x| x.max(0.0).min(1.0));
+    let r = (256.0 * rgb[0]) as u8;
+    let g = (256.0 * rgb[1]) as u8;
+    let b = (256.0 * rgb[2]) as u8;
+    let hex = format!("{:02x}{:02x}{:02x}", r, g, b);
+    return format!("#{}", hex);
+}
+
+fn apply_theme_color_from_string(
+    app: &mut MainWindow,
+    color: String,
+    set_theme_fn: impl FnOnce(&mut config::CustomTheme, [f32; 3]),
+    set_text_fn: impl FnOnce(&mut WindowEditData, String) -> &String,
+) {
+    if let Some(edit_data) = &mut app.edit_data.window_edit_data {
+        let color_string = set_text_fn(edit_data, color);
+        if let Some(custom_theme) = &mut app.app_config.custom_theme {
+            if let Some(new_color) = hex_to_rgb(&color_string) {
+                set_theme_fn(custom_theme, new_color);
+                app.theme = get_theme(&app.app_config);
+                app.edit_data.is_dirty = true;
             }
         }
     }

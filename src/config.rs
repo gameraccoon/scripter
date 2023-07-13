@@ -57,13 +57,25 @@ struct AppArguments {
     icons_path: Option<String>,
 }
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CustomTheme {
     pub background: [f32; 3],
     pub text: [f32; 3],
     pub primary: [f32; 3],
     pub success: [f32; 3],
     pub danger: [f32; 3],
+}
+
+impl Default for CustomTheme {
+    fn default() -> Self {
+        CustomTheme {
+            background: [0.25, 0.26, 0.29],
+            text: [0.0, 0.0, 0.0],
+            primary: [0.45, 0.53, 0.855],
+            success: [0.31, 0.5, 0.17],
+            danger: [1.0, 0.0, 0.0],
+        }
+    }
 }
 
 pub fn get_app_config_copy() -> AppConfig {
