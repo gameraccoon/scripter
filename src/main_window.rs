@@ -134,6 +134,7 @@ pub enum Message {
     EnterWindowEditMode,
     ExitWindowEditMode,
     SaveConfig,
+    RevertConfig,
     OpenScriptConfigEditing(usize),
     MoveConfigScriptUp(usize),
     MoveConfigScriptDown(usize),
@@ -497,6 +498,13 @@ impl Application for MainWindow {
             }
             Message::SaveConfig => {
                 config::save_config_to_file(&self.app_config);
+                self.edit_data.is_dirty = false;
+            }
+            Message::RevertConfig => {
+                self.app_config = config::read_config();
+                self.edit_data.window_edit_data =
+                    Some(WindowEditData::from_config(&self.app_config, true));
+                self.theme = get_theme(&self.app_config);
                 self.edit_data.is_dirty = false;
             }
             Message::OpenScriptConfigEditing(script_idx) => {
@@ -897,9 +905,14 @@ fn produce_script_list_content<'a>(
                 if edit_data.is_dirty {
                     column![
                         vertical_space(Length::Fixed(4.0)),
-                        button(text("Save").size(16))
-                            .style(theme::Button::Positive)
-                            .on_press(Message::SaveConfig)
+                        row![
+                            button(text("Save").size(16))
+                                .style(theme::Button::Positive)
+                                .on_press(Message::SaveConfig),
+                            button(text("Revert").size(16))
+                                .style(theme::Button::Destructive)
+                                .on_press(Message::RevertConfig),
+                        ]
                     ]
                 } else {
                     column![]

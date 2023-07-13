@@ -168,7 +168,7 @@ fn default_config_with_error(config: &AppConfig, error: String) -> AppConfig {
     }
 }
 
-fn read_config() -> AppConfig {
+pub fn read_config() -> AppConfig {
     let app_arguments = get_app_arguments();
 
     let config_path = get_config_path(&app_arguments);
