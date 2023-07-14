@@ -1370,14 +1370,13 @@ fn produce_config_edit_content<'a>(
         config.always_on_top,
         move |val| Message::ConfigToggleAlwaysOnTop(val),
     );
-
     let window_status_reactions_checkbox = checkbox(
         "Window status reactions",
         config.window_status_reactions,
         move |val| Message::ConfigToggleWindowStatusReactions(val),
     );
     let icon_path_relative_to_scripter_checkbox = checkbox(
-        "Icon path relative to scripter executable",
+        "Icon path relative to scripter executable (requires restart)",
         config.icon_path_relative_to_scripter,
         move |val| Message::ConfigToggleIconPathRelativeToScripter(val),
     );
