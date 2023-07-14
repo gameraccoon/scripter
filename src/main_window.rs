@@ -503,7 +503,7 @@ impl Application for MainWindow {
             Message::RevertConfig => {
                 self.app_config = config::read_config();
                 self.edit_data.window_edit_data =
-                    Some(WindowEditData::from_config(&self.app_config, true));
+                    Some(WindowEditData::from_config(&self.app_config, false));
                 self.theme = get_theme(&self.app_config);
                 self.edit_data.is_dirty = false;
             }
