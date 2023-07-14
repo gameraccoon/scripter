@@ -896,8 +896,6 @@ fn produce_script_list_content<'a>(
                 data,
                 vertical_space(Length::Fixed(4.0)),
                 row![
-                    button(text("Stop editing").size(16),).on_press(Message::ExitWindowEditMode),
-                    horizontal_space(Length::Fixed(4.0)),
                     button(text("Add script").size(16)).on_press(Message::AddScriptToConfig),
                     horizontal_space(Length::Fixed(4.0)),
                     button(text("Options").size(16),).on_press(Message::ToggleConfigEditing),
@@ -906,16 +904,24 @@ fn produce_script_list_content<'a>(
                     column![
                         vertical_space(Length::Fixed(4.0)),
                         row![
+                            button(text("Stop editing").size(16),)
+                                .on_press(Message::ExitWindowEditMode),
+                            horizontal_space(Length::Fixed(4.0)),
                             button(text("Save").size(16))
                                 .style(theme::Button::Positive)
                                 .on_press(Message::SaveConfig),
+                            horizontal_space(Length::Fixed(4.0)),
                             button(text("Revert").size(16))
                                 .style(theme::Button::Destructive)
                                 .on_press(Message::RevertConfig),
                         ]
                     ]
                 } else {
-                    column![]
+                    column![
+                        vertical_space(Length::Fixed(4.0)),
+                        button(text("Stop editing").size(16),)
+                            .on_press(Message::ExitWindowEditMode)
+                    ]
                 }
             ]
         };
