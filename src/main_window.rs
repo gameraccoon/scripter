@@ -403,12 +403,37 @@ impl Application for MainWindow {
                     };
 
                 match script_id.script_type {
-                    EditScriptType::ScriptConfig => self.app_config.script_definitions.insert(
-                        script_id.idx + 1,
-                        init_duplicated_script(
-                            self.app_config.script_definitions[script_id.idx].clone(),
-                        ),
-                    ),
+                    EditScriptType::ScriptConfig => match &self.edit_data.window_edit_data {
+                        Some(WindowEditData {
+                            edit_type: ConfigEditType::Child,
+                            ..
+                        }) => {
+                            if let Some(config) = self.app_config.child_config_body.as_mut() {
+                                match &config.script_definitions[script_id.idx] {
+                                    config::ChildScriptDefinition::Parent(_, _) => {}
+                                    config::ChildScriptDefinition::Added(script) => {
+                                        config.script_definitions.insert(
+                                            script_id.idx + 1,
+                                            config::ChildScriptDefinition::Added(init_duplicated_script(
+                                                script.clone(),
+                                            )),
+                                        );
+                                    }
+                                }
+                            }
+                            config::update_child_config_script_cache_from_config(
+                                &mut self.app_config,
+                            );
+                        }
+                        _ => {
+                            self.app_config.script_definitions.insert(
+                                script_id.idx + 1,
+                                init_duplicated_script(
+                                    self.app_config.script_definitions[script_id.idx].clone(),
+                                ),
+                            );
+                        }
+                    },
                     EditScriptType::ExecutionList => self.execution_data.scripts_to_run.insert(
                         script_id.idx + 1,
                         init_duplicated_script(
@@ -629,6 +654,9 @@ impl Application for MainWindow {
                     script_idx,
                     EditScriptType::ScriptConfig,
                 );
+                if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
+                    window_edit_data.is_editing_config = false;
+                }
             }
             Message::MoveConfigScriptUp(index) => {
                 if index >= 1 && index < self.app_config.script_definitions.len() {
@@ -1833,28 +1861,26 @@ fn add_pane_switch_button<'a>(
 fn apply_script_edit(app: &mut MainWindow, edit_fn: impl FnOnce(&mut config::ScriptDefinition)) {
     if let Some(script_id) = &app.edit_data.currently_edited_script {
         match script_id.script_type {
-            EditScriptType::ScriptConfig => {
-                match &app.edit_data.window_edit_data {
-                    Some(window_edit_data)
-                        if window_edit_data.edit_type == ConfigEditType::Child =>
-                    {
-                        if let Some(config) = &mut app.app_config.child_config_body {
-                            match &mut config.script_definitions[script_id.idx] {
-                                config::ChildScriptDefinition::Added(script) => {
-                                    edit_fn(script);
-                                    config::update_child_config_script_cache_from_config(&mut app.app_config);
-                                    app.edit_data.is_dirty = true;
-                                }
-                                _ => {}
+            EditScriptType::ScriptConfig => match &app.edit_data.window_edit_data {
+                Some(window_edit_data) if window_edit_data.edit_type == ConfigEditType::Child => {
+                    if let Some(config) = &mut app.app_config.child_config_body {
+                        match &mut config.script_definitions[script_id.idx] {
+                            config::ChildScriptDefinition::Added(script) => {
+                                edit_fn(script);
+                                config::update_child_config_script_cache_from_config(
+                                    &mut app.app_config,
+                                );
+                                app.edit_data.is_dirty = true;
                             }
+                            _ => {}
                         }
                     }
-                    _ => {
-                        edit_fn(&mut app.app_config.script_definitions[script_id.idx]);
-                        app.edit_data.is_dirty = true;
-                    }
                 }
-            }
+                _ => {
+                    edit_fn(&mut app.app_config.script_definitions[script_id.idx]);
+                    app.edit_data.is_dirty = true;
+                }
+            },
             EditScriptType::ExecutionList => {
                 edit_fn(&mut app.execution_data.scripts_to_run[script_id.idx]);
             }
