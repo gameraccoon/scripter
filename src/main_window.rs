@@ -1831,14 +1831,32 @@ fn add_pane_switch_button<'a>(
 }
 
 fn apply_script_edit(app: &mut MainWindow, edit_fn: impl FnOnce(&mut config::ScriptDefinition)) {
-    if let Some(script) = &app.edit_data.currently_edited_script {
-        match script.script_type {
+    if let Some(script_id) = &app.edit_data.currently_edited_script {
+        match script_id.script_type {
             EditScriptType::ScriptConfig => {
-                edit_fn(&mut app.app_config.script_definitions[script.idx]);
-                app.edit_data.is_dirty = true;
+                match &app.edit_data.window_edit_data {
+                    Some(window_edit_data)
+                        if window_edit_data.edit_type == ConfigEditType::Child =>
+                    {
+                        if let Some(config) = &mut app.app_config.child_config_body {
+                            match &mut config.script_definitions[script_id.idx] {
+                                config::ChildScriptDefinition::Added(script) => {
+                                    edit_fn(script);
+                                    config::update_child_config_script_cache_from_config(&mut app.app_config);
+                                    app.edit_data.is_dirty = true;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => {
+                        edit_fn(&mut app.app_config.script_definitions[script_id.idx]);
+                        app.edit_data.is_dirty = true;
+                    }
+                }
             }
             EditScriptType::ExecutionList => {
-                edit_fn(&mut app.execution_data.scripts_to_run[script.idx]);
+                edit_fn(&mut app.execution_data.scripts_to_run[script_id.idx]);
             }
         }
     }
