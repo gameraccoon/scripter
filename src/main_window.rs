@@ -165,6 +165,8 @@ pub enum Message {
     ConfigEditChildConfigPath(String),
     SwitchToParentConfig,
     SwitchToChildConfig,
+    ToggleScriptHidden(bool),
+    CreateCopyOfParentScript(EditScriptId),
 }
 
 impl Application for MainWindow {
@@ -765,6 +767,27 @@ impl Application for MainWindow {
                 switch_config_edit_mode(self, ConfigEditType::Child);
                 self.theme = get_theme(&self.app_config, &self.edit_data.window_edit_data);
             }
+            Message::ToggleScriptHidden(is_hidden) => {
+                let Some(script_id) = &mut self.edit_data.currently_edited_script else {
+                    return Command::none();
+                };
+
+                if let Some(config) = &mut self.app_config.child_config_body {
+                    let Some(script) = config.script_definitions.get_mut(script_id.idx) else {
+                        return Command::none();
+                    };
+
+                    match script {
+                        config::ChildScriptDefinition::Parent(_, is_hidden_value) => {
+                            *is_hidden_value = is_hidden;
+                            self.edit_data.is_dirty = true;
+                        }
+                        config::ChildScriptDefinition::Added(_) => {}
+                    }
+                }
+                config::update_child_config_script_cache_from_config(&mut self.app_config);
+            }
+            Message::CreateCopyOfParentScript(script_id) => {}
         }
 
         Command::none()
@@ -922,6 +945,7 @@ fn produce_script_list_content<'a>(
     let data: Element<_> = column(
         get_script_definition_list_opt(&config, &edit_data.window_edit_data)
             .iter()
+            .filter(|script| !script.is_hidden || edit_data.window_edit_data.is_some())
             .enumerate()
             .map(|(i, script)| {
                 if !has_started_execution {
@@ -1426,87 +1450,106 @@ fn produce_script_edit_content<'a>(
     };
 
     let mut parameters: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
-    parameters.push(
-        text_input("name", &script.name)
-            .on_input(move |new_arg| Message::EditScriptName(new_arg))
-            .padding(5)
-            .into(),
-    );
-
-    if currently_edited_script.script_type == EditScriptType::ScriptConfig {
-        parameters.push(text("Command:").into());
+    if !script.is_read_only {
         parameters.push(
-            text_input("command", &script.command)
-                .on_input(move |new_arg| Message::EditScriptCommand(new_arg))
+            text_input("name", &script.name)
+                .on_input(move |new_arg| Message::EditScriptName(new_arg))
+                .padding(5)
+                .into(),
+        );
+
+        if currently_edited_script.script_type == EditScriptType::ScriptConfig {
+            parameters.push(text("Command:").into());
+            parameters.push(
+                text_input("command", &script.command)
+                    .on_input(move |new_arg| Message::EditScriptCommand(new_arg))
+                    .padding(5)
+                    .into(),
+            );
+
+            parameters.push(
+                checkbox(
+                    "Is path relative to the scripter executable",
+                    script.path_relative_to_scripter,
+                    move |val| Message::TogglePathRelativeToScripter(val),
+                )
+                .into(),
+            );
+
+            let icon_path = match &script.icon {
+                Some(path) => path.as_str(),
+                None => EMPTY_STRING,
+            };
+            parameters.push(text("Path to the icon:").into());
+            parameters.push(
+                text_input("icon path", &icon_path)
+                    .on_input(move |new_arg| Message::EditScriptIconPath(new_arg))
+                    .padding(5)
+                    .into(),
+            );
+        }
+
+        parameters.push(text("Arguments line:").into());
+        parameters.push(
+            text_input("\"arg1\" \"arg2\"", &script.arguments)
+                .on_input(move |new_value| Message::EditArguments(new_value))
+                .padding(5)
+                .into(),
+        );
+
+        parameters.push(text("Retry count:").into());
+        parameters.push(
+            text_input("0", &visual_caches.autorerun_count)
+                .on_input(move |new_value| Message::EditAutorerunCount(new_value))
                 .padding(5)
                 .into(),
         );
 
         parameters.push(
             checkbox(
-                "Is path relative to the scripter executable",
-                script.path_relative_to_scripter,
-                move |val| Message::TogglePathRelativeToScripter(val),
+                "Ignore previous failures",
+                script.ignore_previous_failures,
+                move |val| Message::ToggleIgnoreFailures(val),
             )
             .into(),
         );
 
-        let icon_path = match &script.icon {
-            Some(path) => path.as_str(),
-            None => EMPTY_STRING,
-        };
-        parameters.push(text("Path to the icon:").into());
-        parameters.push(
-            text_input("icon path", &icon_path)
-                .on_input(move |new_arg| Message::EditScriptIconPath(new_arg))
-                .padding(5)
+        if currently_edited_script.script_type == EditScriptType::ScriptConfig {
+            parameters.push(
+                button(
+                    "Duplicate script",
+                    Message::DuplicateScript(currently_edited_script.clone()),
+                )
                 .into(),
-        );
-    }
+            );
+        }
 
-    parameters.push(text("Arguments line:").into());
-    parameters.push(
-        text_input("\"arg1\" \"arg2\"", &script.arguments)
-            .on_input(move |new_value| Message::EditArguments(new_value))
-            .padding(5)
-            .into(),
-    );
-
-    parameters.push(text("Retry count:").into());
-    parameters.push(
-        text_input("0", &visual_caches.autorerun_count)
-            .on_input(move |new_value| Message::EditAutorerunCount(new_value))
-            .padding(5)
-            .into(),
-    );
-
-    parameters.push(
-        checkbox(
-            "Ignore previous failures",
-            script.ignore_previous_failures,
-            move |val| Message::ToggleIgnoreFailures(val),
-        )
-        .into(),
-    );
-
-    if currently_edited_script.script_type == EditScriptType::ScriptConfig {
         parameters.push(
             button(
-                "Duplicate script",
-                Message::DuplicateScript(currently_edited_script.clone()),
+                "Remove script",
+                Message::RemoveScript(currently_edited_script.clone()),
             )
+            .style(theme::Button::Destructive)
             .into(),
         );
-    }
+    } else {
+        parameters.push(
+            checkbox("Is script hidden", script.is_hidden, move |val| {
+                Message::ToggleScriptHidden(val)
+            })
+            .into(),
+        );
 
-    parameters.push(
-        button(
-            "Remove script",
-            Message::RemoveScript(currently_edited_script.clone()),
-        )
-        .style(theme::Button::Destructive)
-        .into(),
-    );
+        if currently_edited_script.script_type == EditScriptType::ScriptConfig {
+            parameters.push(
+                button(
+                    "Create copy",
+                    Message::CreateCopyOfParentScript(currently_edited_script.clone()),
+                )
+                .into(),
+            );
+        }
+    }
 
     let content = column(parameters).spacing(10);
 

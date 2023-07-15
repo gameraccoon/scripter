@@ -206,7 +206,8 @@ pub fn save_config_to_file(config: &AppConfig) {
             }
         };
         if let Some(config_path) = &config.child_config_path {
-            let result = std::fs::write(&config_path, data);
+            let full_config_path = config.paths.exe_folder_path.join(config_path);
+            let result = std::fs::write(&full_config_path, data);
             if let Err(err) = result {
                 eprintln!(
                     "Can't write child config file {}, error {}",
@@ -467,6 +468,13 @@ pub fn update_child_config_script_cache(child_config: &mut ChildConfig, parent_c
             }
         }
     }
+}
+
+pub fn update_child_config_script_cache_from_config(app_config: &mut AppConfig) {
+    if let Some(mut child_config) = app_config.child_config_body.take() {
+        update_child_config_script_cache(&mut child_config, app_config);
+        app_config.child_config_body = Some(child_config);
+    };
 }
 
 fn read_child_config(
