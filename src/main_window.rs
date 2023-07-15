@@ -311,7 +311,10 @@ impl Application for MainWindow {
                 set_selected_script(
                     &mut self.edit_data.currently_edited_script,
                     &self.execution_data,
-                    &self.app_config.script_definitions,
+                    &get_script_definition_list_opt(
+                        &self.app_config,
+                        &self.edit_data.window_edit_data,
+                    ),
                     &mut self.visual_caches,
                     script_idx,
                     EditScriptType::ExecutionList,
@@ -377,7 +380,10 @@ impl Application for MainWindow {
                 set_selected_script(
                     &mut self.edit_data.currently_edited_script,
                     &self.execution_data,
-                    &self.app_config.script_definitions,
+                    &get_script_definition_list_opt(
+                        &self.app_config,
+                        &self.edit_data.window_edit_data,
+                    ),
                     &mut self.visual_caches,
                     script_idx,
                     EditScriptType::ExecutionList,
@@ -437,13 +443,18 @@ impl Application for MainWindow {
                     path_relative_to_scripter: false,
                     autorerun_count: 0,
                     ignore_previous_failures: false,
+                    is_read_only: false,
+                    is_hidden: false,
                 };
                 self.app_config.script_definitions.push(script);
                 let script_idx = self.app_config.script_definitions.len() - 1;
                 set_selected_script(
                     &mut self.edit_data.currently_edited_script,
                     &self.execution_data,
-                    &self.app_config.script_definitions,
+                    &get_script_definition_list_opt(
+                        &self.app_config,
+                        &self.edit_data.window_edit_data,
+                    ),
                     &mut self.visual_caches,
                     script_idx,
                     EditScriptType::ScriptConfig,
@@ -457,7 +468,10 @@ impl Application for MainWindow {
                 set_selected_script(
                     &mut self.edit_data.currently_edited_script,
                     &self.execution_data,
-                    &self.app_config.script_definitions,
+                    &get_script_definition_list_opt(
+                        &self.app_config,
+                        &self.edit_data.window_edit_data,
+                    ),
                     &mut self.visual_caches,
                     script_idx - 1,
                     EditScriptType::ExecutionList,
@@ -470,7 +484,10 @@ impl Application for MainWindow {
                 set_selected_script(
                     &mut self.edit_data.currently_edited_script,
                     &self.execution_data,
-                    &self.app_config.script_definitions,
+                    &get_script_definition_list_opt(
+                        &self.app_config,
+                        &self.edit_data.window_edit_data,
+                    ),
                     &mut self.visual_caches,
                     script_idx + 1,
                     EditScriptType::ExecutionList,
@@ -587,7 +604,10 @@ impl Application for MainWindow {
                 set_selected_script(
                     &mut self.edit_data.currently_edited_script,
                     &self.execution_data,
-                    &self.app_config.script_definitions,
+                    &get_script_definition_list_opt(
+                        &self.app_config,
+                        &self.edit_data.window_edit_data,
+                    ),
                     &mut self.visual_caches,
                     script_idx,
                     EditScriptType::ScriptConfig,
@@ -736,10 +756,12 @@ impl Application for MainWindow {
                 self.edit_data.is_dirty = true;
             }
             Message::SwitchToParentConfig => {
+                reset_selected_script(&mut self.edit_data.currently_edited_script);
                 switch_config_edit_mode(self, ConfigEditType::Parent);
                 self.theme = get_theme(&self.app_config, &self.edit_data.window_edit_data);
             }
             Message::SwitchToChildConfig => {
+                reset_selected_script(&mut self.edit_data.currently_edited_script);
                 switch_config_edit_mode(self, ConfigEditType::Child);
                 self.theme = get_theme(&self.app_config, &self.edit_data.window_edit_data);
             }
@@ -886,7 +908,7 @@ fn produce_script_list_content<'a>(
         return column![text(format!("Error: {}", error))];
     }
 
-    if config.script_definitions.is_empty() {
+    if get_script_definition_list_opt(&config, &edit_data.window_edit_data).is_empty() {
         let config_path = paths.config_path.to_str().unwrap_or_default();
 
         return column![text(format!(
@@ -898,8 +920,7 @@ fn produce_script_list_content<'a>(
     let has_started_execution = execution::has_started_execution(&execution_data);
 
     let data: Element<_> = column(
-        config
-            .script_definitions
+        get_script_definition_list_opt(&config, &edit_data.window_edit_data)
             .iter()
             .enumerate()
             .map(|(i, script)| {
@@ -1615,7 +1636,7 @@ fn view_content<'a>(
             }
             _ => produce_script_edit_content(
                 execution_data,
-                &config.script_definitions,
+                &get_script_definition_list_opt(&config, &edit_data.window_edit_data),
                 visual_caches,
                 edit_data,
             ),
@@ -1839,4 +1860,36 @@ fn switch_config_edit_mode(app: &mut MainWindow, edit_type: ConfigEditType) {
         is_config_editing,
         edit_type,
     ));
+}
+
+fn get_script_definition_list_opt<'a>(
+    config: &'a config::AppConfig,
+    window_edit_data: &Option<WindowEditData>,
+) -> &'a Vec<config::ScriptDefinition> {
+    match window_edit_data {
+        Some(window_edit_data) => get_script_definition_list(config, &window_edit_data.edit_type),
+        None => {
+            if let Some(child_config) = &config.child_config_body {
+                &child_config.config_definition_cache
+            } else {
+                &config.script_definitions
+            }
+        }
+    }
+}
+
+fn get_script_definition_list<'a>(
+    config: &'a config::AppConfig,
+    edit_type: &ConfigEditType,
+) -> &'a Vec<config::ScriptDefinition> {
+    match edit_type {
+        ConfigEditType::Parent => &config.script_definitions,
+        ConfigEditType::Child => {
+            if let Some(child_config) = &config.child_config_body {
+                &child_config.config_definition_cache
+            } else {
+                &config.script_definitions
+            }
+        }
+    }
 }

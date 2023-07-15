@@ -123,16 +123,7 @@ pub fn add_script_to_execution(
 ) {
     execution_data
         .scripts_to_run
-        .push(config::ScriptDefinition {
-            uid: script.uid,
-            name: script.name,
-            icon: script.icon,
-            command: script.command,
-            arguments: script.arguments,
-            path_relative_to_scripter: script.path_relative_to_scripter,
-            autorerun_count: script.autorerun_count,
-            ignore_previous_failures: script.ignore_previous_failures,
-        });
+        .push(script.clone());
     execution_data
         .scripts_status
         .push(get_default_script_execution_status());

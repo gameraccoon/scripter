@@ -58,12 +58,16 @@ pub struct ScriptDefinition {
     pub path_relative_to_scripter: bool,
     pub autorerun_count: usize,
     pub ignore_previous_failures: bool,
+    #[serde(skip)]
+    pub is_read_only: bool,
+    #[serde(skip)]
+    pub is_hidden: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum ChildScriptDefinition {
-    // taken from the parent config
-    Parent(Guid),
+    // taken from the parent config, second bool is whether it's hidden
+    Parent(Guid, bool),
     // added in the child config
     Added(ScriptDefinition),
 }
@@ -435,7 +439,7 @@ pub fn update_child_config_script_cache(child_config: &mut ChildConfig, parent_c
     child_config.config_definition_cache.clear();
     for script_definition in &child_config.script_definitions {
         match script_definition {
-            ChildScriptDefinition::Parent(parent_script_uid) => {
+            ChildScriptDefinition::Parent(parent_script_uid, is_hidden) => {
                 let parent_script = parent_config
                     .script_definitions
                     .iter()
@@ -445,6 +449,10 @@ pub fn update_child_config_script_cache(child_config: &mut ChildConfig, parent_c
                         child_config
                             .config_definition_cache
                             .push(parent_script.clone());
+                        let len = child_config.config_definition_cache.len();
+                        let added_config = &mut child_config.config_definition_cache[len - 1];
+                        added_config.is_read_only = true;
+                        added_config.is_hidden = *is_hidden;
                     }
                     None => {
                         eprintln!(
@@ -631,7 +639,7 @@ fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &AppCo
         // find position of the script in the child config
         let script_idx = child_config.script_definitions.iter().position(
             |child_script: &ChildScriptDefinition| match child_script {
-                ChildScriptDefinition::Parent(parent_script_uid) => {
+                ChildScriptDefinition::Parent(parent_script_uid, _is_hidden) => {
                     *parent_script_uid == script.uid
                 }
                 _ => false,
@@ -648,7 +656,7 @@ fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &AppCo
                         // insert the script after the previous script
                         child_config.script_definitions.insert(
                             *previous_script_idx + 1,
-                            ChildScriptDefinition::Parent(script.uid.clone()),
+                            ChildScriptDefinition::Parent(script.uid.clone(), false),
                         );
                         *previous_script_idx = *previous_script_idx + 1;
                     }
@@ -656,7 +664,7 @@ fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &AppCo
                         // insert the script at the beginning
                         child_config
                             .script_definitions
-                            .insert(0, ChildScriptDefinition::Parent(script.uid.clone()));
+                            .insert(0, ChildScriptDefinition::Parent(script.uid.clone(), false));
                         previous_script_idx = Some(0);
                     }
                 }
