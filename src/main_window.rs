@@ -119,6 +119,7 @@ pub enum Message {
     Tick(Instant),
     OpenScriptEditing(usize),
     CloseScriptEditing,
+    DuplicateScript(EditScriptId),
     RemoveScript(EditScriptId),
     AddScriptToConfig,
     MoveScriptUp(usize),
@@ -355,6 +356,20 @@ impl Application for MainWindow {
             }
             Message::CloseScriptEditing => {
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
+            }
+            Message::DuplicateScript(script_id) => {
+                match script_id.script_type {
+                    EditScriptType::ScriptConfig => {
+                        self.app_config.script_definitions.insert(script_id.idx, self.app_config.script_definitions[script_id.idx].clone())
+                    }
+                    EditScriptType::ExecutionList => {
+                        self.execution_data.scripts_to_run.insert(script_id.idx, self.execution_data.scripts_to_run[script_id.idx].clone())
+                    }
+                };
+                if let Some(script) = &mut self.edit_data.currently_edited_script {
+                    script.idx = script_id.idx + 1;
+                    script.script_type = script_id.script_type;
+                }
             }
             Message::RemoveScript(script_id) => match script_id.script_type {
                 EditScriptType::ScriptConfig => {
@@ -1342,6 +1357,17 @@ fn produce_script_edit_content<'a>(
         )
         .into(),
     );
+
+
+    if currently_edited_script.script_type == EditScriptType::ScriptConfig {
+        parameters.push(
+            button(
+                "Duplicate script",
+                Message::DuplicateScript(currently_edited_script.clone()),
+            )
+            .into(),
+        );
+    }
 
     parameters.push(
         button(
