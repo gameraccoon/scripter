@@ -72,9 +72,16 @@ pub struct EditScriptId {
     script_type: EditScriptType,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum ConfigEditType {
+    Child,
+    Parent,
+}
+
 #[derive(Debug, Clone)]
 struct WindowEditData {
     is_editing_config: bool,
+    edit_type: ConfigEditType,
 
     // theme color temp strings
     theme_color_background: String,
@@ -85,15 +92,20 @@ struct WindowEditData {
 }
 
 impl WindowEditData {
-    fn from_config(config: &config::AppConfig, is_editing: bool) -> Self {
-        let theme = if let Some(theme) = &config.custom_theme {
+    fn from_config(
+        config: &config::AppConfig,
+        is_editing_config: bool,
+        edit_type: ConfigEditType,
+    ) -> Self {
+        let theme = if let Some(theme) = &get_rewritable_config(&config, &edit_type).custom_theme {
             theme.clone()
         } else {
             config::CustomTheme::default()
         };
 
         Self {
-            is_editing_config: is_editing,
+            is_editing_config,
+            edit_type,
             theme_color_background: rgb_to_hex(&theme.background),
             theme_color_text: rgb_to_hex(&theme.text),
             theme_color_primary: rgb_to_hex(&theme.primary),
@@ -150,6 +162,9 @@ pub enum Message {
     ConfigEditThemePrimary(String),
     ConfigEditThemeSuccess(String),
     ConfigEditThemeDanger(String),
+    ConfigEditChildConfigPath(String),
+    SwitchToParentConfig,
+    SwitchToChildConfig,
 }
 
 impl Application for MainWindow {
@@ -185,7 +200,7 @@ impl Application for MainWindow {
                 panes,
                 focus: None,
                 execution_data: execution::new_execution_data(),
-                theme: get_theme(&app_config),
+                theme: get_theme(&app_config, &None),
                 app_config,
                 visual_caches: VisualCaches {
                     autorerun_count: String::new(),
@@ -212,8 +227,13 @@ impl Application for MainWindow {
     }
 
     fn title(&self) -> String {
-        if self.edit_data.window_edit_data.is_some() {
-            "scripter [Editing]".to_string()
+        if let Some(window_edit_data) = &self.edit_data.window_edit_data {
+            match window_edit_data.edit_type {
+                ConfigEditType::Parent if self.app_config.child_config_body.is_some() => {
+                    "scripter [Editing Parent]".to_string()
+                }
+                _ => "scripter [Editing]".to_string(),
+            }
         } else if self.execution_data.has_started {
             if execution::has_finished_execution(&self.execution_data) {
                 if self.execution_data.has_failed_scripts {
@@ -244,7 +264,9 @@ impl Application for MainWindow {
             Message::Maximize(pane, window_size) => {
                 self.focus = Some(pane);
                 self.panes.maximize(&pane);
-                if !self.app_config.keep_window_size {
+                if !get_rewritable_config_opt(&self.app_config, &self.edit_data.window_edit_data)
+                    .keep_window_size
+                {
                     self.full_window_size = window_size.clone();
                     let size = self
                         .panes
@@ -272,7 +294,9 @@ impl Application for MainWindow {
             }
             Message::Restore => {
                 self.panes.restore();
-                if !self.app_config.keep_window_size {
+                if !get_rewritable_config_opt(&self.app_config, &self.edit_data.window_edit_data)
+                    .keep_window_size
+                {
                     return Command::single(Action::Window(Resize {
                         height: self.full_window_size.height as u32,
                         width: self.full_window_size.width as u32,
@@ -335,7 +359,12 @@ impl Application for MainWindow {
                         self.execution_data.currently_outputting_script = progress.0 as isize;
 
                         if execution::has_finished_execution(&self.execution_data) {
-                            if self.app_config.window_status_reactions {
+                            if get_rewritable_config_opt(
+                                &self.app_config,
+                                &self.edit_data.window_edit_data,
+                            )
+                            .window_status_reactions
+                            {
                                 return Command::single(Action::Window(RequestUserAttention(
                                     Some(UserAttention::Informational),
                                 )));
@@ -358,19 +387,26 @@ impl Application for MainWindow {
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
             }
             Message::DuplicateScript(script_id) => {
-                let init_duplicated_script = |script: config::ScriptDefinition| config::ScriptDefinition {
-                    uid: config::Guid::new(),
-                    name: format!("{} (copy)", script.name),
-                    ..script
-                };
+                let init_duplicated_script =
+                    |script: config::ScriptDefinition| config::ScriptDefinition {
+                        uid: config::Guid::new(),
+                        name: format!("{} (copy)", script.name),
+                        ..script
+                    };
 
                 match script_id.script_type {
-                    EditScriptType::ScriptConfig => {
-                        self.app_config.script_definitions.insert(script_id.idx + 1, init_duplicated_script(self.app_config.script_definitions[script_id.idx].clone()))
-                    }
-                    EditScriptType::ExecutionList => {
-                        self.execution_data.scripts_to_run.insert(script_id.idx + 1, init_duplicated_script(self.execution_data.scripts_to_run[script_id.idx].clone()))
-                    }
+                    EditScriptType::ScriptConfig => self.app_config.script_definitions.insert(
+                        script_id.idx + 1,
+                        init_duplicated_script(
+                            self.app_config.script_definitions[script_id.idx].clone(),
+                        ),
+                    ),
+                    EditScriptType::ExecutionList => self.execution_data.scripts_to_run.insert(
+                        script_id.idx + 1,
+                        init_duplicated_script(
+                            self.execution_data.scripts_to_run[script_id.idx].clone(),
+                        ),
+                    ),
                 };
                 if let Some(script) = &mut self.edit_data.currently_edited_script {
                     script.idx = script_id.idx + 1;
@@ -510,23 +546,41 @@ impl Application for MainWindow {
                 apply_script_edit(self, |script| script.path_relative_to_scripter = value)
             }
             Message::EnterWindowEditMode => {
-                self.edit_data.window_edit_data =
-                    Some(WindowEditData::from_config(&self.app_config, false));
+                self.edit_data.window_edit_data = Some(WindowEditData::from_config(
+                    &self.app_config,
+                    false,
+                    if self.app_config.child_config_body.is_some() {
+                        ConfigEditType::Child
+                    } else {
+                        ConfigEditType::Parent
+                    },
+                ));
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
             }
             Message::ExitWindowEditMode => {
                 self.edit_data.window_edit_data = None;
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
+                self.theme = get_theme(&self.app_config, &self.edit_data.window_edit_data);
             }
             Message::SaveConfig => {
                 config::save_config_to_file(&self.app_config);
+                self.app_config = config::read_config();
                 self.edit_data.is_dirty = false;
             }
             Message::RevertConfig => {
                 self.app_config = config::read_config();
-                self.edit_data.window_edit_data =
-                    Some(WindowEditData::from_config(&self.app_config, false));
-                self.theme = get_theme(&self.app_config);
+                self.edit_data.window_edit_data = Some(WindowEditData::from_config(
+                    &self.app_config,
+                    false,
+                    match self.edit_data.window_edit_data {
+                        Some(WindowEditData {
+                            edit_type: ConfigEditType::Child,
+                            ..
+                        }) => ConfigEditType::Child,
+                        _ => ConfigEditType::Parent,
+                    },
+                ));
+                self.theme = get_theme(&self.app_config, &self.edit_data.window_edit_data);
                 self.edit_data.is_dirty = false;
             }
             Message::OpenScriptConfigEditing(script_idx) => {
@@ -557,30 +611,42 @@ impl Application for MainWindow {
                         window_edit_data.is_editing_config = !window_edit_data.is_editing_config;
                     }
                     None => {
-                        self.edit_data.window_edit_data =
-                            Some(WindowEditData::from_config(&self.app_config, true));
+                        self.edit_data.window_edit_data = Some(WindowEditData::from_config(
+                            &self.app_config,
+                            true,
+                            if self.app_config.child_config_body.is_some() {
+                                ConfigEditType::Child
+                            } else {
+                                ConfigEditType::Parent
+                            },
+                        ));
                     }
                 };
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
             }
             Message::ConfigToggleAlwaysOnTop(is_checked) => {
-                self.app_config.always_on_top = is_checked;
+                get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
+                    .always_on_top = is_checked;
                 self.edit_data.is_dirty = true;
             }
             Message::ConfigToggleWindowStatusReactions(is_checked) => {
-                self.app_config.window_status_reactions = is_checked;
+                get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
+                    .window_status_reactions = is_checked;
                 self.edit_data.is_dirty = true;
             }
             Message::ConfigToggleIconPathRelativeToScripter(is_checked) => {
-                self.app_config.icon_path_relative_to_scripter = is_checked;
+                get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
+                    .icon_path_relative_to_scripter = is_checked;
                 self.edit_data.is_dirty = true;
             }
             Message::ConfigToggleKeepWindowSize(is_checked) => {
-                self.app_config.keep_window_size = is_checked;
+                get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
+                    .keep_window_size = is_checked;
                 self.edit_data.is_dirty = true;
             }
             Message::ConfigToggleUseCustomTheme(is_checked) => {
-                self.app_config.custom_theme = if is_checked {
+                get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
+                    .custom_theme = if is_checked {
                     Some(
                         if let Some(window_edit_data) = &self.edit_data.window_edit_data {
                             config::CustomTheme {
@@ -602,7 +668,7 @@ impl Application for MainWindow {
                 } else {
                     None
                 };
-                self.theme = get_theme(&self.app_config);
+                self.theme = get_theme(&self.app_config, &self.edit_data.window_edit_data);
                 self.edit_data.is_dirty = true;
             }
             Message::ConfigEditThemeBackground(new_value) => {
@@ -612,7 +678,7 @@ impl Application for MainWindow {
                     |theme, value| theme.background = value,
                     |edit_data, value| {
                         edit_data.theme_color_background = value;
-                        &edit_data.theme_color_background
+                        edit_data.theme_color_background.clone()
                     },
                 );
             }
@@ -623,7 +689,7 @@ impl Application for MainWindow {
                     |theme, value| theme.text = value,
                     |edit_data, value| {
                         edit_data.theme_color_text = value;
-                        &edit_data.theme_color_text
+                        edit_data.theme_color_text.clone()
                     },
                 );
             }
@@ -634,7 +700,7 @@ impl Application for MainWindow {
                     |theme, value| theme.primary = value,
                     |edit_data, value| {
                         edit_data.theme_color_primary = value;
-                        &edit_data.theme_color_primary
+                        edit_data.theme_color_primary.clone()
                     },
                 );
             }
@@ -645,7 +711,7 @@ impl Application for MainWindow {
                     |theme, value| theme.success = value,
                     |edit_data, value| {
                         edit_data.theme_color_success = value;
-                        &edit_data.theme_color_success
+                        edit_data.theme_color_success.clone()
                     },
                 );
             }
@@ -656,9 +722,26 @@ impl Application for MainWindow {
                     |theme, value| theme.danger = value,
                     |edit_data, value| {
                         edit_data.theme_color_danger = value;
-                        &edit_data.theme_color_danger
+                        edit_data.theme_color_danger.clone()
                     },
                 );
+                self.edit_data.is_dirty = true;
+            }
+            Message::ConfigEditChildConfigPath(new_value) => {
+                self.app_config.child_config_path = if new_value.is_empty() {
+                    None
+                } else {
+                    Some(new_value)
+                };
+                self.edit_data.is_dirty = true;
+            }
+            Message::SwitchToParentConfig => {
+                switch_config_edit_mode(self, ConfigEditType::Parent);
+                self.theme = get_theme(&self.app_config, &self.edit_data.window_edit_data);
+            }
+            Message::SwitchToChildConfig => {
+                switch_config_edit_mode(self, ConfigEditType::Child);
+                self.theme = get_theme(&self.app_config, &self.edit_data.window_edit_data);
             }
         }
 
@@ -785,9 +868,8 @@ impl AppPane {
 
 fn produce_script_list_content<'a>(
     execution_data: &execution::ScriptExecutionData,
-    script_definitions: &Vec<config::ScriptDefinition>,
+    config: &config::AppConfig,
     paths: &config::PathCaches,
-    config_read_error: &Option<String>,
     edit_data: &EditData,
 ) -> Column<'a, Message> {
     let small_button = |label, message| {
@@ -800,11 +882,11 @@ fn produce_script_list_content<'a>(
         .on_press(message)
     };
 
-    if let Some(error) = config_read_error {
+    if let Some(error) = &config.config_read_error {
         return column![text(format!("Error: {}", error))];
     }
 
-    if script_definitions.is_empty() {
+    if config.script_definitions.is_empty() {
         let config_path = paths.config_path.to_str().unwrap_or_default();
 
         return column![text(format!(
@@ -816,7 +898,8 @@ fn produce_script_list_content<'a>(
     let has_started_execution = execution::has_started_execution(&execution_data);
 
     let data: Element<_> = column(
-        script_definitions
+        config
+            .script_definitions
             .iter()
             .enumerate()
             .map(|(i, script)| {
@@ -897,23 +980,7 @@ fn produce_script_list_content<'a>(
             scrollable(data),
         ]
     } else {
-        let data_column = if edit_data.window_edit_data.is_none() {
-            column![
-                data,
-                vertical_space(Length::Fixed(4.0)),
-                button(
-                    text(if !edit_data.is_dirty {
-                        "Edit"
-                    } else {
-                        "Edit (unsaved changes)"
-                    })
-                    .width(Length::Fill)
-                    .horizontal_alignment(alignment::Horizontal::Center)
-                    .size(12),
-                )
-                .on_press(Message::EnterWindowEditMode),
-            ]
-        } else {
+        let data_column = if let Some(window_edit_data) = &edit_data.window_edit_data {
             column![
                 data,
                 vertical_space(Length::Fixed(4.0)),
@@ -944,7 +1011,43 @@ fn produce_script_list_content<'a>(
                         button(text("Stop editing").size(16),)
                             .on_press(Message::ExitWindowEditMode)
                     ]
+                },
+                if config.child_config_body.is_some() {
+                    match window_edit_data.edit_type {
+                        ConfigEditType::Child => {
+                            column![
+                                vertical_space(Length::Fixed(4.0)),
+                                button(text("Switch to parent").size(16),)
+                                    .on_press(Message::SwitchToParentConfig)
+                            ]
+                        }
+                        ConfigEditType::Parent => {
+                            column![
+                                vertical_space(Length::Fixed(4.0)),
+                                button(text("Switch to child").size(16),)
+                                    .on_press(Message::SwitchToChildConfig)
+                            ]
+                        }
+                    }
+                } else {
+                    column![]
                 }
+            ]
+        } else {
+            column![
+                data,
+                vertical_space(Length::Fixed(4.0)),
+                button(
+                    text(if !edit_data.is_dirty {
+                        "Edit"
+                    } else {
+                        "Edit (unsaved changes)"
+                    })
+                    .width(Length::Fill)
+                    .horizontal_alignment(alignment::Horizontal::Center)
+                    .size(12),
+                )
+                .on_press(Message::EnterWindowEditMode),
             ]
         };
 
@@ -1365,7 +1468,6 @@ fn produce_script_edit_content<'a>(
         .into(),
     );
 
-
     if currently_edited_script.script_type == EditScriptType::ScriptConfig {
         parameters.push(
             button(
@@ -1398,32 +1500,35 @@ fn produce_config_edit_content<'a>(
     config: &config::AppConfig,
     window_edit: &WindowEditData,
 ) -> Column<'a, Message> {
+    let rewritable_config = get_rewritable_config(&config, &window_edit.edit_type);
+
     let always_on_top_checkbox = checkbox(
         "Always on top (requires restart)",
-        config.always_on_top,
+        rewritable_config.always_on_top,
         move |val| Message::ConfigToggleAlwaysOnTop(val),
     );
     let window_status_reactions_checkbox = checkbox(
         "Window status reactions",
-        config.window_status_reactions,
+        rewritable_config.window_status_reactions,
         move |val| Message::ConfigToggleWindowStatusReactions(val),
     );
     let icon_path_relative_to_scripter_checkbox = checkbox(
         "Icon path relative to scripter executable (requires restart)",
-        config.icon_path_relative_to_scripter,
+        rewritable_config.icon_path_relative_to_scripter,
         move |val| Message::ConfigToggleIconPathRelativeToScripter(val),
     );
-    let keep_window_size_checkbox =
-        checkbox("Keep window size", config.keep_window_size, move |val| {
-            Message::ConfigToggleKeepWindowSize(val)
-        });
+    let keep_window_size_checkbox = checkbox(
+        "Keep window size",
+        rewritable_config.keep_window_size,
+        move |val| Message::ConfigToggleKeepWindowSize(val),
+    );
     let custom_theme_checkbox = checkbox(
         "Use custom theme",
-        config.custom_theme.is_some(),
+        rewritable_config.custom_theme.is_some(),
         move |val| Message::ConfigToggleUseCustomTheme(val),
     );
 
-    let theme_edit_column = if let Some(_theme) = &config.custom_theme {
+    let theme_edit_column = if let Some(_theme) = &rewritable_config.custom_theme {
         column![
             text("Background:"),
             text_input("#000000", &window_edit.theme_color_background)
@@ -1450,6 +1555,21 @@ fn produce_config_edit_content<'a>(
         column![]
     };
 
+    let child_config_column = if window_edit.edit_type == ConfigEditType::Parent {
+        let child_config_path = match &config.child_config_path {
+            Some(path) => path.as_str(),
+            None => EMPTY_STRING,
+        };
+        column![
+            text("Child config path (requires restart):"),
+            text_input("path/to/config.json", child_config_path)
+                .on_input(move |new_value| Message::ConfigEditChildConfigPath(new_value))
+                .padding(5),
+        ]
+    } else {
+        column![]
+    };
+
     let content = column![
         always_on_top_checkbox,
         window_status_reactions_checkbox,
@@ -1457,6 +1577,7 @@ fn produce_config_edit_content<'a>(
         keep_window_size_checkbox,
         custom_theme_checkbox,
         theme_edit_column,
+        child_config_column,
     ];
 
     return column![scrollable(content)]
@@ -1476,13 +1597,9 @@ fn view_content<'a>(
     edit_data: &EditData,
 ) -> Element<'a, Message> {
     let content = match variant {
-        PaneVariant::ScriptList => produce_script_list_content(
-            execution_data,
-            &config.script_definitions,
-            paths,
-            &config.config_read_error,
-            edit_data,
-        ),
+        PaneVariant::ScriptList => {
+            produce_script_list_content(execution_data, config, paths, edit_data)
+        }
         PaneVariant::ExecutionList => produce_execution_list_content(
             execution_data,
             paths,
@@ -1601,8 +1718,11 @@ fn apply_script_edit(app: &mut MainWindow, edit_fn: impl FnOnce(&mut config::Scr
     }
 }
 
-fn get_theme(config: &config::AppConfig) -> Theme {
-    if let Some(theme) = config.custom_theme.clone() {
+fn get_theme(config: &config::AppConfig, window_edit_data: &Option<WindowEditData>) -> Theme {
+    if let Some(theme) = get_rewritable_config_opt(&config, window_edit_data)
+        .custom_theme
+        .clone()
+    {
         style::get_custom_theme(theme)
     } else {
         Theme::default()
@@ -1634,16 +1754,89 @@ fn apply_theme_color_from_string(
     app: &mut MainWindow,
     color: String,
     set_theme_fn: impl FnOnce(&mut config::CustomTheme, [f32; 3]),
-    set_text_fn: impl FnOnce(&mut WindowEditData, String) -> &String,
+    set_text_fn: impl FnOnce(&mut WindowEditData, String) -> String,
 ) {
     if let Some(edit_data) = &mut app.edit_data.window_edit_data {
         let color_string = set_text_fn(edit_data, color);
-        if let Some(custom_theme) = &mut app.app_config.custom_theme {
+        if let Some(custom_theme) =
+            &mut get_rewritable_config_mut_non_opt(&mut app.app_config, edit_data).custom_theme
+        {
             if let Some(new_color) = hex_to_rgb(&color_string) {
                 set_theme_fn(custom_theme, new_color);
-                app.theme = get_theme(&app.app_config);
+                app.theme = get_theme(&app.app_config, &app.edit_data.window_edit_data);
                 app.edit_data.is_dirty = true;
             }
         }
     }
+}
+
+fn get_rewritable_config<'a>(
+    config: &'a config::AppConfig,
+    edit_type: &ConfigEditType,
+) -> &'a config::RewritableConfig {
+    match edit_type {
+        ConfigEditType::Parent => &config.rewritable,
+        ConfigEditType::Child => {
+            if let Some(child_config) = &config.child_config_body {
+                &child_config.rewritable
+            } else {
+                &config.rewritable
+            }
+        }
+    }
+}
+
+fn get_rewritable_config_opt<'a>(
+    config: &'a config::AppConfig,
+    edit_data: &Option<WindowEditData>,
+) -> &'a config::RewritableConfig {
+    match &edit_data {
+        Some(edit_data) => get_rewritable_config(config, &edit_data.edit_type),
+        None => {
+            if let Some(child_config) = &config.child_config_body {
+                &child_config.rewritable
+            } else {
+                &config.rewritable
+            }
+        }
+    }
+}
+
+fn get_rewritable_config_mut<'a>(
+    config: &'a mut config::AppConfig,
+    window_edit: &Option<WindowEditData>,
+) -> &'a mut config::RewritableConfig {
+    return match window_edit {
+        Some(window_edit) => get_rewritable_config_mut_non_opt(config, window_edit),
+        None => &mut config.rewritable,
+    };
+}
+
+fn get_rewritable_config_mut_non_opt<'a>(
+    config: &'a mut config::AppConfig,
+    window_edit: &WindowEditData,
+) -> &'a mut config::RewritableConfig {
+    match window_edit.edit_type {
+        ConfigEditType::Parent => &mut config.rewritable,
+        ConfigEditType::Child => {
+            if let Some(child_config) = &mut config.child_config_body {
+                &mut child_config.rewritable
+            } else {
+                &mut config.rewritable
+            }
+        }
+    }
+}
+
+fn switch_config_edit_mode(app: &mut MainWindow, edit_type: ConfigEditType) {
+    let is_config_editing = if let Some(window_edit) = &app.edit_data.window_edit_data {
+        window_edit.is_editing_config
+    } else {
+        false
+    };
+    app.edit_data.window_edit_data = Some(WindowEditData::from_config(
+        &app.app_config,
+        is_config_editing,
+        edit_type,
+    ));
 }

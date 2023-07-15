@@ -1,9 +1,10 @@
+use crate::config;
 use crate::json_config_updater::{JsonConfigUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
-use crate::config;
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.7.1";
+pub static LATEST_CONFIG_VERSION: &str = "0.7.2";
+pub static LATEST_CHILD_CONFIG_VERSION: &str = "0.7.2";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -13,11 +14,23 @@ pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> Updat
         }
     }
 
-    let json_config_updater = register_updaters();
+    let json_config_updater = register_config_updaters();
     return json_config_updater.update_json(config_json);
 }
 
-fn register_updaters() -> JsonConfigUpdater {
+pub fn update_child_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
+    let version = config_json[VERSION_FIELD_NAME].as_str();
+    if let Some(version) = version {
+        if version == LATEST_CHILD_CONFIG_VERSION {
+            return UpdateResult::NoUpdateNeeded;
+        }
+    }
+
+    let json_config_updater = register_child_config_updaters();
+    return json_config_updater.update_json(config_json);
+}
+
+fn register_config_updaters() -> JsonConfigUpdater {
     let mut json_config_updater = JsonConfigUpdater::new(VERSION_FIELD_NAME);
 
     json_config_updater.add_update_function("0.6.0", |config_json| {
@@ -32,12 +45,33 @@ fn register_updaters() -> JsonConfigUpdater {
     });
     json_config_updater.add_update_function("0.7.1", |config_json| {
         for script in config_json["script_definitions"].as_array_mut().unwrap() {
-            // add uid field
             script["uid"] = json!(config::Guid::new());
         }
     });
+    json_config_updater.add_update_function("0.7.2", |config_json| {
+        let mut rewritable = json!({});
+        rewritable["always_on_top"] = config_json["always_on_top"].take();
+        rewritable["window_status_reactions"] = config_json["window_status_reactions"].take();
+        rewritable["icon_path_relative_to_scripter"] =
+            config_json["icon_path_relative_to_scripter"].take();
+        rewritable["keep_window_size"] = config_json["keep_window_size"].take();
+        rewritable["custom_theme"] = config_json["custom_theme"].take();
+        config_json["rewritable"] = rewritable;
+    });
     // add update functions here
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
+
+    json_config_updater
+}
+
+fn register_child_config_updaters() -> JsonConfigUpdater {
+    let mut json_config_updater = JsonConfigUpdater::new(VERSION_FIELD_NAME);
+
+    json_config_updater.add_update_function("0.7.2", |_config_json| {
+        // empty updater to have a name for the first version
+    });
+    // add update functions here
+    // don't forget to update LATEST_CHILD_CONFIG_VERSION at the beginning of the file
 
     json_config_updater
 }

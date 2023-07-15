@@ -1,23 +1,32 @@
-use crate::config_updaters::{update_config_to_the_latest_version, LATEST_CONFIG_VERSION};
+use crate::config_updaters::{
+    update_child_config_to_the_latest_version, update_config_to_the_latest_version,
+    LATEST_CHILD_CONFIG_VERSION, LATEST_CONFIG_VERSION,
+};
 use crate::json_config_updater::UpdateResult;
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use rand::RngCore;
 
 const DEFAULT_CONFIG_NAME: &str = "scripter_config.json";
 thread_local!(static GLOBAL_CONFIG: AppConfig = read_config());
 
 #[derive(Default, Clone, Deserialize, Serialize)]
-pub struct AppConfig {
-    pub script_definitions: Vec<ScriptDefinition>,
-    pub version: String,
+pub struct RewritableConfig {
     pub always_on_top: bool,
     pub window_status_reactions: bool,
     pub icon_path_relative_to_scripter: bool,
     pub keep_window_size: bool,
     pub custom_theme: Option<CustomTheme>,
+}
+
+#[derive(Default, Clone, Deserialize, Serialize)]
+pub struct AppConfig {
+    pub version: String,
+    pub rewritable: RewritableConfig,
+    pub script_definitions: Vec<ScriptDefinition>,
+    pub child_config_path: Option<String>,
     #[serde(skip)]
     pub paths: PathCaches,
     #[serde(skip)]
@@ -26,6 +35,17 @@ pub struct AppConfig {
     pub custom_title: Option<String>,
     #[serde(skip)]
     pub config_read_error: Option<String>,
+    #[serde(skip)]
+    pub child_config_body: Option<Box<ChildConfig>>,
+}
+
+#[derive(Default, Clone, Deserialize, Serialize)]
+pub struct ChildConfig {
+    pub version: String,
+    pub rewritable: RewritableConfig,
+    pub script_definitions: Vec<ChildScriptDefinition>,
+    #[serde(skip)]
+    pub config_definition_cache: Vec<ScriptDefinition>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -40,7 +60,15 @@ pub struct ScriptDefinition {
     pub ignore_previous_failures: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum ChildScriptDefinition {
+    // taken from the parent config
+    Parent(Guid),
+    // added in the child config
+    Added(ScriptDefinition),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Guid {
     pub data: u128,
 }
@@ -75,7 +103,9 @@ impl Guid {
         rng.fill_bytes(&mut bytes);
         bytes[6] = (bytes[6] & 0x0F) | 0x40;
         bytes[8] = (bytes[8] & 0x3F) | 0x80;
-        return Guid{ data: u128::from_be_bytes(bytes) };
+        return Guid {
+            data: u128::from_be_bytes(bytes),
+        };
     }
 }
 
@@ -124,7 +154,7 @@ pub fn get_app_config_copy() -> AppConfig {
 }
 
 pub fn is_always_on_top() -> bool {
-    GLOBAL_CONFIG.with(|config| config.always_on_top)
+    GLOBAL_CONFIG.with(|config| config.rewritable.always_on_top)
 }
 
 pub fn get_script_log_directory(logs_path: &PathBuf, script_idx: isize) -> PathBuf {
@@ -161,15 +191,39 @@ pub fn save_config_to_file(config: &AppConfig) {
             err
         );
     }
+
+    if let Some(child_config) = &config.child_config_body {
+        let data = serde_json::to_string_pretty(&child_config);
+        let data = match data {
+            Ok(data) => data,
+            Err(err) => {
+                eprintln!("Can't serialize child config file. Error: {}", err);
+                return;
+            }
+        };
+        if let Some(config_path) = &config.child_config_path {
+            let result = std::fs::write(&config_path, data);
+            if let Err(err) = result {
+                eprintln!(
+                    "Can't write child config file {}, error {}",
+                    &config_path, err
+                );
+            }
+        }
+    }
 }
 
 fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppConfig {
     AppConfig {
-        script_definitions: Vec::new(),
         version: LATEST_CONFIG_VERSION.to_string(),
-        always_on_top: false,
-        window_status_reactions: true,
-        icon_path_relative_to_scripter: true,
+        rewritable: RewritableConfig {
+            always_on_top: false,
+            window_status_reactions: true,
+            icon_path_relative_to_scripter: true,
+            keep_window_size: false,
+            custom_theme: None,
+        },
+        script_definitions: Vec::new(),
         paths: PathCaches {
             logs_path: if let Some(custom_logs_path) = app_arguments.custom_logs_path.clone() {
                 PathBuf::from(custom_logs_path)
@@ -189,11 +243,20 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             },
             config_path,
         },
-        custom_theme: None,
-        keep_window_size: false,
+        child_config_path: None,
         env_vars: app_arguments.env_vars,
         custom_title: app_arguments.custom_title,
         config_read_error: None,
+        child_config_body: None,
+    }
+}
+
+pub fn get_default_child_config(parent_config: &AppConfig) -> ChildConfig {
+    ChildConfig {
+        version: LATEST_CHILD_CONFIG_VERSION.to_string(),
+        rewritable: parent_config.rewritable.clone(),
+        script_definitions: Vec::new(),
+        config_definition_cache: Vec::new(),
     }
 }
 
@@ -331,11 +394,29 @@ pub fn read_config() -> AppConfig {
         );
     }
 
+    if let Some(child_config_path) = &mut config.child_config_path {
+        let full_child_config_path = default_config.paths.exe_folder_path.join(child_config_path);
+        let child_config = match read_child_config(full_child_config_path.clone(), &config) {
+            Ok(child_config) => child_config,
+            Err(error) => {
+                return default_config_with_error(
+                    &default_config,
+                    format!(
+                        "Failed to read child config file '{}'.\nError: {}",
+                        full_child_config_path.to_string_lossy(),
+                        error
+                    ),
+                );
+            }
+        };
+        config.child_config_body = Some(Box::new(child_config));
+    }
+
     config.paths = default_config.paths;
     config.env_vars = app_arguments.env_vars;
     config.custom_title = app_arguments.custom_title;
 
-    if !app_arguments.icons_path.is_some() && !config.icon_path_relative_to_scripter {
+    if !app_arguments.icons_path.is_some() && !config.rewritable.icon_path_relative_to_scripter {
         config.paths.icons_path = config.paths.work_path.clone();
     }
 
@@ -348,6 +429,121 @@ pub fn read_config() -> AppConfig {
     }
 
     return config;
+}
+
+pub fn update_child_config_script_cache(child_config: &mut ChildConfig, parent_config: &AppConfig) {
+    child_config.config_definition_cache.clear();
+    for script_definition in &child_config.script_definitions {
+        match script_definition {
+            ChildScriptDefinition::Parent(parent_script_uid) => {
+                let parent_script = parent_config
+                    .script_definitions
+                    .iter()
+                    .find(|script| script.uid == *parent_script_uid);
+                match parent_script {
+                    Some(parent_script) => {
+                        child_config
+                            .config_definition_cache
+                            .push(parent_script.clone());
+                    }
+                    None => {
+                        eprintln!(
+                            "Failed to find parent script with uid {}",
+                            parent_script_uid.data
+                        )
+                    }
+                }
+            }
+            ChildScriptDefinition::Added(script) => {
+                child_config.config_definition_cache.push(script.clone())
+            }
+        }
+    }
+}
+
+fn read_child_config(
+    config_path: PathBuf,
+    parent_config: &AppConfig,
+) -> Result<ChildConfig, String> {
+    // if config file doesn't exist, create it
+    if !config_path.exists() {
+        // create default config with all the non-serializable fields set
+        let default_config = get_default_child_config(parent_config);
+        let data = serde_json::to_string_pretty(&default_config);
+        let data = match data {
+            Ok(data) => data,
+            Err(err) => {
+                return Err(format!(
+                        "Failed to serialize default config.\nNotify the developer about this error.\nError: {}",
+                        err,
+                    )
+                )
+            },
+        };
+        let result = std::fs::write(&config_path, data);
+        if result.is_err() {
+            return Err(format!(
+                    "Failed to write default config to the file.\nMake sure you have write rights to that folder",
+                )
+            );
+        }
+    }
+
+    // read the config file from the disk
+    let data = std::fs::read_to_string(&config_path);
+    let data = match data {
+        Ok(data) => data,
+        Err(err) => {
+            return Err(format!(
+            "Config file can't be read.\nMake sure you have read rights to that file.\nError: {}",
+            err
+        ))
+        }
+    };
+    let config_json = serde_json::from_str(&data);
+    let mut config_json = match config_json {
+        Ok(config_json) => config_json,
+        Err(err) => return Err(format!("Config file has incorrect json format:\n{}", err)),
+    };
+
+    let update_result = update_child_config_to_the_latest_version(&mut config_json);
+    let config = serde_json::from_value(config_json);
+    let mut config: ChildConfig = match config {
+        Ok(config) => config,
+        Err(err) => {
+            return Err(format!(
+                "Config file can't be read.\nMake sure your manual edits were correct.\nError: {}",
+                err
+            ))
+        }
+    };
+
+    if update_result == UpdateResult::Updated {
+        let data = serde_json::to_string_pretty(&config);
+        let data = match data {
+            Ok(data) => data,
+            Err(err) => {
+                return Err(format!(
+                        "Failed to serialize the updated config.\nNotify the developer about this error.\nError: {}",
+                        err
+                    )
+                );
+            }
+        };
+        let result = std::fs::write(&config_path, data);
+        if result.is_err() {
+            return Err(format!(
+                    "Failed to write the updated config.\nMake sure you have write rights to that folder and file",
+                ),
+            );
+        }
+    } else if let UpdateResult::Error(error) = update_result {
+        return Err(format!("Failed to update config file.\nError: {}", error));
+    }
+
+    populate_parent_scripts(&mut config, parent_config);
+
+    return Ok(config);
 }
 
 fn get_app_arguments() -> AppArguments {
@@ -426,4 +622,47 @@ fn get_default_work_path() -> PathBuf {
 
 fn get_default_icons_path() -> PathBuf {
     return get_exe_folder_path();
+}
+
+fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &AppConfig) {
+    // find all the parent scripts that are missing from the child config, and populate them
+    let mut previous_script_idx = None;
+    for script in &parent_config.script_definitions {
+        // find position of the script in the child config
+        let script_idx = child_config.script_definitions.iter().position(
+            |child_script: &ChildScriptDefinition| match child_script {
+                ChildScriptDefinition::Parent(parent_script_uid) => {
+                    *parent_script_uid == script.uid
+                }
+                _ => false,
+            },
+        );
+
+        match script_idx {
+            Some(script_idx) => {
+                previous_script_idx = Some(script_idx);
+            }
+            None => {
+                match &mut previous_script_idx {
+                    Some(previous_script_idx) => {
+                        // insert the script after the previous script
+                        child_config.script_definitions.insert(
+                            *previous_script_idx + 1,
+                            ChildScriptDefinition::Parent(script.uid.clone()),
+                        );
+                        *previous_script_idx = *previous_script_idx + 1;
+                    }
+                    None => {
+                        // insert the script at the beginning
+                        child_config
+                            .script_definitions
+                            .insert(0, ChildScriptDefinition::Parent(script.uid.clone()));
+                        previous_script_idx = Some(0);
+                    }
+                }
+            }
+        }
+    }
+
+    update_child_config_script_cache(child_config, parent_config);
 }
