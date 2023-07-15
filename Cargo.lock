@@ -2430,6 +2430,7 @@ dependencies = [
  "iced",
  "iced_lazy",
  "iced_native",
+ "rand",
  "serde",
  "serde_json",
 ]

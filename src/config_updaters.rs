@@ -1,8 +1,9 @@
 use crate::json_config_updater::{JsonConfigUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
+use crate::config;
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.7.0";
+pub static LATEST_CONFIG_VERSION: &str = "0.7.1";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -28,6 +29,12 @@ fn register_updaters() -> JsonConfigUpdater {
     });
     json_config_updater.add_update_function("0.7.0", |config_json| {
         config_json["keep_window_size"] = json!(false);
+    });
+    json_config_updater.add_update_function("0.7.1", |config_json| {
+        for script in config_json["script_definitions"].as_array_mut().unwrap() {
+            // add uid field
+            script["uid"] = json!(config::Guid::new());
+        }
     });
     // add update functions here
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file

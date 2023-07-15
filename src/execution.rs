@@ -124,6 +124,7 @@ pub fn add_script_to_execution(
     execution_data
         .scripts_to_run
         .push(config::ScriptDefinition {
+            uid: script.uid,
             name: script.name,
             icon: script.icon,
             command: script.command,

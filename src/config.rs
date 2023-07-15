@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use rand::RngCore;
 
 const DEFAULT_CONFIG_NAME: &str = "scripter_config.json";
 thread_local!(static GLOBAL_CONFIG: AppConfig = read_config());
@@ -29,6 +30,7 @@ pub struct AppConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ScriptDefinition {
+    pub uid: Guid,
     pub name: String,
     pub icon: Option<String>,
     pub command: String,
@@ -36,6 +38,45 @@ pub struct ScriptDefinition {
     pub path_relative_to_scripter: bool,
     pub autorerun_count: usize,
     pub ignore_previous_failures: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Guid {
+    pub data: u128,
+}
+
+impl Serialize for Guid {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // extra dashes at the end not to reallocate the string
+        let mut string = format!("{:032x}----", self.data);
+        string.truncate(32);
+        string.insert(8, '-');
+        string.insert(13, '-');
+        string.insert(18, '-');
+        string.insert(23, '-');
+        serializer.serialize_str(&string)
+    }
+}
+
+impl<'de> Deserialize<'de> for Guid {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut s = String::deserialize(deserializer)?;
+        s.retain(|c| c != '-');
+        let data = u128::from_str_radix(&s, 16).map_err(serde::de::Error::custom)?;
+        Ok(Guid { data })
+    }
+}
+
+impl Guid {
+    pub fn new() -> Guid {
+        // generate version 4 GUID
+        let mut rng = rand::thread_rng();
+        let mut bytes = [0u8; 16];
+        rng.fill_bytes(&mut bytes);
+        bytes[6] = (bytes[6] & 0x0F) | 0x40;
+        bytes[8] = (bytes[8] & 0x3F) | 0x80;
+        return Guid{ data: u128::from_be_bytes(bytes) };
+    }
 }
 
 #[derive(Default, Clone)]

@@ -358,12 +358,18 @@ impl Application for MainWindow {
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
             }
             Message::DuplicateScript(script_id) => {
+                let init_duplicated_script = |script: config::ScriptDefinition| config::ScriptDefinition {
+                    uid: config::Guid::new(),
+                    name: format!("{} (copy)", script.name),
+                    ..script
+                };
+
                 match script_id.script_type {
                     EditScriptType::ScriptConfig => {
-                        self.app_config.script_definitions.insert(script_id.idx, self.app_config.script_definitions[script_id.idx].clone())
+                        self.app_config.script_definitions.insert(script_id.idx + 1, init_duplicated_script(self.app_config.script_definitions[script_id.idx].clone()))
                     }
                     EditScriptType::ExecutionList => {
-                        self.execution_data.scripts_to_run.insert(script_id.idx, self.execution_data.scripts_to_run[script_id.idx].clone())
+                        self.execution_data.scripts_to_run.insert(script_id.idx + 1, init_duplicated_script(self.execution_data.scripts_to_run[script_id.idx].clone()))
                     }
                 };
                 if let Some(script) = &mut self.edit_data.currently_edited_script {
@@ -387,6 +393,7 @@ impl Application for MainWindow {
             },
             Message::AddScriptToConfig => {
                 let script = config::ScriptDefinition {
+                    uid: config::Guid::new(),
                     name: "new script".to_string(),
                     icon: None,
                     command: "".to_string(),
