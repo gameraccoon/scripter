@@ -421,20 +421,35 @@ impl Application for MainWindow {
                     script.script_type = script_id.script_type;
                 }
             }
-            Message::RemoveScript(script_id) => match script_id.script_type {
-                EditScriptType::ScriptConfig => {
-                    self.app_config.script_definitions.remove(script_id.idx);
-                    self.edit_data.is_dirty = true;
-                    reset_selected_script(&mut self.edit_data.currently_edited_script);
+            Message::RemoveScript(script_id) => {
+                match script_id.script_type {
+                    EditScriptType::ScriptConfig => {
+                        if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
+                            match window_edit_data.edit_type {
+                                ConfigEditType::Parent => {
+                                    self.app_config.script_definitions.remove(script_id.idx);
+                                    self.edit_data.is_dirty = true;
+                                }
+                                ConfigEditType::Child => {
+                                    if let Some(config) = &mut self.app_config.child_config_body {
+                                        config.script_definitions.remove(script_id.idx);
+                                        self.edit_data.is_dirty = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        config::update_child_config_script_cache_from_config(&mut self.app_config)
+                    }
+                    EditScriptType::ExecutionList => {
+                        execution::remove_script_from_execution(
+                            &mut self.execution_data,
+                            script_id.idx,
+                        );
+                    }
                 }
-                EditScriptType::ExecutionList => {
-                    execution::remove_script_from_execution(
-                        &mut self.execution_data,
-                        script_id.idx,
-                    );
-                    reset_selected_script(&mut self.edit_data.currently_edited_script);
-                }
-            },
+                reset_selected_script(&mut self.edit_data.currently_edited_script);
+            }
             Message::AddScriptToConfig => {
                 let script = config::ScriptDefinition {
                     uid: config::Guid::new(),
@@ -799,7 +814,7 @@ impl Application for MainWindow {
                 };
 
                 let new_script = match script {
-                    config::ChildScriptDefinition::Parent(parent_script_id, is_hidden) => {
+                    config::ChildScriptDefinition::Parent(parent_script_id, _is_hidden) => {
                         let Some(script) = self.app_config.script_definitions.iter().find_map(|script| {
                             if script.uid == *parent_script_id {
                                 Some(script.clone())
@@ -815,7 +830,10 @@ impl Application for MainWindow {
                 };
 
                 if let Some(config) = &mut self.app_config.child_config_body {
-                    config.script_definitions.insert(script_id.idx + 1, config::ChildScriptDefinition::Added(new_script));
+                    config.script_definitions.insert(
+                        script_id.idx + 1,
+                        config::ChildScriptDefinition::Added(new_script),
+                    );
                     config::update_child_config_script_cache_from_config(&mut self.app_config);
                     set_selected_script(
                         &mut self.edit_data.currently_edited_script,
