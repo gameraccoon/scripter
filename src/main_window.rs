@@ -787,7 +787,51 @@ impl Application for MainWindow {
                 }
                 config::update_child_config_script_cache_from_config(&mut self.app_config);
             }
-            Message::CreateCopyOfParentScript(script_id) => {}
+            Message::CreateCopyOfParentScript(script_id) => {
+                let script = if let Some(config) = &self.app_config.child_config_body {
+                    if let Some(script) = config.script_definitions.get(script_id.idx) {
+                        script
+                    } else {
+                        return Command::none();
+                    }
+                } else {
+                    return Command::none();
+                };
+
+                let new_script = match script {
+                    config::ChildScriptDefinition::Parent(parent_script_id, is_hidden) => {
+                        let Some(script) = self.app_config.script_definitions.iter().find_map(|script| {
+                            if script.uid == *parent_script_id {
+                                Some(script.clone())
+                            } else {
+                                None
+                            }
+                        }) else { return Command::none(); };
+                        script
+                    }
+                    config::ChildScriptDefinition::Added(_) => {
+                        return Command::none();
+                    }
+                };
+
+                if let Some(config) = &mut self.app_config.child_config_body {
+                    config.script_definitions.insert(script_id.idx + 1, config::ChildScriptDefinition::Added(new_script));
+                    config::update_child_config_script_cache_from_config(&mut self.app_config);
+                    set_selected_script(
+                        &mut self.edit_data.currently_edited_script,
+                        &self.execution_data,
+                        &get_script_definition_list_opt(
+                            &self.app_config,
+                            &self.edit_data.window_edit_data,
+                        ),
+                        &mut self.visual_caches,
+                        script_id.idx + 1,
+                        EditScriptType::ScriptConfig,
+                    );
+                    self.edit_data.is_dirty = true;
+                }
+                config::update_child_config_script_cache_from_config(&mut self.app_config);
+            }
         }
 
         Command::none()
