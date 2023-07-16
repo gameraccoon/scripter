@@ -1,7 +1,7 @@
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local};
 use crossbeam_channel::{unbounded, Receiver, RecvError, Sender};
 use std::io::{BufRead, Write};
 use std::path::Path;
@@ -42,7 +42,7 @@ pub enum OutputType {
 pub struct OutputLine {
     pub text: String,
     pub output_type: OutputType,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: DateTime<Local>,
 }
 
 type LogBuffer = RingBuffer<OutputLine, 30>;
@@ -184,7 +184,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                             script.arguments
                         ),
                         output_type: OutputType::Event,
-                        timestamp: Utc::now(),
+                        timestamp: Local::now(),
                     });
                 }
 
@@ -246,7 +246,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                                 OutputLine {
                                     text: error_text,
                                     output_type: OutputType::Error,
-                                    timestamp: Utc::now(),
+                                    timestamp: Local::now(),
                                 },
                                 &recent_logs,
                                 &mut output_writer,
@@ -492,7 +492,7 @@ fn try_split_log(
                 OutputLine {
                     text,
                     output_type,
-                    timestamp: Utc::now(),
+                    timestamp: Local::now(),
                 },
                 recent_logs,
                 output_writer,
