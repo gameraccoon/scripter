@@ -1,5 +1,5 @@
 # scripter
-![scripter_small](https://github.com/gameraccoon/scripter/assets/24990031/77612c82-c440-4453-a29f-9126a11db56a)
+![scripter_small](https://github.com/gameraccoon/scripter/assets/24990031/c2346d05-421f-4c9a-8c70-81e8c7794aef)
 
 [![Builds and tests](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml/badge.svg)](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml)
 
@@ -12,8 +12,8 @@ A simple and lightweight GUI tool for automation of.. well, of automation.
 You are in the right place.
 
 - No more time wasted because you missed when one script finished and didn't start the next script right away.  
-- No more focus lost on maintaining of the running scripts.  
-- No more figuring out which script failed, or scrolling up to see log of a specific script in a batch.  
+- No more focus lost on maintaining the running scripts.  
+- No more figuring out which script failed, or scrolling up to see the log of a specific script in a batch.  
 
 Now you can schedule the exact combination of scripts to run in just a few clicks. You can go for lunch or continue working on something else, knowing that the work will be done even without your active involvement.  
 
@@ -21,8 +21,8 @@ Now you can schedule the exact combination of scripts to run in just a few click
 
 - Queue the execution of the specific chain of scripts that you need right now, just in a few clicks
 - Specify arguments, retry count, and some other parameters if needed
-- Once configure what scripts you can run, and not deal with configuraion files ever again
-- See the state of the execution, or open the full logs to see the details
+- Configure what scripts you can run once. No need to edit scripts/config files manually before each unique run
+- See the state of the execution, or open the complete logs to see the details
 
 ## Getting Started
 
@@ -35,9 +35,9 @@ Now you can schedule the exact combination of scripts to run in just a few click
 #### From Releases
 1. Download a version from the releases page
 1. Copy the executable to a location that the script can have write access to
-1. Open `scripter_config.json` and add the scripts you are planning to use and their default parameters
-1. Prepare scripter to be run from your working directory if needed:
-    1. either add the tool location to PATH environment variable
+1. Open scripter, press the "Edit" button and add the scripts you want to run through it
+1. Prepare scripter to be run from your working directory if needed in one of the ways:
+    1. either add the tool location to the PATH environment variable
     1. or make an alias/script to run it from the terminal
     1. or create a Windows shortcut to run it in the desired directory
     1. or provide `--work-path your_path` to the executable when running
@@ -46,29 +46,32 @@ Now you can schedule the exact combination of scripts to run in just a few click
 
 1. Clone the repository
 1. Build using `cargo build --release`
-2. Copy `script_config.json` from `data/common` directory next to the built executable
+2. Copy `script_config.json` from the `data/common` directory next to the built executable
 3. Add the scripts that you are planning to use and their default parameters to the config file
 
 ## Usage
 
-1. Run the scripter executable the way you configured before
-1. Add the scripts you want to run to the queue, and specify their arguments if needed
+1. Run the scripter executable the way you configured it before
+1. Add the scripts you want to run to the queue and specify their arguments if needed
 1. Start the execution
 
 ### Available arguments
-- `--config-path <path>` - path to the json file with the configuration of scripter that should be used for this instance
+- `--config-path <path>` - path to the JSON file with the configuration of scripter that should be used for this instance
 - `--work_path <path>` - path to the working directory that will be used to execute the scripts
 - `--logs-path <path>` - path to the directory where logs will be stored (requires write access)
-- `--env <key> <value>` - specify an environment variable that will be set to every sctipt (can have multiple `--env` arguments)
+- `--env <key> <value>` - specify an environment variable that will be set to every script (can have multiple `--env` arguments)
 - `--title <title>` - specify an additional line of title that goes under the path in the Execution tab
 - `--icons-path <path>` - path to the directory that contains the app icons (if not specified, icon paths will be relative to the scripter directory)
 
-### Available configurations
+## Manual configurations
 
-#### Global
-- `always_on_top` - true of false, specifies whether the window should try to be on top of other windows
+### Global
+- `always_on_top` - true or false, specifies whether the window should try to be on top of other windows
+- `window_status_reactions` should scripter blink the icon in the taskbar when finished
 - `icon_path_relative_to_scripter` - true or false, specify whether the path for icons should be relative to scripter (true) or to working directory (false). this option is ignored when `--icons-path` argument is provided.
-- `custom_theme` - specifies custom colors that forms a visual theme
+- `keep_window_size` - set to true if you don't want the app to change the window size (e.g. if it doesn't work well with your window manager)
+- `custom_theme` - specifies custom colors that form a visual theme
+- `child_config_path` - path to the "child" config that can be used for having local changes that don't affect the main config (e.g if the main config is shared between developers)
 
 Example of a dark theme:
 ```json
@@ -81,35 +84,39 @@ Example of a dark theme:
 }
 ```
 
-#### Per script
+### Per script
 
-- `name` - name of the script that will be shown in the list
+- `uid` - a unique script identifier (UUID v4 is used by default)
+- `name` - the name of the script that will be shown in the list
 - `icon` - optional path to the icon that will be shown next to the script name
 - `command` - path to a script, or name of a command that is going to be executed
-- `arguments` - list of arguments that is going to be passed to the script or the command
-- `path_relative_to_scripter` - whether the path for the script/command should be relatie to the scripter executable directory (instead of working directory from where it was called)
-- `autorerun_count` - how many times the script will be retied before failing the execution
+- `arguments` - list of arguments that are going to be passed to the script or the command
+- `path_relative_to_scripter` - whether the path for the script/command should be relative to the scripter executable directory (instead of the working directory from where it was called)
+- `autorerun_count` - how many times the script will be retried before failing the execution
 - `ignore_previous_failures` - should this script be executed even if a script before failed
 
 ## Advanced usage
 
 I wanted to keep the tool simple but at the same time useful for different situations. Every use case is a bit special, and here are some tricks you can do to achieve some desired behaviors (please share if you still lack some configuration options).
 
-- You can run console commands from scripter as well, for example you can set "git" as the "command" in the configuration and be able to schedule any git command by changing the arguments before running it.
-- You can make a script being run even if there was a failure before. Set "Ignore previous failures" checkbox or set the default value in the config.   
-This allows to set up "notification" scripts that play a sound, show a message, or send an email to you when the list is finished, regardless of the outcome of the run.
+- You can run console commands from scripter as well, for example, you can set "git" as the "command" in the configuration and be able to schedule any git command by changing the arguments before running it.
+- You can make a script run even if there was a failure before. Set the "Ignore previous failures" checkbox or set the default value in the config.   
+This allows you to set up "notification" scripts that play a sound, show a message, or send an email to you when the list is finished, regardless of the outcome of the run.
 - You can set up a script to try again if it fails. Set a positive value to "Retry count" when you add a script to a run, or set the default value in the config.  
-This allows to more reliably run scripts that depend on stable internet connection. It would be a waste of time to run scripts to prepare freshly built branch in the evening, and then find in the morning that "git pull" failed because the network was unstable.
-- You can specify commands relative to the scripter executable in the config, setting "path_relative_to_scripter" parameter to true.  
-This allows to bundle scripter with the scripts to share with other developers, and allowing everyone who gets your tools to have the same experience regardles of their local setup.
-- As arguments to scripter you can provide both the path to the configuration file and the path to directory where logs will be stored.  
-This makes it possible to have multiple lists of available scripts, or keep a split between bin/etc/temp directories.
+This allows to more reliably run scripts that depend on a stable internet connection. It would be a waste of time to run scripts to prepare freshly built branches in the evening, and then find in the morning that "git pull" failed because the network was unstable.
+- You can specify commands relative to the scripter executable in the config, setting the "path_relative_to_scripter" parameter to true.  
+This allows bundling scripter with the scripts to share with other developers and allows everyone who gets your tools to have the same experience regardless of their local setup.
+- As arguments to scripter you can provide both the path to the configuration file and the path to the directory where logs will be stored.  
+This makes it possible to have multiple lists of available scripts or keep a split between bin/etc/temp directories.
 - You can specify environment variables for scripts when you run scripter  
-This makes it possible to run the same scripts in different configurations (e.g. compiling in Debug/Release) and fine-tune the level of configurability. Using --title argument also allows to show the information about current context of the execution to the user of your scripts.
+This makes it possible to run the same scripts in different configurations (e.g. compiling in Debug/Release) and fine-tune the level of configurability. Using --title argument also allows you to show the information about the current context of the execution to the user of your scripts.
+- You can specify a path for a "child" config, splitting the config into two parts: parent and config, that can be edited independantly.  
+This allows users of your scripts to add their own scripts without affecting the config you ship to them, and without ever needing to care about how they update their script defitions
 
 ## Screenshots
-![20230520_170155_scripter_GfF0wI](https://github.com/gameraccoon/scripter/assets/24990031/cadde251-f97c-47c3-b17d-f28940eb7d6b)
-![20230520_170105_scripter_pLUQH5](https://github.com/gameraccoon/scripter/assets/24990031/e0060f9a-3a8e-467f-88aa-dbbff17081a8)
+![image](https://github.com/gameraccoon/scripter/assets/24990031/ef21a887-e902-406f-af00-38411c383e27)
+![image](https://github.com/gameraccoon/scripter/assets/24990031/442c17bc-5f72-4fe6-ad63-098bd60fb882)
+
 
 ## License
 
