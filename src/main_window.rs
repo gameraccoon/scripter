@@ -1690,7 +1690,7 @@ fn produce_script_edit_content<'a>(
         if currently_edited_script.script_type == EditScriptType::ScriptConfig {
             parameters.push(
                 button(
-                    "Create copy",
+                    "Create a copy",
                     Message::CreateCopyOfParentScript(currently_edited_script.clone()),
                 )
                 .into(),
