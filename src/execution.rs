@@ -124,6 +124,8 @@ pub fn add_script_to_execution(
     execution_data
         .scripts_to_run
         .push(script.clone());
+    execution_data.scripts_to_run.last_mut().unwrap().is_hidden = false;
+    execution_data.scripts_to_run.last_mut().unwrap().is_read_only = false;
     execution_data
         .scripts_status
         .push(get_default_script_execution_status());
