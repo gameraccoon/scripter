@@ -683,15 +683,50 @@ impl Application for MainWindow {
                 }
             }
             Message::MoveConfigScriptUp(index) => {
-                if index >= 1 && index < self.app_config.script_definitions.len() {
-                    self.app_config.script_definitions.swap(index, index - 1);
-                    self.edit_data.is_dirty = true;
+                if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
+                    match window_edit_data.edit_type {
+                        ConfigEditType::Parent => {
+                            if index >= 1 && index < self.app_config.script_definitions.len() {
+                                self.app_config.script_definitions.swap(index, index - 1);
+                                self.edit_data.is_dirty = true;
+                            }
+                        }
+                        ConfigEditType::Child => {
+                            if let Some(child_config_body) = &mut self.app_config.child_config_body
+                            {
+                                if index >= 1 && index < child_config_body.script_definitions.len()
+                                {
+                                    child_config_body.script_definitions.swap(index, index - 1);
+                                    config::update_child_config_script_cache_from_config(
+                                        &mut self.app_config);
+                                    self.edit_data.is_dirty = true;
+                                }
+                            }
+                        }
+                    }
                 }
             }
             Message::MoveConfigScriptDown(index) => {
-                if index < self.app_config.script_definitions.len() - 1 {
-                    self.app_config.script_definitions.swap(index, index + 1);
-                    self.edit_data.is_dirty = true;
+                if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
+                    match window_edit_data.edit_type {
+                        ConfigEditType::Parent => {
+                            if index < self.app_config.script_definitions.len() - 1 {
+                                self.app_config.script_definitions.swap(index, index + 1);
+                                self.edit_data.is_dirty = true;
+                            }
+                        }
+                        ConfigEditType::Child => {
+                            if let Some(child_config_body) = &mut self.app_config.child_config_body
+                            {
+                                if index < child_config_body.script_definitions.len() - 1 {
+                                    child_config_body.script_definitions.swap(index, index + 1);
+                                    config::update_child_config_script_cache_from_config(
+                                        &mut self.app_config);
+                                    self.edit_data.is_dirty = true;
+                                }
+                            }
+                        }
+                    }
                 }
             }
             Message::ToggleConfigEditing => {
