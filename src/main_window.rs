@@ -414,9 +414,9 @@ impl Application for MainWindow {
                                     config::ChildScriptDefinition::Added(script) => {
                                         config.script_definitions.insert(
                                             script_id.idx + 1,
-                                            config::ChildScriptDefinition::Added(init_duplicated_script(
-                                                script.clone(),
-                                            )),
+                                            config::ChildScriptDefinition::Added(
+                                                init_duplicated_script(script.clone()),
+                                            ),
                                         );
                                     }
                                 }
@@ -488,20 +488,41 @@ impl Application for MainWindow {
                     is_read_only: false,
                     is_hidden: false,
                 };
-                self.app_config.script_definitions.push(script);
-                let script_idx = self.app_config.script_definitions.len() - 1;
-                set_selected_script(
-                    &mut self.edit_data.currently_edited_script,
-                    &self.execution_data,
-                    &get_script_definition_list_opt(
-                        &self.app_config,
-                        &self.edit_data.window_edit_data,
-                    ),
-                    &mut self.visual_caches,
-                    script_idx,
-                    EditScriptType::ScriptConfig,
-                );
-                self.edit_data.is_dirty = true;
+                if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
+                    let mut script_idx = None;
+                    match window_edit_data.edit_type {
+                        ConfigEditType::Parent => {
+                            self.app_config.script_definitions.push(script);
+                            script_idx = Some(self.app_config.script_definitions.len() - 1);
+                        }
+                        ConfigEditType::Child => {
+                            if let Some(config) = &mut self.app_config.child_config_body {
+                                config
+                                    .script_definitions
+                                    .push(config::ChildScriptDefinition::Added(script));
+                                script_idx = Some(config.script_definitions.len() - 1);
+                                config::update_child_config_script_cache_from_config(
+                                    &mut self.app_config,
+                                );
+                            }
+                        }
+                    }
+
+                    if let Some(script_idx) = script_idx {
+                        set_selected_script(
+                            &mut self.edit_data.currently_edited_script,
+                            &self.execution_data,
+                            &get_script_definition_list_opt(
+                                &self.app_config,
+                                &self.edit_data.window_edit_data,
+                            ),
+                            &mut self.visual_caches,
+                            script_idx,
+                            EditScriptType::ScriptConfig,
+                        );
+                        self.edit_data.is_dirty = true;
+                    }
+                }
             }
             Message::MoveScriptUp(script_idx) => {
                 self.execution_data
@@ -972,11 +993,9 @@ fn set_selected_script(
     };
 
     // get autorerun count text from value
-    visual_caches.autorerun_count = scripts_list
-        .get(script_idx)
-        .unwrap() // access out of bounds, should never happen, it's OK to crash
-        .autorerun_count
-        .to_string();
+    if let Some(script) = &scripts_list.get(script_idx) {
+        visual_caches.autorerun_count = script.autorerun_count.to_string();
+    }
 }
 
 fn reset_selected_script(currently_edited_script: &mut Option<EditScriptId>) {
