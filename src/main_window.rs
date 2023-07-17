@@ -494,6 +494,7 @@ impl Application for MainWindow {
                         ConfigEditType::Parent => {
                             self.app_config.script_definitions.push(script);
                             script_idx = Some(self.app_config.script_definitions.len() - 1);
+                            config::populate_parent_scripts_from_config(&mut self.app_config);
                         }
                         ConfigEditType::Child => {
                             if let Some(config) = &mut self.app_config.child_config_body {
@@ -660,8 +661,10 @@ impl Application for MainWindow {
                         _ => ConfigEditType::Parent,
                     },
                 ));
+                config::populate_parent_scripts_from_config(&mut self.app_config);
                 self.theme = get_theme(&self.app_config, &self.edit_data.window_edit_data);
                 self.edit_data.is_dirty = false;
+                reset_selected_script(&mut self.edit_data.currently_edited_script);
             }
             Message::OpenScriptConfigEditing(script_idx) => {
                 set_selected_script(

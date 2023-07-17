@@ -436,7 +436,7 @@ pub fn read_config() -> AppConfig {
     return config;
 }
 
-pub fn update_child_config_script_cache(child_config: &mut ChildConfig, parent_config: &AppConfig) {
+fn update_child_config_script_cache(child_config: &mut ChildConfig, parent_config: &AppConfig) {
     child_config.config_definition_cache.clear();
     for script_definition in &child_config.script_definitions {
         match script_definition {
@@ -475,6 +475,13 @@ pub fn update_child_config_script_cache_from_config(app_config: &mut AppConfig) 
         update_child_config_script_cache(&mut child_config, app_config);
         app_config.child_config_body = Some(child_config);
     };
+}
+
+pub fn populate_parent_scripts_from_config(app_config: &mut AppConfig) {
+    if let Some(mut child_config) = app_config.child_config_body.take() {
+        populate_parent_scripts(&mut child_config, app_config);
+        app_config.child_config_body = Some(child_config);
+    }
 }
 
 fn read_child_config(
@@ -643,6 +650,7 @@ fn get_default_icons_path() -> PathBuf {
 fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &AppConfig) {
     // find all the parent scripts that are missing from the child config, and populate them
     let mut previous_script_idx = None;
+    let mut has_configs_to_remove= false;
     for script in &parent_config.script_definitions {
         // find position of the script in the child config
         let script_idx = child_config.script_definitions.iter().position(
@@ -657,6 +665,7 @@ fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &AppCo
         match script_idx {
             Some(script_idx) => {
                 previous_script_idx = Some(script_idx);
+                has_configs_to_remove = true;
             }
             None => {
                 match &mut previous_script_idx {
@@ -678,6 +687,16 @@ fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &AppCo
                 }
             }
         }
+    }
+
+    if has_configs_to_remove {
+        // remove all the scripts that are not in the parent config
+        child_config.script_definitions.retain(|child_script: &ChildScriptDefinition| match child_script {
+            ChildScriptDefinition::Parent(parent_script_uid, _is_hidden) => {
+                parent_config.script_definitions.iter().any(|script| script.uid == *parent_script_uid)
+            }
+            _ => true,
+        });
     }
 
     update_child_config_script_cache(child_config, parent_config);
