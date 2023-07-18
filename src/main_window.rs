@@ -1080,15 +1080,6 @@ fn produce_script_list_content<'a>(
         return column![text(format!("Error: {}", error))];
     }
 
-    if get_script_definition_list_opt(&config, &edit_data.window_edit_data).is_empty() {
-        let config_path = paths.config_path.to_str().unwrap_or_default();
-
-        return column![text(format!(
-            "No scripts found in config file \"{}\".\nAdd scripts to the config file and restart the application.",
-            &config_path
-        )), button("Open config file").on_press(Message::OpenFile(paths.config_path.clone()))];
-    }
-
     let has_started_execution = execution::has_started_execution(&execution_data);
 
     let data: Element<_> = column(
