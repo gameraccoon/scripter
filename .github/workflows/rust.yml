@@ -31,7 +31,7 @@ jobs:
     - name: Upload linux artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: Linux (Ubuntu)
+        name: scripter-Linux
         path: data/linux/*
 
   build_windows:
@@ -52,24 +52,29 @@ jobs:
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: Windows
+        name: scripter-Windows
         path: data/windows/*
 
   build_macos:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v3
+    - name: Set up arm target
+      run: rustup target add aarch64-apple-darwin
     - name: Build
-      run: cargo build --release
+      run: |
+        SDKROOT=$(xcrun -sdk macosx13.1 --show-sdk-path)
+        MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx13.1 --show-sdk-platform-version)
+        cargo build --release --target=aarch64-apple-darwin
     - name: Run tests
       run: cargo test --release --verbose
 
     - name: Move the executable to data folder
-      run: mv target/release/scripter data/linux/scripter
+      run: mv target/aarch64-apple-darwin/release/scripter data/linux/scripter
     - name: Copy common data to data folder
       run: cp -r data/common/* data/linux/
     - name: Upload macOS artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: MacOS
+        name: scripter-MacOS
         path: data/linux/*
