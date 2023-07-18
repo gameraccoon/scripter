@@ -509,6 +509,8 @@ impl Application for MainWindow {
                         }
                     }
 
+                    window_edit_data.is_editing_config = false;
+
                     if let Some(script_idx) = script_idx {
                         set_selected_script(
                             &mut self.edit_data.currently_edited_script,
