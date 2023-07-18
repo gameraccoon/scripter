@@ -621,6 +621,19 @@ impl Application for MainWindow {
                         return Command::none();
                     }
                 }
+                #[cfg(target_os = "macos")]
+                {
+                    let result = std::process::Command::new("open")
+                        .arg(path)
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn();
+
+                    if result.is_err() {
+                        return Command::none();
+                    }
+                }
             }
             Message::ToggleIgnoreFailures(value) => {
                 apply_script_edit(self, |script| script.ignore_previous_failures = value)
