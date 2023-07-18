@@ -66,10 +66,6 @@ jobs:
         SDKROOT=$(xcrun -sdk macosx13.1 --show-sdk-path)
         MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx13.1 --show-sdk-platform-version)
         cargo build --target=aarch64-apple-darwin
-    - name: Produce universal executable
-      run: |
-        file target/aarch64-apple-darwin/release/scripter
-        target/aarch64-apple-darwin/release/scripter: Mach-O 64-bit executable arm64
     - name: Run tests
       run: cargo test --release --verbose
 
