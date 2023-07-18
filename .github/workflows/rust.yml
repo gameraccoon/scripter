@@ -63,9 +63,8 @@ jobs:
       run: rustup target add aarch64-apple-darwin
     - name: Build
       run: |
-        xcodebuild -showsdks
-        SDKROOT=$(xcrun -sdk macosx11.1 --show-sdk-path)
-        MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx11.1 --show-sdk-platform-version)
+        SDKROOT=$(xcrun -sdk macosx13.1 --show-sdk-path)
+        MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx13.1 --show-sdk-platform-version)
         cargo build --target=aarch64-apple-darwin
     - name: Produce universal executable
       run: |
