@@ -15,45 +15,45 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build_ubuntu:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --release
-    - name: Run tests
-      run: cargo test --release --verbose
+#   build_ubuntu:
+#     runs-on: ubuntu-latest
+#     steps:
+#     - uses: actions/checkout@v3
+#     - name: Build
+#       run: cargo build --release
+#     - name: Run tests
+#       run: cargo test --release --verbose
 
-    - name: Move the executable to data folder
-      run: mv target/release/scripter data/linux/scripter
-    - name: Copy common data to data folder
-      run: cp -r data/common/* data/linux/
-    - name: Upload linux artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: scripter (Linux)
-        path: data/linux/*
+#     - name: Move the executable to data folder
+#       run: mv target/release/scripter data/linux/scripter
+#     - name: Copy common data to data folder
+#       run: cp -r data/common/* data/linux/
+#     - name: Upload linux artifacts
+#       uses: actions/upload-artifact@v3
+#       with:
+#         name: scripter (Linux)
+#         path: data/linux/*
 
-  build_windows:
-    runs-on: windows-latest
-    steps:
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --release
-    - name: Run tests
-      run: cargo test --release --verbose
+#   build_windows:
+#     runs-on: windows-latest
+#     steps:
+#     - uses: actions/checkout@v3
+#     - name: Build
+#       run: cargo build --release
+#     - name: Run tests
+#       run: cargo test --release --verbose
 
-    - name: Add windows icon
-      run: cargo rustc --release -- -C link-args="res/resources.res"
-    - name: Move the executable to data folder
-      run: mv target/release/scripter.exe data/windows/scripter.exe
-    - name: Copy common data to data folder
-      run: cp -r data/common/* data/windows/
-    - name: Upload Windows artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: scripter (Windows)
-        path: data/windows/*
+#     - name: Add windows icon
+#       run: cargo rustc --release -- -C link-args="res/resources.res"
+#     - name: Move the executable to data folder
+#       run: mv target/release/scripter.exe data/windows/scripter.exe
+#     - name: Copy common data to data folder
+#       run: cp -r data/common/* data/windows/
+#     - name: Upload Windows artifacts
+#       uses: actions/upload-artifact@v3
+#       with:
+#         name: scripter (Windows)
+#         path: data/windows/*
 
   build_macos:
     runs-on: macos-latest
@@ -63,6 +63,7 @@ jobs:
       run: rustup target add aarch64-apple-darwin
     - name: Build
       run: |
+        xcodebuild -showsdks
         SDKROOT=$(xcrun -sdk macosx11.1 --show-sdk-path)
         MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx11.1 --show-sdk-platform-version)
         cargo build --target=aarch64-apple-darwin
