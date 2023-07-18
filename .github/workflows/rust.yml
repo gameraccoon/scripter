@@ -54,3 +54,22 @@ jobs:
       with:
         name: Windows
         path: data/windows/*
+
+  build_macos:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: cargo build --release
+    - name: Run tests
+      run: cargo test --release --verbose
+
+    - name: Move the executable to data folder
+      run: mv target/release/scripter data/linux/scripter
+    - name: Copy common data to data folder
+      run: cp -r data/common/* data/linux/
+    - name: Upload macOS artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: MacOS
+        path: data/linux/*
