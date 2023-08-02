@@ -4,7 +4,9 @@ use std::os::windows::process::CommandExt;
 use iced::alignment::{self, Alignment};
 use iced::theme::{self, Theme};
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
-use iced::widget::{button, column, container, row, scrollable, text, text_input, tooltip, Column};
+use iced::widget::{
+    button, column, container, row, scrollable, text, text_input, tooltip, Button, Column,
+};
 use iced::{executor, ContentFit};
 use iced::{time, Size};
 use iced::{Application, Command, Element, Length, Subscription};
@@ -14,7 +16,7 @@ use iced_native::image::Handle;
 use iced_native::widget::{checkbox, horizontal_space, image, vertical_space};
 use iced_native::window::Action::{RequestUserAttention, Resize};
 use iced_native::window::UserAttention;
-use std::path::PathBuf;
+use std::path::{is_separator, PathBuf};
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
@@ -24,12 +26,32 @@ use crate::style;
 
 const EMPTY_STRING: &str = "";
 
+#[derive(Clone)]
+struct ThemedIcons {
+    play: Handle,
+    stop: Handle,
+    retry: Handle,
+    remove: Handle,
+    plus: Handle,
+    settings: Handle,
+    up: Handle,
+    down: Handle,
+    back: Handle,
+    log: Handle,
+    edit: Handle,
+}
+
 struct IconCaches {
     idle: Handle,
     in_progress: Handle,
     succeeded: Handle,
     failed: Handle,
     skipped: Handle,
+
+    bright: ThemedIcons,
+    dark: ThemedIcons,
+
+    themed: ThemedIcons,
 }
 
 // caches for visual elements content
@@ -197,7 +219,7 @@ impl Application for MainWindow {
         let panes = pane_grid::State::with_configuration(pane_configuration);
         let app_config = config::get_app_config_copy();
 
-        (
+        let mut result = (
             MainWindow {
                 panes,
                 focus: None,
@@ -215,6 +237,59 @@ impl Application for MainWindow {
                         succeeded: Handle::from_memory(include_bytes!("../res/icons/positive.png")),
                         failed: Handle::from_memory(include_bytes!("../res/icons/negative.png")),
                         skipped: Handle::from_memory(include_bytes!("../res/icons/skip.png")),
+
+                        bright: ThemedIcons {
+                            play: Handle::from_memory(include_bytes!("../res/icons/play-w.png")),
+                            stop: Handle::from_memory(include_bytes!("../res/icons/stop-w.png")),
+                            retry: Handle::from_memory(include_bytes!("../res/icons/retry-w.png")),
+                            remove: Handle::from_memory(include_bytes!(
+                                "../res/icons/remove-w.png"
+                            )),
+                            plus: Handle::from_memory(include_bytes!("../res/icons/plus-w.png")),
+                            settings: Handle::from_memory(include_bytes!(
+                                "../res/icons/settings-w.png"
+                            )),
+                            up: Handle::from_memory(include_bytes!("../res/icons/up-w.png")),
+                            down: Handle::from_memory(include_bytes!("../res/icons/down-w.png")),
+                            back: Handle::from_memory(include_bytes!("../res/icons/back-w.png")),
+                            log: Handle::from_memory(include_bytes!("../res/icons/log-w.png")),
+                            edit: Handle::from_memory(include_bytes!("../res/icons/edit-w.png")),
+                        },
+                        dark: ThemedIcons {
+                            play: Handle::from_memory(include_bytes!("../res/icons/play-b.png")),
+                            stop: Handle::from_memory(include_bytes!("../res/icons/stop-b.png")),
+                            retry: Handle::from_memory(include_bytes!("../res/icons/retry-b.png")),
+                            remove: Handle::from_memory(include_bytes!(
+                                "../res/icons/remove-b.png"
+                            )),
+                            plus: Handle::from_memory(include_bytes!("../res/icons/plus-b.png")),
+                            settings: Handle::from_memory(include_bytes!(
+                                "../res/icons/settings-b.png"
+                            )),
+                            up: Handle::from_memory(include_bytes!("../res/icons/up-b.png")),
+                            down: Handle::from_memory(include_bytes!("../res/icons/down-b.png")),
+                            back: Handle::from_memory(include_bytes!("../res/icons/back-b.png")),
+                            log: Handle::from_memory(include_bytes!("../res/icons/log-b.png")),
+                            edit: Handle::from_memory(include_bytes!("../res/icons/edit-b.png")),
+                        },
+
+                        themed: ThemedIcons {
+                            play: Handle::from_memory(include_bytes!("../res/icons/play-b.png")),
+                            stop: Handle::from_memory(include_bytes!("../res/icons/stop-b.png")),
+                            retry: Handle::from_memory(include_bytes!("../res/icons/retry-b.png")),
+                            remove: Handle::from_memory(include_bytes!(
+                                "../res/icons/remove-b.png"
+                            )),
+                            plus: Handle::from_memory(include_bytes!("../res/icons/plus-b.png")),
+                            settings: Handle::from_memory(include_bytes!(
+                                "../res/icons/settings-b.png"
+                            )),
+                            up: Handle::from_memory(include_bytes!("../res/icons/up-b.png")),
+                            down: Handle::from_memory(include_bytes!("../res/icons/down-b.png")),
+                            back: Handle::from_memory(include_bytes!("../res/icons/back-b.png")),
+                            log: Handle::from_memory(include_bytes!("../res/icons/log-b.png")),
+                            edit: Handle::from_memory(include_bytes!("../res/icons/edit-b.png")),
+                        },
                     },
                 },
                 full_window_size: Size::new(0.0, 0.0),
@@ -225,7 +300,11 @@ impl Application for MainWindow {
                 },
             },
             Command::none(),
-        )
+        );
+
+        update_theme_icons(&mut result.0);
+
+        return result;
     }
 
     fn title(&self) -> String {
@@ -656,7 +735,7 @@ impl Application for MainWindow {
             Message::ExitWindowEditMode => {
                 self.edit_data.window_edit_data = None;
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
-                self.theme = get_theme(&self.app_config, &self.edit_data.window_edit_data);
+                apply_theme(self);
             }
             Message::SaveConfig => {
                 config::save_config_to_file(&self.app_config);
@@ -677,7 +756,7 @@ impl Application for MainWindow {
                     },
                 ));
                 config::populate_parent_scripts_from_config(&mut self.app_config);
-                self.theme = get_theme(&self.app_config, &self.edit_data.window_edit_data);
+                apply_theme(self);
                 self.edit_data.is_dirty = false;
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
             }
@@ -713,7 +792,8 @@ impl Application for MainWindow {
                                 {
                                     child_config_body.script_definitions.swap(index, index - 1);
                                     config::update_child_config_script_cache_from_config(
-                                        &mut self.app_config);
+                                        &mut self.app_config,
+                                    );
                                     self.edit_data.is_dirty = true;
                                 }
                             }
@@ -736,7 +816,8 @@ impl Application for MainWindow {
                                 if index < child_config_body.script_definitions.len() - 1 {
                                     child_config_body.script_definitions.swap(index, index + 1);
                                     config::update_child_config_script_cache_from_config(
-                                        &mut self.app_config);
+                                        &mut self.app_config,
+                                    );
                                     self.edit_data.is_dirty = true;
                                 }
                             }
@@ -807,7 +888,7 @@ impl Application for MainWindow {
                 } else {
                     None
                 };
-                self.theme = get_theme(&self.app_config, &self.edit_data.window_edit_data);
+                apply_theme(self);
                 self.edit_data.is_dirty = true;
             }
             Message::ConfigEditThemeBackground(new_value) => {
@@ -877,12 +958,12 @@ impl Application for MainWindow {
             Message::SwitchToParentConfig => {
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
                 switch_config_edit_mode(self, ConfigEditType::Parent);
-                self.theme = get_theme(&self.app_config, &self.edit_data.window_edit_data);
+                apply_theme(self);
             }
             Message::SwitchToChildConfig => {
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
                 switch_config_edit_mode(self, ConfigEditType::Child);
-                self.theme = get_theme(&self.app_config, &self.edit_data.window_edit_data);
+                apply_theme(self);
             }
             Message::ToggleScriptHidden(is_hidden) => {
                 let Some(script_id) = &mut self.edit_data.currently_edited_script else {
@@ -970,7 +1051,15 @@ impl Application for MainWindow {
                 let title = row![get_pane_name_from_variant(variant)].spacing(5);
 
                 let title_bar = pane_grid::TitleBar::new(title)
-                    .controls(view_controls(id, variant, total_panes, is_maximized, size))
+                    .controls(view_controls(
+                        id,
+                        variant,
+                        total_panes,
+                        &self.visual_caches.icons,
+                        &self.edit_data,
+                        is_maximized,
+                        size,
+                    ))
                     .padding(10)
                     .style(if is_focused {
                         if self.execution_data.has_failed_scripts {
@@ -1073,22 +1162,70 @@ impl AppPane {
     }
 }
 
+fn inline_icon_button<'a, Message>(icon_handle: Handle, message: Message) -> Button<'a, Message> {
+    button(
+        image(icon_handle)
+            .width(Length::Fixed(14.0))
+            .height(Length::Fixed(14.0)),
+    )
+    .padding(4)
+    .on_press(message)
+}
+
+fn main_button(label: &str, message: Message) -> Button<Message> {
+    button(
+        text(label)
+            .width(Length::Fill)
+            .horizontal_alignment(alignment::Horizontal::Center)
+            .size(16),
+    )
+    .width(Length::Shrink)
+    .padding(8)
+    .on_press(message)
+}
+
+fn main_icon_button(icon_handle: Handle, label: &str, message: Message) -> Button<Message> {
+    button(row![
+        image(icon_handle)
+            .width(Length::Fixed(16.0))
+            .height(Length::Fixed(16.0)),
+        horizontal_space(4),
+        text(label).width(Length::Shrink).size(16),
+    ])
+    .width(Length::Shrink)
+    .padding(8)
+    .on_press(message)
+}
+
+fn main_button_small(label: &str, message: Message) -> Button<Message> {
+    button(
+        text(label)
+            .width(Length::Fill)
+            .horizontal_alignment(alignment::Horizontal::Center)
+            .size(14),
+    )
+    .width(Length::Shrink)
+    .padding(4)
+    .on_press(message)
+}
+
+fn edit_mode_button<'a>(icon_handle: Handle, message: Message) -> Button<'a, Message> {
+    button(row![image(icon_handle)
+        .width(Length::Fixed(12.0))
+        .height(Length::Fixed(12.0))])
+    .style(theme::Button::Secondary)
+    .width(Length::Shrink)
+    .padding(4)
+    .on_press(message)
+}
+
 fn produce_script_list_content<'a>(
     execution_data: &execution::ScriptExecutionData,
     config: &config::AppConfig,
     paths: &config::PathCaches,
     edit_data: &EditData,
+    icons: &IconCaches,
 ) -> Column<'a, Message> {
-    let small_button = |label, message| {
-        button(
-            text(label)
-                .horizontal_alignment(alignment::Horizontal::Center)
-                .size(16),
-        )
-        .padding(4)
-        .on_press(message)
-    };
-
     if let Some(error) = &config.config_read_error {
         return column![text(format!("Error: {}", error))];
     }
@@ -1104,9 +1241,15 @@ fn produce_script_list_content<'a>(
                 if !has_started_execution {
                     let edit_buttons = if edit_data.window_edit_data.is_some() {
                         row![
-                            small_button("^", Message::MoveConfigScriptUp(i)),
+                            inline_icon_button(
+                                icons.themed.up.clone(),
+                                Message::MoveConfigScriptUp(i)
+                            ),
                             horizontal_space(5),
-                            small_button("v", Message::MoveConfigScriptDown(i)),
+                            inline_icon_button(
+                                icons.themed.down.clone(),
+                                Message::MoveConfigScriptDown(i)
+                            ),
                             horizontal_space(5),
                         ]
                     } else {
@@ -1183,16 +1326,27 @@ fn produce_script_list_content<'a>(
                 data,
                 vertical_space(Length::Fixed(4.0)),
                 row![
-                    button(text("Add script").size(16)).on_press(Message::AddScriptToConfig),
+                    main_icon_button(
+                        icons.themed.plus.clone(),
+                        "Add script",
+                        Message::AddScriptToConfig
+                    ),
                     horizontal_space(Length::Fixed(4.0)),
-                    button(text("Options").size(16),).on_press(Message::ToggleConfigEditing),
+                    main_icon_button(
+                        icons.themed.settings.clone(),
+                        "Settings",
+                        Message::ToggleConfigEditing
+                    ),
                 ],
                 if edit_data.is_dirty {
                     column![
                         vertical_space(Length::Fixed(4.0)),
                         row![
-                            button(text("Stop editing").size(16),)
-                                .on_press(Message::ExitWindowEditMode),
+                            main_icon_button(
+                                icons.themed.back.clone(),
+                                "Exit editing mode",
+                                Message::ExitWindowEditMode
+                            ),
                             horizontal_space(Length::Fixed(4.0)),
                             button(text("Save").size(16))
                                 .style(theme::Button::Positive)
@@ -1206,8 +1360,11 @@ fn produce_script_list_content<'a>(
                 } else {
                     column![
                         vertical_space(Length::Fixed(4.0)),
-                        button(text("Stop editing").size(16),)
-                            .on_press(Message::ExitWindowEditMode)
+                        main_icon_button(
+                            icons.themed.back.clone(),
+                            "Exit editing mode",
+                            Message::ExitWindowEditMode
+                        ),
                     ]
                 },
                 if config.child_config_body.is_some() {
@@ -1215,14 +1372,14 @@ fn produce_script_list_content<'a>(
                         ConfigEditType::Child => {
                             column![
                                 vertical_space(Length::Fixed(4.0)),
-                                button(text("Switch to parent").size(16),)
+                                button(text("Switch to parent").size(16))
                                     .on_press(Message::SwitchToParentConfig)
                             ]
                         }
                         ConfigEditType::Parent => {
                             column![
                                 vertical_space(Length::Fixed(4.0)),
-                                button(text("Switch to child").size(16),)
+                                button(text("Switch to child").size(16))
                                     .on_press(Message::SwitchToChildConfig)
                             ]
                         }
@@ -1232,21 +1389,7 @@ fn produce_script_list_content<'a>(
                 }
             ]
         } else {
-            column![
-                data,
-                vertical_space(Length::Fixed(4.0)),
-                button(
-                    text(if !edit_data.is_dirty {
-                        "Edit"
-                    } else {
-                        "Edit (unsaved changes)"
-                    })
-                    .width(Length::Fill)
-                    .horizontal_alignment(alignment::Horizontal::Center)
-                    .size(12),
-                )
-                .on_press(Message::EnterWindowEditMode),
-            ]
+            column![data]
         };
 
         column![
@@ -1267,28 +1410,6 @@ fn produce_execution_list_content<'a>(
     icons: &IconCaches,
     edit_data: &EditData,
 ) -> Column<'a, Message> {
-    let main_button = |label, message| {
-        button(
-            text(label)
-                .width(Length::Fill)
-                .horizontal_alignment(alignment::Horizontal::Center)
-                .size(16),
-        )
-        .width(Length::Shrink)
-        .padding(8)
-        .on_press(message)
-    };
-
-    let small_button = |label, message| {
-        button(
-            text(label)
-                .horizontal_alignment(alignment::Horizontal::Center)
-                .size(16),
-        )
-        .padding(4)
-        .on_press(message)
-    };
-
     let mut title: Element<_> = text(path_caches.work_path.to_str().unwrap_or_default())
         .size(16)
         .horizontal_alignment(alignment::Horizontal::Center)
@@ -1325,13 +1446,25 @@ fn produce_execution_list_content<'a>(
                     String::new()
                 };
 
+                let is_selected = match &edit_data.currently_edited_script {
+                    Some(selected_script) => {
+                        selected_script.idx == i
+                            && selected_script.script_type == EditScriptType::ExecutionList
+                    }
+                    None => false,
+                };
+
                 let status;
                 let status_tooltip;
                 let progress;
                 let style = if execution::has_script_failed(script_status) {
                     theme.extended_palette().danger.weak.color
                 } else {
-                    theme.extended_palette().background.strong.text
+                    if is_selected {
+                        theme.extended_palette().primary.strong.text
+                    } else {
+                        theme.extended_palette().background.strong.text
+                    }
                 };
 
                 if execution::has_script_finished(script_status) {
@@ -1409,42 +1542,42 @@ fn produce_execution_list_content<'a>(
 
                 let is_enabled = !execution_data.has_started;
 
-                let is_selected = match &edit_data.currently_edited_script {
-                    Some(selected_script) => {
-                        selected_script.idx == i
-                            && selected_script.script_type == EditScriptType::ExecutionList
-                    }
-                    None => false,
-                };
-
                 if is_enabled && is_selected {
                     row_data.push(horizontal_space(Length::Fill).into());
                     if i > 0 {
                         row_data.push(
-                            small_button("^", Message::MoveScriptUp(i))
+                            inline_icon_button(icons.themed.up.clone(), Message::MoveScriptUp(i))
                                 .style(theme::Button::Primary)
                                 .into(),
                         );
                     }
                     if i < execution_data.scripts_to_run.len() - 1 {
                         row_data.push(
-                            small_button("v", Message::MoveScriptDown(i))
-                                .style(theme::Button::Primary)
-                                .into(),
+                            inline_icon_button(
+                                icons.themed.down.clone(),
+                                Message::MoveScriptDown(i),
+                            )
+                            .style(theme::Button::Primary)
+                            .into(),
                         );
                     } else {
-                        row_data.push(horizontal_space(16).into());
+                        row_data.push(horizontal_space(22).into());
                     }
                     row_data.push(horizontal_space(8).into());
                     row_data.push(
-                        small_button(
-                            "del",
-                            Message::RemoveScript(EditScriptId {
-                                idx: i,
-                                script_type: EditScriptType::ExecutionList,
-                            }),
+                        tooltip(
+                            inline_icon_button(
+                                icons.themed.remove.clone(),
+                                Message::RemoveScript(EditScriptId {
+                                    idx: i,
+                                    script_type: EditScriptType::ExecutionList,
+                                }),
+                            )
+                            .style(theme::Button::Destructive),
+                            "Remove script from execution list",
+                            tooltip::Position::Left,
                         )
-                        .style(theme::Button::Destructive)
+                        .style(theme::Container::Box)
                         .into(),
                     );
                 } else if execution::has_script_started(&script_status) {
@@ -1452,14 +1585,36 @@ fn produce_execution_list_content<'a>(
                     if script_status.retry_count > 0 {
                         let log_dir_path =
                             config::get_script_log_directory(&path_caches.logs_path, i as isize);
-                        row_data.push(small_button("logs", Message::OpenFile(log_dir_path)).into());
+                        row_data.push(
+                            tooltip(
+                                inline_icon_button(
+                                    icons.themed.log.clone(),
+                                    Message::OpenFile(log_dir_path),
+                                ),
+                                "Open log directory",
+                                tooltip::Position::Right,
+                            )
+                            .style(theme::Container::Box)
+                            .into(),
+                        );
                     } else if !execution::has_script_been_skipped(&script_status) {
                         let output_path = config::get_script_output_path(
                             &path_caches.logs_path,
                             i as isize,
                             script_status.retry_count,
                         );
-                        row_data.push(small_button("log", Message::OpenFile(output_path)).into());
+                        row_data.push(
+                            tooltip(
+                                inline_icon_button(
+                                    icons.themed.log.clone(),
+                                    Message::OpenFile(output_path),
+                                ),
+                                "Open log file",
+                                tooltip::Position::Right,
+                            )
+                            .style(theme::Container::Box)
+                            .into(),
+                        );
                     }
                 }
 
@@ -1493,8 +1648,12 @@ fn produce_execution_list_content<'a>(
     } else if execution::has_finished_execution(&execution_data) {
         if !execution::is_waiting_execution_thread_to_finish(&execution_data) {
             row![
-                main_button("Reschedule", Message::RescheduleScripts),
-                main_button("Clear", Message::ClearScripts),
+                main_icon_button(
+                    icons.themed.retry.clone(),
+                    "Reschedule",
+                    Message::RescheduleScripts
+                ),
+                main_icon_button(icons.themed.remove.clone(), "Clear", Message::ClearScripts),
             ]
             .align_items(Alignment::Center)
             .spacing(5)
@@ -1508,12 +1667,17 @@ fn produce_execution_list_content<'a>(
         {
             row![text("Waiting for the execution to stop")].align_items(Alignment::Center)
         } else {
-            row![main_button("Stop", Message::StopScripts)].align_items(Alignment::Center)
+            row![main_icon_button(
+                icons.themed.stop.clone(),
+                "Stop",
+                Message::StopScripts
+            )]
+            .align_items(Alignment::Center)
         }
     } else if !execution_data.scripts_to_run.is_empty() {
         row![
-            main_button("Run", Message::RunScripts),
-            main_button("Clear", Message::ClearScripts),
+            main_icon_button(icons.themed.play.clone(), "Run", Message::RunScripts),
+            main_icon_button(icons.themed.remove.clone(), "Clear", Message::ClearScripts),
         ]
         .align_items(Alignment::Center)
         .spacing(5)
@@ -1585,7 +1749,7 @@ fn produce_script_edit_content<'a>(
         return Column::new();
     };
 
-    let button = |label, message| {
+    let edit_button = |label, message| {
         button(
             text(label)
                 .vertical_alignment(alignment::Vertical::Center)
@@ -1669,7 +1833,7 @@ fn produce_script_edit_content<'a>(
 
         if currently_edited_script.script_type == EditScriptType::ScriptConfig {
             parameters.push(
-                button(
+                edit_button(
                     "Duplicate script",
                     Message::DuplicateScript(currently_edited_script.clone()),
                 )
@@ -1678,7 +1842,7 @@ fn produce_script_edit_content<'a>(
         }
 
         parameters.push(
-            button(
+            edit_button(
                 "Remove script",
                 Message::RemoveScript(currently_edited_script.clone()),
             )
@@ -1695,7 +1859,7 @@ fn produce_script_edit_content<'a>(
 
         if currently_edited_script.script_type == EditScriptType::ScriptConfig {
             parameters.push(
-                button(
+                edit_button(
                     "Create a copy",
                     Message::CreateCopyOfParentScript(currently_edited_script.clone()),
                 )
@@ -1814,9 +1978,13 @@ fn view_content<'a>(
     edit_data: &EditData,
 ) -> Element<'a, Message> {
     let content = match variant {
-        PaneVariant::ScriptList => {
-            produce_script_list_content(execution_data, config, paths, edit_data)
-        }
+        PaneVariant::ScriptList => produce_script_list_content(
+            execution_data,
+            config,
+            paths,
+            edit_data,
+            &visual_caches.icons,
+        ),
         PaneVariant::ExecutionList => produce_execution_list_content(
             execution_data,
             paths,
@@ -1851,10 +2019,23 @@ fn view_controls<'a>(
     pane: pane_grid::Pane,
     variant: &PaneVariant,
     total_panes: usize,
+    icons: &IconCaches,
+    edit_data: &EditData,
     is_maximized: bool,
     size: Size,
 ) -> Element<'a, Message> {
     let mut row = row![].spacing(5);
+
+    if *variant == PaneVariant::ScriptList && !edit_data.window_edit_data.is_some() {
+        row = row.push(
+            tooltip(
+                edit_mode_button(icons.themed.edit.clone(), Message::EnterWindowEditMode),
+                "Enter editing mode",
+                tooltip::Position::Left,
+            )
+            .style(theme::Container::Box),
+        );
+    }
 
     if total_panes > 1 {
         if is_maximized {
@@ -1996,7 +2177,7 @@ fn apply_theme_color_from_string(
         {
             if let Some(new_color) = hex_to_rgb(&color_string) {
                 set_theme_fn(custom_theme, new_color);
-                app.theme = get_theme(&app.app_config, &app.edit_data.window_edit_data);
+                apply_theme(app);
                 app.edit_data.is_dirty = true;
             }
         }
@@ -2104,4 +2285,25 @@ fn get_script_definition_list<'a>(
             }
         }
     }
+}
+
+fn apply_theme(app: &mut MainWindow) {
+    app.theme = get_theme(&app.app_config, &app.edit_data.window_edit_data);
+    update_theme_icons(app);
+}
+
+fn update_theme_icons(app: &mut MainWindow) {
+    let icons = &mut app.visual_caches.icons;
+    if app.theme.extended_palette().primary.strong.text.r > 0.5 {
+        icons.themed = icons.bright.clone()
+    } else {
+        icons.themed = icons.dark.clone();
+    }
+
+    if app.theme.extended_palette().danger.strong.text.r > 0.5 {
+        icons.themed.remove = icons.bright.remove.clone();
+    } else {
+        icons.themed.remove = icons.dark.remove.clone();
+    }
+
 }
