@@ -311,7 +311,7 @@ impl Application for MainWindow {
         if let Some(window_edit_data) = &self.edit_data.window_edit_data {
             match window_edit_data.edit_type {
                 ConfigEditType::Parent if self.app_config.child_config_body.is_some() => {
-                    "scripter [Editing Parent]".to_string()
+                    "scripter [Editing shared config]".to_string()
                 }
                 _ => "scripter [Editing]".to_string(),
             }
@@ -1239,6 +1239,25 @@ fn produce_script_list_content<'a>(
             .enumerate()
             .map(|(i, script)| {
                 if !has_started_execution {
+                    let mut name_text = script.name.clone();
+
+                    if let Some(window_edit_data) = &edit_data.window_edit_data {
+                        if window_edit_data.edit_type == ConfigEditType::Child {
+                            if let Some(scripts) = &config.child_config_body {
+                                match scripts.script_definitions.get(i) {
+                                    Some(config::ChildScriptDefinition::Added(_)) => {
+                                        name_text += " [local]";
+                                    }
+                                    _ => {},
+                                }
+                            }
+
+                            if script.is_hidden {
+                                name_text += " [hidden]";
+                            }
+                        }
+                    }
+
                     let edit_buttons = if edit_data.window_edit_data.is_some() {
                         row![
                             inline_icon_button(
@@ -1270,14 +1289,14 @@ fn produce_script_list_content<'a>(
                             horizontal_space(6),
                             image(paths.icons_path.join(icon)).width(22).height(22),
                             horizontal_space(6),
-                            text(&script.name),
+                            text(&name_text),
                             horizontal_space(Length::Fill),
                             edit_buttons,
                         ]
                     } else {
                         row![
                             horizontal_space(6),
-                            text(&script.name).height(22),
+                            text(&name_text).height(22),
                             horizontal_space(Length::Fill),
                             edit_buttons,
                         ]
@@ -1372,14 +1391,14 @@ fn produce_script_list_content<'a>(
                         ConfigEditType::Child => {
                             column![
                                 vertical_space(Length::Fixed(4.0)),
-                                button(text("Switch to parent").size(16))
+                                button(text("Edit shared config").size(16))
                                     .on_press(Message::SwitchToParentConfig)
                             ]
                         }
                         ConfigEditType::Parent => {
                             column![
                                 vertical_space(Length::Fixed(4.0)),
-                                button(text("Switch to child").size(16))
+                                button(text("Edit local config").size(16))
                                     .on_press(Message::SwitchToChildConfig)
                             ]
                         }
@@ -1942,7 +1961,7 @@ fn produce_config_edit_content<'a>(
             None => EMPTY_STRING,
         };
         column![
-            text("Child config path (requires restart):"),
+            text("Local config path (requires restart):"),
             text_input("path/to/config.json", child_config_path)
                 .on_input(move |new_value| Message::ConfigEditChildConfigPath(new_value))
                 .padding(5),
