@@ -1860,7 +1860,7 @@ fn produce_script_edit_content<'a>(
         if currently_edited_script.script_type == EditScriptType::ScriptConfig {
             parameters.push(
                 edit_button(
-                    "Create a copy",
+                    "Edit as a copy",
                     Message::CreateCopyOfParentScript(currently_edited_script.clone()),
                 )
                 .into(),
