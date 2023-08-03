@@ -1057,6 +1057,7 @@ impl Application for MainWindow {
                         total_panes,
                         &self.visual_caches.icons,
                         &self.edit_data,
+                        &self.execution_data,
                         is_maximized,
                         size,
                     ))
@@ -2022,12 +2023,16 @@ fn view_controls<'a>(
     total_panes: usize,
     icons: &IconCaches,
     edit_data: &EditData,
+    execution_data: &execution::ScriptExecutionData,
     is_maximized: bool,
     size: Size,
 ) -> Element<'a, Message> {
     let mut row = row![].spacing(5);
 
-    if *variant == PaneVariant::ScriptList && !edit_data.window_edit_data.is_some() {
+    if *variant == PaneVariant::ScriptList
+        && !edit_data.window_edit_data.is_some()
+        && !execution_data.has_started
+    {
         row = row.push(
             tooltip(
                 edit_mode_button(icons.themed.edit.clone(), Message::EnterWindowEditMode),
