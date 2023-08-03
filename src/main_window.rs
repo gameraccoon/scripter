@@ -1334,6 +1334,26 @@ fn produce_script_list_content<'a>(
                         Message::ToggleConfigEditing
                     ),
                 ],
+                if config.child_config_body.is_some() {
+                    match window_edit_data.edit_type {
+                        ConfigEditType::Child => {
+                            column![
+                                vertical_space(Length::Fixed(4.0)),
+                                button(text("Edit shared config").size(16))
+                                    .on_press(Message::SwitchToParentConfig)
+                            ]
+                        }
+                        ConfigEditType::Parent => {
+                            column![
+                                vertical_space(Length::Fixed(4.0)),
+                                button(text("Edit local config").size(16))
+                                    .on_press(Message::SwitchToChildConfig)
+                            ]
+                        }
+                    }
+                } else {
+                    column![]
+                },
                 if edit_data.is_dirty {
                     column![
                         vertical_space(Length::Fixed(4.0)),
@@ -1362,26 +1382,6 @@ fn produce_script_list_content<'a>(
                             Message::ExitWindowEditMode
                         ),
                     ]
-                },
-                if config.child_config_body.is_some() {
-                    match window_edit_data.edit_type {
-                        ConfigEditType::Child => {
-                            column![
-                                vertical_space(Length::Fixed(4.0)),
-                                button(text("Edit shared config").size(16))
-                                    .on_press(Message::SwitchToParentConfig)
-                            ]
-                        }
-                        ConfigEditType::Parent => {
-                            column![
-                                vertical_space(Length::Fixed(4.0)),
-                                button(text("Edit local config").size(16))
-                                    .on_press(Message::SwitchToChildConfig)
-                            ]
-                        }
-                    }
-                } else {
-                    column![]
                 }
             ]
         } else {
