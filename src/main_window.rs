@@ -1586,7 +1586,13 @@ fn produce_execution_list_content<'a>(
                     row_data.push(
                         tooltip(
                             inline_icon_button(
-                                icons.themed.remove.clone(),
+                                (if theme.extended_palette().danger.strong.text.r > 0.5 {
+                                    &icons.bright
+                                } else {
+                                    &icons.dark
+                                })
+                                .remove
+                                .clone(),
                                 Message::RemoveScript(EditScriptId {
                                     idx: i,
                                     script_type: EditScriptType::ExecutionList,
@@ -2318,11 +2324,4 @@ fn update_theme_icons(app: &mut MainWindow) {
     } else {
         icons.themed = icons.dark.clone();
     }
-
-    if app.theme.extended_palette().danger.strong.text.r > 0.5 {
-        icons.themed.remove = icons.bright.remove.clone();
-    } else {
-        icons.themed.remove = icons.dark.remove.clone();
-    }
-
 }
