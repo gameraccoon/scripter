@@ -16,7 +16,7 @@ use iced_native::image::Handle;
 use iced_native::widget::{checkbox, horizontal_space, image, vertical_space};
 use iced_native::window::Action::{RequestUserAttention, Resize};
 use iced_native::window::UserAttention;
-use std::path::{is_separator, PathBuf};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
@@ -1172,18 +1172,6 @@ fn inline_icon_button<'a, Message>(icon_handle: Handle, message: Message) -> But
     .on_press(message)
 }
 
-fn main_button(label: &str, message: Message) -> Button<Message> {
-    button(
-        text(label)
-            .width(Length::Fill)
-            .horizontal_alignment(alignment::Horizontal::Center)
-            .size(16),
-    )
-    .width(Length::Shrink)
-    .padding(8)
-    .on_press(message)
-}
-
 fn main_icon_button(icon_handle: Handle, label: &str, message: Message) -> Button<Message> {
     button(row![
         image(icon_handle)
@@ -1194,18 +1182,6 @@ fn main_icon_button(icon_handle: Handle, label: &str, message: Message) -> Butto
     ])
     .width(Length::Shrink)
     .padding(8)
-    .on_press(message)
-}
-
-fn main_button_small(label: &str, message: Message) -> Button<Message> {
-    button(
-        text(label)
-            .width(Length::Fill)
-            .horizontal_alignment(alignment::Horizontal::Center)
-            .size(14),
-    )
-    .width(Length::Shrink)
-    .padding(4)
     .on_press(message)
 }
 
@@ -1248,7 +1224,7 @@ fn produce_script_list_content<'a>(
                                     Some(config::ChildScriptDefinition::Added(_)) => {
                                         name_text += " [local]";
                                     }
-                                    _ => {},
+                                    _ => {}
                                 }
                             }
 
