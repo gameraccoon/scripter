@@ -328,7 +328,11 @@ impl Application for MainWindow {
                 "scripter [Running]".to_string()
             }
         } else {
-            "scripter".to_string()
+            if self.edit_data.is_dirty {
+                "scripter [Unsaved changes]".to_string()
+            } else {
+                "scripter".to_string()
+            }
         }
     }
 
@@ -1222,11 +1226,19 @@ fn main_icon_button(icon_handle: Handle, label: &str, message: Message) -> Butto
     .on_press(message)
 }
 
-fn edit_mode_button<'a>(icon_handle: Handle, message: Message) -> Button<'a, Message> {
+fn edit_mode_button<'a>(
+    icon_handle: Handle,
+    message: Message,
+    is_dirty: bool,
+) -> Button<'a, Message> {
     button(row![image(icon_handle)
         .width(Length::Fixed(12.0))
         .height(Length::Fixed(12.0))])
-    .style(theme::Button::Secondary)
+    .style(if is_dirty {
+        theme::Button::Positive
+    } else {
+        theme::Button::Secondary
+    })
     .width(Length::Shrink)
     .padding(4)
     .on_press(message)
@@ -2077,7 +2089,11 @@ fn view_controls<'a>(
     {
         row = row.push(
             tooltip(
-                edit_mode_button(icons.themed.edit.clone(), Message::EnterWindowEditMode),
+                edit_mode_button(
+                    icons.themed.edit.clone(),
+                    Message::EnterWindowEditMode,
+                    edit_data.is_dirty,
+                ),
                 "Enter editing mode",
                 tooltip::Position::Left,
             )
