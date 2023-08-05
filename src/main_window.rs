@@ -1,3 +1,4 @@
+use std::mem::swap;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -189,6 +190,7 @@ pub enum Message {
     SwitchToChildConfig,
     ToggleScriptHidden(bool),
     CreateCopyOfParentScript(EditScriptId),
+    MoveToParent(EditScriptId),
 }
 
 impl Application for MainWindow {
@@ -543,7 +545,7 @@ impl Application for MainWindow {
                             }
                         }
 
-                        config::update_child_config_script_cache_from_config(&mut self.app_config)
+                        config::populate_parent_scripts_from_config(&mut self.app_config)
                     }
                     EditScriptType::ExecutionList => {
                         execution::remove_script_from_execution(
@@ -568,25 +570,14 @@ impl Application for MainWindow {
                     is_hidden: false,
                 };
                 if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
-                    let mut script_idx = None;
-                    match window_edit_data.edit_type {
+                    let script_idx = match window_edit_data.edit_type {
                         ConfigEditType::Parent => {
-                            self.app_config.script_definitions.push(script);
-                            script_idx = Some(self.app_config.script_definitions.len() - 1);
-                            config::populate_parent_scripts_from_config(&mut self.app_config);
+                            Some(add_script_to_parent_config(&mut self.app_config, script))
                         }
                         ConfigEditType::Child => {
-                            if let Some(config) = &mut self.app_config.child_config_body {
-                                config
-                                    .script_definitions
-                                    .push(config::ChildScriptDefinition::Added(script));
-                                script_idx = Some(config.script_definitions.len() - 1);
-                                config::update_child_config_script_cache_from_config(
-                                    &mut self.app_config,
-                                );
-                            }
+                            add_script_to_child_config(&mut self.app_config, script)
                         }
-                    }
+                    };
 
                     window_edit_data.is_editing_config = false;
 
@@ -1031,7 +1022,52 @@ impl Application for MainWindow {
                     );
                     self.edit_data.is_dirty = true;
                 }
-                config::update_child_config_script_cache_from_config(&mut self.app_config);
+            }
+            Message::MoveToParent(script_id) => {
+                if let Some(config) = &mut self.app_config.child_config_body {
+                    if config.script_definitions.len() <= script_id.idx {
+                        return Command::none();
+                    }
+
+                    if let Some(script) = config.script_definitions.get_mut(script_id.idx) {
+                        match script {
+                            config::ChildScriptDefinition::Added(definition) => {
+                                let mut replacement_script = config::ChildScriptDefinition::Parent(
+                                    definition.uid.clone(),
+                                    false,
+                                );
+                                swap(script, &mut replacement_script);
+                                match replacement_script {
+                                    config::ChildScriptDefinition::Added(original_definition) => {
+                                        self.app_config
+                                            .script_definitions
+                                            .push(original_definition);
+                                    }
+                                    _ => {}
+                                }
+                                config::update_child_config_script_cache_from_config(
+                                    &mut self.app_config,
+                                );
+                                if let Some(edit_data) = &mut self.edit_data.window_edit_data {
+                                    edit_data.edit_type = ConfigEditType::Parent;
+                                }
+                                set_selected_script(
+                                    &mut self.edit_data.currently_edited_script,
+                                    &self.execution_data,
+                                    &get_script_definition_list_opt(
+                                        &self.app_config,
+                                        &self.edit_data.window_edit_data,
+                                    ),
+                                    &mut self.visual_caches,
+                                    self.app_config.script_definitions.len() - 1,
+                                    EditScriptType::ScriptConfig,
+                                );
+                                self.edit_data.is_dirty = true;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
             }
         }
 
@@ -1218,21 +1254,11 @@ fn produce_script_list_content<'a>(
                 if !has_started_execution {
                     let mut name_text = script.name.clone();
 
-                    if let Some(window_edit_data) = &edit_data.window_edit_data {
-                        if window_edit_data.edit_type == ConfigEditType::Child {
-                            if let Some(scripts) = &config.child_config_body {
-                                match scripts.script_definitions.get(i) {
-                                    Some(config::ChildScriptDefinition::Added(_)) => {
-                                        name_text += " [local]";
-                                    }
-                                    _ => {}
-                                }
-                            }
-
-                            if script.is_hidden {
-                                name_text += " [hidden]";
-                            }
-                        }
+                    if is_local_edited_script(i, &config, &edit_data.window_edit_data) {
+                        name_text += " [local]";
+                    }
+                    if script.is_hidden {
+                        name_text += " [hidden]";
                     }
 
                     let edit_buttons = if edit_data.window_edit_data.is_some() {
@@ -1742,6 +1768,7 @@ fn produce_script_edit_content<'a>(
     script_definitions: &Vec<config::ScriptDefinition>,
     visual_caches: &VisualCaches,
     edit_data: &EditData,
+    app_config: &config::AppConfig,
 ) -> Column<'a, Message> {
     if execution::has_started_execution(&execution_data) {
         return Column::new();
@@ -1838,6 +1865,20 @@ fn produce_script_edit_content<'a>(
                 edit_button(
                     "Duplicate script",
                     Message::DuplicateScript(currently_edited_script.clone()),
+                )
+                .into(),
+            );
+        }
+
+        if is_local_edited_script(
+            currently_edited_script.idx,
+            &app_config,
+            &edit_data.window_edit_data,
+        ) {
+            parameters.push(
+                edit_button(
+                    "Make shared",
+                    Message::MoveToParent(currently_edited_script.clone()),
                 )
                 .into(),
             );
@@ -2005,6 +2046,7 @@ fn view_content<'a>(
                 &get_script_definition_list_opt(&config, &edit_data.window_edit_data),
                 visual_caches,
                 edit_data,
+                config,
             ),
         },
     };
@@ -2304,5 +2346,56 @@ fn update_theme_icons(app: &mut MainWindow) {
         icons.themed = icons.bright.clone()
     } else {
         icons.themed = icons.dark.clone();
+    }
+}
+
+fn is_local_edited_script(
+    script_idx: usize,
+    app_config: &config::AppConfig,
+    window_edit_data: &Option<WindowEditData>,
+) -> bool {
+    if let Some(window_edit_data) = &window_edit_data {
+        if window_edit_data.edit_type == ConfigEditType::Child {
+            if let Some(scripts) = &app_config.child_config_body {
+                match scripts.script_definitions.get(script_idx) {
+                    Some(config::ChildScriptDefinition::Added(_)) => {
+                        return true;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    return false;
+}
+
+fn add_script_to_parent_config(
+    app_config: &mut config::AppConfig,
+    script: config::ScriptDefinition,
+) -> usize {
+    app_config.script_definitions.push(script);
+    let script_idx = app_config.script_definitions.len() - 1;
+    config::populate_parent_scripts_from_config(app_config);
+    return script_idx;
+}
+
+fn add_script_to_child_config(
+    app_config: &mut config::AppConfig,
+    script: config::ScriptDefinition,
+) -> Option<usize> {
+    if let Some(config) = &mut app_config.child_config_body {
+        config
+            .script_definitions
+            .push(config::ChildScriptDefinition::Added(script));
+    } else {
+        return None;
+    }
+
+    config::update_child_config_script_cache_from_config(app_config);
+
+    if let Some(config) = &mut app_config.child_config_body {
+        return Some(config.script_definitions.len() - 1);
+    } else {
+        return None;
     }
 }
