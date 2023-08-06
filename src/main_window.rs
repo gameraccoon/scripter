@@ -26,6 +26,8 @@ use crate::execution;
 use crate::style;
 
 const EMPTY_STRING: &str = "";
+const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: u32 = 30;
+const EMPTY_EXECUTION_LIST_HEIGHT: u32 = 150;
 
 #[derive(Clone)]
 struct ThemedIcons {
@@ -144,7 +146,6 @@ pub enum Message {
     Dragged(pane_grid::DragEvent),
     Resized(pane_grid::ResizeEvent),
     Maximize(pane_grid::Pane, Size),
-    SwitchMaximized(PaneVariant),
     Restore,
     AddScriptToRun(config::ScriptDefinition),
     RunScripts,
@@ -362,21 +363,17 @@ impl Application for MainWindow {
                         .get(&pane)
                         .unwrap() // tried to get an non-existing pane, this should never happen, so panic
                         .clone();
+
+                    let elements_count = self.execution_data.scripts_to_run.len() as u32;
+
                     return Command::single(Action::Window(Resize {
-                        height: size.height as u32,
+                        height: std::cmp::min(
+                            size.height as u32,
+                            EMPTY_EXECUTION_LIST_HEIGHT
+                                + elements_count * ONE_EXECUTION_LIST_ELEMENT_HEIGHT,
+                        ),
                         width: size.width as u32,
                     }));
-                }
-            }
-            Message::SwitchMaximized(pane_variant) => {
-                let pane = self
-                    .panes
-                    .iter()
-                    .find(|pane| pane.1.variant == pane_variant);
-                if let Some((pane, _app_pane)) = pane {
-                    let pane = pane.clone();
-                    self.panes.maximize(&pane);
-                    self.focus = Some(pane);
                 }
             }
             Message::Restore => {
@@ -2101,12 +2098,9 @@ fn view_controls<'a>(
         );
     }
 
-    if total_panes > 1 {
-        if is_maximized {
-            row = add_pane_switch_button(variant, PaneVariant::ScriptList, row);
-            row = add_pane_switch_button(variant, PaneVariant::ExecutionList, row);
-            row = add_pane_switch_button(variant, PaneVariant::LogOutput, row);
-        }
+    if total_panes > 1
+        && (is_maximized || (*variant == PaneVariant::ExecutionList && execution_data.has_started))
+    {
         let toggle = {
             let (content, message) = if is_maximized {
                 ("Back to full window", Message::Restore)
@@ -2146,24 +2140,6 @@ fn get_pane_name_from_variant(variant: &PaneVariant) -> &str {
         PaneVariant::LogOutput => "Log",
         PaneVariant::Parameters => "Parameters",
     }
-}
-
-fn add_pane_switch_button<'a>(
-    focused_variant: &PaneVariant,
-    variant: PaneVariant,
-    row: iced::widget::Row<'a, Message, iced::Renderer>,
-) -> iced::widget::Row<'a, Message, iced::Renderer> {
-    if *focused_variant == variant {
-        return row;
-    }
-
-    let pane_name = get_pane_name_from_variant(&variant);
-    row.push(
-        button(text(format!("{}", pane_name)).size(14))
-            .style(theme::Button::Secondary)
-            .padding(3)
-            .on_press(Message::SwitchMaximized(variant)),
-    )
 }
 
 fn apply_script_edit(app: &mut MainWindow, edit_fn: impl FnOnce(&mut config::ScriptDefinition)) {
