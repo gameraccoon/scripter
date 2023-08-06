@@ -650,7 +650,7 @@ fn get_default_icons_path() -> PathBuf {
 fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &AppConfig) {
     // find all the parent scripts that are missing from the child config, and populate them
     let mut previous_script_idx = None;
-    let mut has_configs_to_remove= false;
+    let mut has_configs_to_remove = false;
     for script in &parent_config.script_definitions {
         // find position of the script in the child config
         let script_idx = child_config.script_definitions.iter().position(
@@ -691,12 +691,15 @@ fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &AppCo
 
     if has_configs_to_remove {
         // remove all the scripts that are not in the parent config
-        child_config.script_definitions.retain(|child_script: &ChildScriptDefinition| match child_script {
-            ChildScriptDefinition::Parent(parent_script_uid, _is_hidden) => {
-                parent_config.script_definitions.iter().any(|script| script.uid == *parent_script_uid)
-            }
-            _ => true,
-        });
+        child_config
+            .script_definitions
+            .retain(|child_script: &ChildScriptDefinition| match child_script {
+                ChildScriptDefinition::Parent(parent_script_uid, _is_hidden) => parent_config
+                    .script_definitions
+                    .iter()
+                    .any(|script| script.uid == *parent_script_uid),
+                _ => true,
+            });
     }
 
     update_child_config_script_cache(child_config, parent_config);

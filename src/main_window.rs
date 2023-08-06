@@ -6,17 +6,14 @@ use iced::alignment::{self, Alignment};
 use iced::theme::{self, Theme};
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{
-    button, column, container, row, scrollable, text, text_input, tooltip, Button, Column,
+    button, checkbox, column, container, horizontal_space, image, image::Handle, row, scrollable,
+    text, text_input, tooltip, vertical_space, Button, Column,
 };
+use iced::window::{request_user_attention, resize};
 use iced::{executor, ContentFit};
 use iced::{time, Size};
 use iced::{Application, Command, Element, Length, Subscription};
 use iced_lazy::responsive;
-use iced_native::command::Action;
-use iced_native::image::Handle;
-use iced_native::widget::{checkbox, horizontal_space, image, vertical_space};
-use iced_native::window::Action::{RequestUserAttention, Resize};
-use iced_native::window::UserAttention;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
@@ -366,14 +363,14 @@ impl Application for MainWindow {
 
                     let elements_count = self.execution_data.scripts_to_run.len() as u32;
 
-                    return Command::single(Action::Window(Resize {
-                        height: std::cmp::min(
+                    return resize(
+                        size.width as u32,
+                        std::cmp::min(
                             size.height as u32,
                             EMPTY_EXECUTION_LIST_HEIGHT
                                 + elements_count * ONE_EXECUTION_LIST_ELEMENT_HEIGHT,
                         ),
-                        width: size.width as u32,
-                    }));
+                    );
                 }
             }
             Message::Restore => {
@@ -381,10 +378,10 @@ impl Application for MainWindow {
                 if !get_rewritable_config_opt(&self.app_config, &self.edit_data.window_edit_data)
                     .keep_window_size
                 {
-                    return Command::single(Action::Window(Resize {
-                        height: self.full_window_size.height as u32,
-                        width: self.full_window_size.width as u32,
-                    }));
+                    return resize(
+                        self.full_window_size.width as u32,
+                        self.full_window_size.height as u32,
+                    );
                 }
             }
             Message::AddScriptToRun(script) => {
@@ -452,9 +449,9 @@ impl Application for MainWindow {
                             )
                             .window_status_reactions
                             {
-                                return Command::single(Action::Window(RequestUserAttention(
-                                    Some(UserAttention::Informational),
-                                )));
+                                return request_user_attention(Some(
+                                    iced::window::UserAttention::Informational,
+                                ));
                             }
                         }
                     }
