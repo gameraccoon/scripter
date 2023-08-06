@@ -1744,7 +1744,7 @@ fn produce_log_output_content<'a>(
     }
 
     let mut data_lines: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
-    if let Ok(logs) = execution_data.recent_logs.lock() {
+    if let Ok(logs) = execution_data.recent_logs.try_lock() {
         if !logs.is_empty() {
             data_lines.extend(logs.iter().map(|element| {
                 text(format!(
