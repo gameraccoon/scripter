@@ -149,7 +149,7 @@ impl Default for CustomTheme {
             text: [0.0, 0.0, 0.0],
             primary: [0.45, 0.53, 0.855],
             success: [0.31, 0.5, 0.17],
-            danger: [1.0, 0.0, 0.0],
+            danger: [0.7, 0.3, 0.3],
         }
     }
 }
