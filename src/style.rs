@@ -94,3 +94,58 @@ pub fn get_custom_theme(custom_config: config::CustomTheme) -> Theme {
         ),
     })
 }
+
+pub struct InvalidInputStyleSheet;
+
+impl iced::widget::text_input::StyleSheet for InvalidInputStyleSheet {
+    type Style = Theme;
+
+    fn active(&self, style: &Self::Style) -> iced::widget::text_input::Appearance {
+        iced::widget::text_input::Appearance {
+            background: iced::Background::Color(style.extended_palette().background.base.color),
+            border_width: 1.0,
+            border_color: style.extended_palette().danger.base.color,
+            border_radius: 1.0,
+            icon_color: iced::Color::WHITE,
+        }
+    }
+
+    fn focused(&self, style: &Self::Style) -> iced::widget::text_input::Appearance {
+        iced::widget::text_input::Appearance {
+            background: iced::Background::Color(style.extended_palette().background.base.color),
+            border_color: style.extended_palette().danger.strong.color,
+            ..self.active(style)
+        }
+    }
+
+    fn hovered(&self, style: &Self::Style) -> iced::widget::text_input::Appearance {
+        iced::widget::text_input::Appearance {
+            background: iced::Background::Color(style.extended_palette().background.base.color),
+            border_color: style.extended_palette().danger.strong.text,
+            ..self.active(style)
+        }
+    }
+
+    fn placeholder_color(&self, style: &Self::Style) -> iced::Color {
+        style.extended_palette().background.strong.color
+    }
+
+    fn value_color(&self, style: &Self::Style) -> iced::Color {
+        style.extended_palette().background.strong.text
+    }
+
+    fn disabled_color(&self, style: &Self::Style) -> iced::Color {
+        style.extended_palette().background.weak.text
+    }
+
+    fn selection_color(&self, style: &Self::Style) -> iced::Color {
+        style.extended_palette().background.strong.text
+    }
+
+    fn disabled(&self, style: &Self::Style) -> iced::widget::text_input::Appearance {
+        iced::widget::text_input::Appearance {
+            background: iced::Background::Color(style.extended_palette().background.weak.color),
+            ..self.active(style)
+        }
+    }
+}

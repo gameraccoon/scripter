@@ -3,8 +3,8 @@ use crate::json_config_updater::{JsonConfigUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.7.2";
-pub static LATEST_CHILD_CONFIG_VERSION: &str = "0.7.2";
+pub static LATEST_CONFIG_VERSION: &str = "0.9.3";
+pub static LATEST_CHILD_CONFIG_VERSION: &str = "0.9.3";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -58,6 +58,11 @@ fn register_config_updaters() -> JsonConfigUpdater {
         rewritable["custom_theme"] = config_json["custom_theme"].take();
         config_json["rewritable"] = rewritable;
     });
+    json_config_updater.add_update_function("0.9.3", |config_json| {
+        for script in config_json["script_definitions"].as_array_mut().unwrap() {
+            script["requires_arguments"] = json!(false);
+        }
+    });
     // add update functions here
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -69,6 +74,15 @@ fn register_child_config_updaters() -> JsonConfigUpdater {
 
     json_config_updater.add_update_function("0.7.2", |_config_json| {
         // empty updater to have a name for the first version
+    });
+    json_config_updater.add_update_function("0.9.3", |config_json| {
+        for script in config_json["script_definitions"].as_array_mut().unwrap() {
+            if let Some(obj) = script.as_object_mut() {
+                if let Some(value) = obj.get_mut("Added") {
+                    value["requires_arguments"] = json!(false);
+                }
+            }
+        }
     });
     // add update functions here
     // don't forget to update LATEST_CHILD_CONFIG_VERSION at the beginning of the file

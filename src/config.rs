@@ -58,6 +58,7 @@ pub struct ScriptDefinition {
     pub path_relative_to_scripter: bool,
     pub autorerun_count: usize,
     pub ignore_previous_failures: bool,
+    pub requires_arguments: bool,
     #[serde(skip)]
     pub is_read_only: bool,
     #[serde(skip)]

@@ -1,4 +1,3 @@
-use std::mem::swap;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -14,6 +13,7 @@ use iced::{executor, ContentFit};
 use iced::{time, Size};
 use iced::{Application, Command, Element, Length, Subscription};
 use iced_lazy::responsive;
+use std::mem::swap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
@@ -161,6 +161,7 @@ pub enum Message {
     EditScriptCommand(String),
     EditScriptIconPath(String),
     EditArguments(String),
+    ToggleRequiresArguments(bool),
     EditAutorerunCount(String),
     OpenFile(PathBuf),
     ToggleIgnoreFailures(bool),
@@ -564,6 +565,7 @@ impl Application for MainWindow {
                     path_relative_to_scripter: false,
                     autorerun_count: 0,
                     ignore_previous_failures: false,
+                    requires_arguments: false,
                     is_read_only: false,
                     is_hidden: false,
                 };
@@ -642,6 +644,11 @@ impl Application for MainWindow {
             }),
             Message::EditArguments(new_arguments) => {
                 apply_script_edit(self, move |script| script.arguments = new_arguments)
+            }
+            Message::ToggleRequiresArguments(new_requires_arguments) => {
+                apply_script_edit(self, move |script| {
+                    script.requires_arguments = new_requires_arguments
+                })
             }
             Message::EditAutorerunCount(new_autorerun_count_str) => {
                 let parse_result = usize::from_str(&new_autorerun_count_str);
@@ -1207,8 +1214,8 @@ fn inline_icon_button<'a, Message>(icon_handle: Handle, message: Message) -> But
     .on_press(message)
 }
 
-fn main_icon_button(icon_handle: Handle, label: &str, message: Message) -> Button<Message> {
-    button(row![
+fn main_icon_button(icon_handle: Handle, label: &str, message: Option<Message>) -> Button<Message> {
+    let new_button = button(row![
         image(icon_handle)
             .width(Length::Fixed(16.0))
             .height(Length::Fixed(16.0)),
@@ -1216,8 +1223,13 @@ fn main_icon_button(icon_handle: Handle, label: &str, message: Message) -> Butto
         text(label).width(Length::Shrink).size(16),
     ])
     .width(Length::Shrink)
-    .padding(8)
-    .on_press(message)
+    .padding(8);
+
+    if let Some(message) = message {
+        new_button.on_press(message)
+    } else {
+        new_button
+    }
 }
 
 fn edit_mode_button<'a>(
@@ -1357,13 +1369,13 @@ fn produce_script_list_content<'a>(
                     main_icon_button(
                         icons.themed.plus.clone(),
                         "Add script",
-                        Message::AddScriptToConfig
+                        Some(Message::AddScriptToConfig)
                     ),
                     horizontal_space(Length::Fixed(4.0)),
                     main_icon_button(
                         icons.themed.settings.clone(),
                         "Settings",
-                        Message::ToggleConfigEditing
+                        Some(Message::ToggleConfigEditing)
                     ),
                 ],
                 if config.child_config_body.is_some() {
@@ -1393,7 +1405,7 @@ fn produce_script_list_content<'a>(
                             main_icon_button(
                                 icons.themed.back.clone(),
                                 "Exit editing mode",
-                                Message::ExitWindowEditMode
+                                Some(Message::ExitWindowEditMode)
                             ),
                             horizontal_space(Length::Fixed(4.0)),
                             button(text("Save").size(16))
@@ -1411,7 +1423,7 @@ fn produce_script_list_content<'a>(
                         main_icon_button(
                             icons.themed.back.clone(),
                             "Exit editing mode",
-                            Message::ExitWindowEditMode
+                            Some(Message::ExitWindowEditMode)
                         ),
                     ]
                 }
@@ -1663,7 +1675,11 @@ fn produce_execution_list_content<'a>(
                     list_item = list_item.style(if is_selected {
                         theme::Button::Primary
                     } else {
-                        theme::Button::Secondary
+                        if is_script_missing_arguments(&script) {
+                            theme::Button::Destructive
+                        } else {
+                            theme::Button::Secondary
+                        }
                     });
 
                     list_item.height(30).into()
@@ -1685,9 +1701,9 @@ fn produce_execution_list_content<'a>(
                 main_icon_button(
                     icons.themed.retry.clone(),
                     "Reschedule",
-                    Message::RescheduleScripts
+                    Some(Message::RescheduleScripts)
                 ),
-                main_icon_button(icons.themed.remove.clone(), "Clear", Message::ClearScripts),
+                main_icon_button(icons.themed.remove.clone(), "Clear", Some(Message::ClearScripts)),
             ]
             .align_items(Alignment::Center)
             .spacing(5)
@@ -1704,14 +1720,28 @@ fn produce_execution_list_content<'a>(
             row![main_icon_button(
                 icons.themed.stop.clone(),
                 "Stop",
-                Message::StopScripts
+                Some(Message::StopScripts)
             )]
             .align_items(Alignment::Center)
         }
     } else if !execution_data.scripts_to_run.is_empty() {
+        let has_scripts_missing_arguments = execution_data
+            .scripts_to_run
+            .iter()
+            .any(|script| is_script_missing_arguments(script));
+
+        let run_button = if has_scripts_missing_arguments {
+            column![tooltip(main_icon_button(
+                icons.themed.play.clone(),
+                "Run",
+                None,
+            ), "Some scripts are missing arguments", tooltip::Position::Top).style(theme::Container::Box)]
+        } else {
+            column![main_icon_button(icons.themed.play.clone(), "Run", Some(Message::RunScripts)),]
+        };
         row![
-            main_icon_button(icons.themed.play.clone(), "Run", Message::RunScripts),
-            main_icon_button(icons.themed.remove.clone(), "Clear", Message::ClearScripts),
+            run_button,
+            main_icon_button(icons.themed.remove.clone(), "Clear", Some(Message::ClearScripts)),
         ]
         .align_items(Alignment::Center)
         .spacing(5)
@@ -1775,6 +1805,7 @@ fn produce_script_edit_content<'a>(
     visual_caches: &VisualCaches,
     edit_data: &EditData,
     app_config: &config::AppConfig,
+    theme: &Theme,
 ) -> Column<'a, Message> {
     if execution::has_started_execution(&execution_data) {
         return Column::new();
@@ -1841,13 +1872,41 @@ fn produce_script_edit_content<'a>(
             );
         }
 
-        parameters.push(text("Arguments line:").into());
+        parameters.push(
+            text(
+                if currently_edited_script.script_type == EditScriptType::ExecutionList {
+                    "Arguments line:"
+                } else {
+                    "Default arguments:"
+                },
+            )
+            .into(),
+        );
         parameters.push(
             text_input("\"arg1\" \"arg2\"", &script.arguments)
                 .on_input(move |new_value| Message::EditArguments(new_value))
+                .style(
+                    if currently_edited_script.script_type == EditScriptType::ExecutionList
+                        && is_script_missing_arguments(&script)
+                    {
+                        theme::TextInput::Custom(Box::new(style::InvalidInputStyleSheet))
+                    } else {
+                        theme::TextInput::Default
+                    },
+                )
                 .padding(5)
                 .into(),
         );
+        if currently_edited_script.script_type == EditScriptType::ScriptConfig {
+            parameters.push(
+                checkbox(
+                    "Arguments are required",
+                    script.requires_arguments,
+                    move |val| Message::ToggleRequiresArguments(val),
+                )
+                .into(),
+            );
+        }
 
         parameters.push(text("Retry count:").into());
         parameters.push(
@@ -2053,6 +2112,7 @@ fn view_content<'a>(
                 visual_caches,
                 edit_data,
                 config,
+                theme,
             ),
         },
     };
@@ -2387,4 +2447,8 @@ fn add_script_to_child_config(
     } else {
         return None;
     }
+}
+
+fn is_script_missing_arguments(script: &config::ScriptDefinition) -> bool {
+    return script.requires_arguments && script.arguments.is_empty();
 }
