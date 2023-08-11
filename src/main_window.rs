@@ -2023,7 +2023,7 @@ fn produce_config_edit_content<'a>(
             text_input("#000000", &window_edit.theme_color_background)
                 .on_input(move |new_value| Message::ConfigEditThemeBackground(new_value))
                 .padding(5),
-            text("Text:"),
+            text("Accent:"),
             text_input("#000000", &window_edit.theme_color_text)
                 .on_input(move |new_value| Message::ConfigEditThemeText(new_value))
                 .padding(5),
