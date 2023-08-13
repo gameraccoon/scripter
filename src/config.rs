@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 const DEFAULT_CONFIG_NAME: &str = "scripter_config.json";
+const WORK_PATH_CONFIG_NAME: &str = ".scripter_config.json";
 thread_local!(static GLOBAL_CONFIG: AppConfig = read_config());
 
 #[derive(Default, Clone, Deserialize, Serialize)]
@@ -267,15 +268,25 @@ pub fn get_default_child_config(parent_config: &AppConfig) -> ChildConfig {
 }
 
 fn get_config_path(app_arguments: &AppArguments) -> PathBuf {
-    if let Some(config_path) = app_arguments.custom_config_path.clone() {
-        PathBuf::from(config_path.clone())
-    } else {
-        std::env::current_exe()
-            .unwrap_or_default()
-            .parent()
-            .unwrap_or(Path::new(""))
-            .join(DEFAULT_CONFIG_NAME)
+    if let Some(config_path) = &app_arguments.custom_config_path {
+        return PathBuf::from(config_path.clone());
     }
+
+    let config_in_work_path = if let Some(custom_work_path) = &app_arguments.custom_work_path {
+        PathBuf::from(custom_work_path).join(WORK_PATH_CONFIG_NAME)
+    } else {
+        get_default_work_path().join(WORK_PATH_CONFIG_NAME)
+    };
+
+    if Path::new(&config_in_work_path).exists() {
+        return config_in_work_path;
+    }
+
+    return std::env::current_exe()
+        .unwrap_or_default()
+        .parent()
+        .unwrap_or(Path::new(""))
+        .join(DEFAULT_CONFIG_NAME);
 }
 
 fn default_config_with_error(config: &AppConfig, error: String) -> AppConfig {
