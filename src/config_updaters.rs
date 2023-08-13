@@ -44,7 +44,11 @@ fn register_config_updaters() -> JsonConfigUpdater {
         config_json["keep_window_size"] = json!(false);
     });
     json_config_updater.add_update_function("0.7.1", |config_json| {
-        for script in config_json["script_definitions"].as_array_mut().unwrap() {
+        let Some(script_definitions) = config_json["script_definitions"].as_array_mut() else {
+            return;
+        };
+
+        for script in script_definitions {
             script["uid"] = json!(config::Guid::new());
         }
     });
@@ -59,7 +63,11 @@ fn register_config_updaters() -> JsonConfigUpdater {
         config_json["rewritable"] = rewritable;
     });
     json_config_updater.add_update_function("0.9.3", |config_json| {
-        for script in config_json["script_definitions"].as_array_mut().unwrap() {
+        let Some(script_definitions) = config_json["script_definitions"].as_array_mut() else {
+            return;
+        };
+
+        for script in script_definitions {
             script["requires_arguments"] = json!(false);
         }
     });
@@ -76,7 +84,11 @@ fn register_child_config_updaters() -> JsonConfigUpdater {
         // empty updater to have a name for the first version
     });
     json_config_updater.add_update_function("0.9.3", |config_json| {
-        for script in config_json["script_definitions"].as_array_mut().unwrap() {
+        let Some(script_definitions) = config_json["script_definitions"].as_array_mut() else {
+            return;
+        };
+
+        for script in script_definitions {
             if let Some(obj) = script.as_object_mut() {
                 if let Some(value) = obj.get_mut("Added") {
                     value["requires_arguments"] = json!(false);
