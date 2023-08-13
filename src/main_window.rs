@@ -1805,7 +1805,6 @@ fn produce_script_edit_content<'a>(
     visual_caches: &VisualCaches,
     edit_data: &EditData,
     app_config: &config::AppConfig,
-    theme: &Theme,
 ) -> Column<'a, Message> {
     if execution::has_started_execution(&execution_data) {
         return Column::new();
@@ -2112,7 +2111,6 @@ fn view_content<'a>(
                 visual_caches,
                 edit_data,
                 config,
-                theme,
             ),
         },
     };
