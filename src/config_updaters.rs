@@ -3,8 +3,8 @@ use crate::json_config_updater::{JsonConfigUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.9.4";
-pub static LATEST_CHILD_CONFIG_VERSION: &str = "0.9.4";
+pub static LATEST_CONFIG_VERSION: &str = "0.9.5";
+pub static LATEST_CHILD_CONFIG_VERSION: &str = "0.9.5";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -88,6 +88,13 @@ fn register_config_updaters() -> JsonConfigUpdater {
         config_json["child_config_path"] =
             convert_path_0_9_4(config_json["child_config_path"].take(), true);
     });
+    json_config_updater.add_update_function("0.9.5", |config_json| {
+        if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
+            for script in script_definitions {
+                script["arguments_hint"] = json!("\"arg1\" \"arg2\"");
+            }
+        }
+    });
     // add update functions here
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -101,39 +108,32 @@ fn register_child_config_updaters() -> JsonConfigUpdater {
         // empty updater to have a name for the first version
     });
     json_config_updater.add_update_function("0.9.3", |config_json| {
-        if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
-            for script in script_definitions {
-                if let Some(obj) = script.as_object_mut() {
-                    if let Some(value) = obj.get_mut("Added") {
-                        value["requires_arguments"] = json!(false);
-                    }
-                }
-            }
-        }
+        for_each_child_script_definition(config_json, |script| {
+            script["requires_arguments"] = json!(false);
+        });
     });
     json_config_updater.add_update_function("0.9.4", |config_json| {
         let was_icon_path_relative_to_scripter = config_json["icon_path_relative_to_scripter"]
             .as_bool()
             .unwrap_or(false);
 
-        if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
-            for script in script_definitions {
-                if let Some(obj) = script.as_object_mut() {
-                    if let Some(value) = obj.get_mut("Added") {
-                        value["icon"] = convert_path_0_9_4(
-                            value["icon"].take(),
-                            was_icon_path_relative_to_scripter,
-                        );
-                        value["command"] = convert_path_0_9_4(
-                            value["command"].take(),
-                            value["path_relative_to_scripter"]
-                                .as_bool()
-                                .unwrap_or(false),
-                        );
-                    }
-                }
-            }
-        }
+        for_each_child_script_definition(config_json, |script| {
+            script["icon"] = convert_path_0_9_4(
+                script["icon"].take(),
+                was_icon_path_relative_to_scripter,
+            );
+            script["command"] = convert_path_0_9_4(
+                script["command"].take(),
+                script["path_relative_to_scripter"]
+                    .as_bool()
+                    .unwrap_or(false),
+            );
+        });
+    });
+    json_config_updater.add_update_function("0.9.5", |config_json| {
+        for_each_child_script_definition(config_json, |script| {
+            script["arguments_hint"] = json!("\"arg1\" \"arg2\"");
+        });
     });
     // add update functions here
     // don't forget to update LATEST_CHILD_CONFIG_VERSION at the beginning of the file
@@ -161,5 +161,20 @@ fn convert_path_0_9_4(
             "path_type": path_type,
             "path": old_path.as_str().unwrap_or(""),
         })
+    }
+}
+
+fn for_each_child_script_definition<F>(config_json: &mut serde_json::Value, mut f: F)
+where
+    F: FnMut(&mut serde_json::Value),
+{
+    if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
+        for script in script_definitions {
+            if let Some(obj) = script.as_object_mut() {
+                if let Some(value) = obj.get_mut("Added") {
+                    f(value);
+                }
+            }
+        }
     }
 }

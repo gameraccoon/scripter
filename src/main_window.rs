@@ -164,6 +164,7 @@ pub enum Message {
     ToggleScriptIconPathRelativeToScripter(bool),
     EditArguments(String),
     ToggleRequiresArguments(bool),
+    EditArgumentsHint(String),
     EditAutorerunCount(String),
     OpenFile(PathBuf),
     ToggleIgnoreFailures(bool),
@@ -573,6 +574,7 @@ impl Application for MainWindow {
                     autorerun_count: 0,
                     ignore_previous_failures: false,
                     requires_arguments: false,
+                    arguments_hint: "\"arg1\" \"arg2\"".to_string(),
                     is_read_only: false,
                     is_hidden: false,
                 };
@@ -670,6 +672,9 @@ impl Application for MainWindow {
                 apply_script_edit(self, move |script| {
                     script.requires_arguments = new_requires_arguments
                 })
+            }
+            Message::EditArgumentsHint(new_arguments_hint) => {
+                apply_script_edit(self, move |script| script.arguments_hint = new_arguments_hint)
             }
             Message::EditAutorerunCount(new_autorerun_count_str) => {
                 let parse_result = usize::from_str(&new_autorerun_count_str);
@@ -1905,7 +1910,7 @@ fn produce_script_edit_content<'a>(
             .into(),
         );
         parameters.push(
-            text_input("\"arg1\" \"arg2\"", &script.arguments)
+            text_input(&script.arguments_hint, &script.arguments)
                 .on_input(move |new_value| Message::EditArguments(new_value))
                 .style(
                     if currently_edited_script.script_type == EditScriptType::ExecutionList
@@ -1927,6 +1932,13 @@ fn produce_script_edit_content<'a>(
                     move |val| Message::ToggleRequiresArguments(val),
                 )
                 .into(),
+            );
+
+            parameters.push(
+                text_input("", &script.arguments_hint)
+                    .on_input(move |new_value| Message::EditArgumentsHint(new_value))
+                    .padding(5)
+                    .into(),
             );
         }
 

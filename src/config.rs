@@ -80,6 +80,7 @@ pub struct ScriptDefinition {
     pub autorerun_count: usize,
     pub ignore_previous_failures: bool,
     pub requires_arguments: bool,
+    pub arguments_hint: String,
     #[serde(skip)]
     pub is_read_only: bool,
     #[serde(skip)]
