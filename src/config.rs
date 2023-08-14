@@ -1,3 +1,4 @@
+use crate::config;
 use crate::config_updaters::{
     update_child_config_to_the_latest_version, update_config_to_the_latest_version,
     LATEST_CHILD_CONFIG_VERSION, LATEST_CONFIG_VERSION,
@@ -8,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use crate::config;
 
 const DEFAULT_CONFIG_NAME: &str = "scripter_config.json";
 const WORK_PATH_CONFIG_NAME: &str = ".scripter_config.json";
@@ -34,7 +34,6 @@ impl Default for PathConfig {
         }
     }
 }
-
 
 #[derive(Default, Clone, Deserialize, Serialize)]
 pub struct RewritableConfig {
@@ -232,7 +231,8 @@ pub fn save_config_to_file(config: &AppConfig) {
             if let Err(err) = result {
                 eprintln!(
                     "Can't write child config file {}, error {}",
-                    &full_config_path.to_str().unwrap_or_default(), err
+                    &full_config_path.to_str().unwrap_or_default(),
+                    err
                 );
             }
         }
@@ -432,7 +432,8 @@ pub fn read_config() -> AppConfig {
     }
 
     if !config.child_config_path.path.is_empty() {
-        let full_child_config_path = get_full_path(&default_config.paths, &config.child_config_path);
+        let full_child_config_path =
+            get_full_path(&default_config.paths, &config.child_config_path);
         let child_config = match read_child_config(full_child_config_path.clone(), &config) {
             Ok(child_config) => child_config,
             Err(error) => {

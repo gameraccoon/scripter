@@ -2015,48 +2015,75 @@ fn produce_config_edit_content<'a>(
 
     let mut list_elements: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
 
-    list_elements.push(checkbox(
-        "Always on top (requires restart)",
-        rewritable_config.always_on_top,
-        move |val| Message::ConfigToggleAlwaysOnTop(val),
-    ).into());
-    list_elements.push(checkbox(
-        "Window status reactions",
-        rewritable_config.window_status_reactions,
-        move |val| Message::ConfigToggleWindowStatusReactions(val),
-    ).into());
-    list_elements.push(checkbox(
-        "Keep window size",
-        rewritable_config.keep_window_size,
-        move |val| Message::ConfigToggleKeepWindowSize(val),
-    ).into());
-    list_elements.push(checkbox(
-        "Use custom theme",
-        rewritable_config.custom_theme.is_some(),
-        move |val| Message::ConfigToggleUseCustomTheme(val),
-    ).into());
+    list_elements.push(
+        checkbox(
+            "Always on top (requires restart)",
+            rewritable_config.always_on_top,
+            move |val| Message::ConfigToggleAlwaysOnTop(val),
+        )
+        .into(),
+    );
+    list_elements.push(
+        checkbox(
+            "Window status reactions",
+            rewritable_config.window_status_reactions,
+            move |val| Message::ConfigToggleWindowStatusReactions(val),
+        )
+        .into(),
+    );
+    list_elements.push(
+        checkbox(
+            "Keep window size",
+            rewritable_config.keep_window_size,
+            move |val| Message::ConfigToggleKeepWindowSize(val),
+        )
+        .into(),
+    );
+    list_elements.push(
+        checkbox(
+            "Use custom theme",
+            rewritable_config.custom_theme.is_some(),
+            move |val| Message::ConfigToggleUseCustomTheme(val),
+        )
+        .into(),
+    );
 
     if let Some(_theme) = &rewritable_config.custom_theme {
         list_elements.push(text("Background:").into());
-        list_elements.push(text_input("#000000", &window_edit.theme_color_background)
+        list_elements.push(
+            text_input("#000000", &window_edit.theme_color_background)
                 .on_input(move |new_value| Message::ConfigEditThemeBackground(new_value))
-                .padding(5).into());
+                .padding(5)
+                .into(),
+        );
         list_elements.push(text("Accent:").into());
-        list_elements.push(text_input("#000000", &window_edit.theme_color_text)
+        list_elements.push(
+            text_input("#000000", &window_edit.theme_color_text)
                 .on_input(move |new_value| Message::ConfigEditThemeText(new_value))
-                .padding(5).into());
+                .padding(5)
+                .into(),
+        );
         list_elements.push(text("Primary:").into());
-        list_elements.push(text_input("#000000", &window_edit.theme_color_primary)
+        list_elements.push(
+            text_input("#000000", &window_edit.theme_color_primary)
                 .on_input(move |new_value| Message::ConfigEditThemePrimary(new_value))
-                .padding(5).into());
+                .padding(5)
+                .into(),
+        );
         list_elements.push(text("Success:").into());
-        list_elements.push(text_input("#000000", &window_edit.theme_color_success)
+        list_elements.push(
+            text_input("#000000", &window_edit.theme_color_success)
                 .on_input(move |new_value| Message::ConfigEditThemeSuccess(new_value))
-                .padding(5).into());
+                .padding(5)
+                .into(),
+        );
         list_elements.push(text("Danger:").into());
-        list_elements.push(text_input("#000000", &window_edit.theme_color_danger)
+        list_elements.push(
+            text_input("#000000", &window_edit.theme_color_danger)
                 .on_input(move |new_value| Message::ConfigEditThemeDanger(new_value))
-                .padding(5).into());
+                .padding(5)
+                .into(),
+        );
     }
 
     if window_edit.edit_type == ConfigEditType::Parent {
