@@ -3,8 +3,8 @@ use crate::json_config_updater::{JsonConfigUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.9.3";
-pub static LATEST_CHILD_CONFIG_VERSION: &str = "0.9.3";
+pub static LATEST_CONFIG_VERSION: &str = "0.9.4";
+pub static LATEST_CHILD_CONFIG_VERSION: &str = "0.9.4";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -44,12 +44,10 @@ fn register_config_updaters() -> JsonConfigUpdater {
         config_json["keep_window_size"] = json!(false);
     });
     json_config_updater.add_update_function("0.7.1", |config_json| {
-        let Some(script_definitions) = config_json["script_definitions"].as_array_mut() else {
-            return;
-        };
-
-        for script in script_definitions {
-            script["uid"] = json!(config::Guid::new());
+        if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
+            for script in script_definitions {
+                script["uid"] = json!(config::Guid::new());
+            }
         }
     });
     json_config_updater.add_update_function("0.7.2", |config_json| {
@@ -63,13 +61,32 @@ fn register_config_updaters() -> JsonConfigUpdater {
         config_json["rewritable"] = rewritable;
     });
     json_config_updater.add_update_function("0.9.3", |config_json| {
-        let Some(script_definitions) = config_json["script_definitions"].as_array_mut() else {
-            return;
-        };
-
-        for script in script_definitions {
-            script["requires_arguments"] = json!(false);
+        if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
+            for script in script_definitions {
+                script["requires_arguments"] = json!(false);
+            }
         }
+    });
+    json_config_updater.add_update_function("0.9.4", |config_json| {
+        let was_icon_path_relative_to_scripter = config_json["icon_path_relative_to_scripter"]
+            .as_bool()
+            .unwrap_or(false);
+
+        if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
+            for script in script_definitions {
+                script["icon"] =
+                    convert_path_0_9_4(script["icon"].take(), was_icon_path_relative_to_scripter);
+                script["command"] = convert_path_0_9_4(
+                    script["command"].take(),
+                    script["path_relative_to_scripter"]
+                        .as_bool()
+                        .unwrap_or(false),
+                );
+            }
+        }
+
+        config_json["child_config_path"] =
+            convert_path_0_9_4(config_json["child_config_path"].take(), true);
     });
     // add update functions here
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
@@ -84,14 +101,36 @@ fn register_child_config_updaters() -> JsonConfigUpdater {
         // empty updater to have a name for the first version
     });
     json_config_updater.add_update_function("0.9.3", |config_json| {
-        let Some(script_definitions) = config_json["script_definitions"].as_array_mut() else {
-            return;
-        };
+        if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
+            for script in script_definitions {
+                if let Some(obj) = script.as_object_mut() {
+                    if let Some(value) = obj.get_mut("Added") {
+                        value["requires_arguments"] = json!(false);
+                    }
+                }
+            }
+        }
+    });
+    json_config_updater.add_update_function("0.9.4", |config_json| {
+        let was_icon_path_relative_to_scripter = config_json["icon_path_relative_to_scripter"]
+            .as_bool()
+            .unwrap_or(false);
 
-        for script in script_definitions {
-            if let Some(obj) = script.as_object_mut() {
-                if let Some(value) = obj.get_mut("Added") {
-                    value["requires_arguments"] = json!(false);
+        if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
+            for script in script_definitions {
+                if let Some(obj) = script.as_object_mut() {
+                    if let Some(value) = obj.get_mut("Added") {
+                        value["icon"] = convert_path_0_9_4(
+                            value["icon"].take(),
+                            was_icon_path_relative_to_scripter,
+                        );
+                        value["command"] = convert_path_0_9_4(
+                            value["command"].take(),
+                            value["path_relative_to_scripter"]
+                                .as_bool()
+                                .unwrap_or(false),
+                        );
+                    }
                 }
             }
         }
@@ -100,4 +139,27 @@ fn register_child_config_updaters() -> JsonConfigUpdater {
     // don't forget to update LATEST_CHILD_CONFIG_VERSION at the beginning of the file
 
     json_config_updater
+}
+
+fn convert_path_0_9_4(
+    old_path: serde_json::Value,
+    is_relative_to_scripter: bool,
+) -> serde_json::Value {
+    let path_type = if is_relative_to_scripter {
+        "ScripterExecutableRelative"
+    } else {
+        "WorkingDirRelative"
+    };
+
+    if old_path.is_null() {
+        json!({
+            "path_type": path_type,
+            "path": "",
+        })
+    } else {
+        json!({
+            "path_type": path_type,
+            "path": old_path.as_str().unwrap_or(""),
+        })
+    }
 }

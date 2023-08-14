@@ -22,7 +22,6 @@ use crate::config;
 use crate::execution;
 use crate::style;
 
-const EMPTY_STRING: &str = "";
 const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: u32 = 30;
 const EMPTY_EXECUTION_LIST_HEIGHT: u32 = 150;
 
@@ -159,13 +158,14 @@ pub enum Message {
     MoveScriptDown(usize),
     EditScriptName(String),
     EditScriptCommand(String),
+    ToggleScriptCommandRelativeToScripter(bool),
     EditScriptIconPath(String),
+    ToggleScriptIconPathRelativeToScripter(bool),
     EditArguments(String),
     ToggleRequiresArguments(bool),
     EditAutorerunCount(String),
     OpenFile(PathBuf),
     ToggleIgnoreFailures(bool),
-    TogglePathRelativeToScripter(bool),
     EnterWindowEditMode,
     ExitWindowEditMode,
     SaveConfig,
@@ -176,7 +176,6 @@ pub enum Message {
     ToggleConfigEditing,
     ConfigToggleAlwaysOnTop(bool),
     ConfigToggleWindowStatusReactions(bool),
-    ConfigToggleIconPathRelativeToScripter(bool),
     ConfigToggleKeepWindowSize(bool),
     ConfigToggleUseCustomTheme(bool),
     ConfigEditThemeBackground(String),
@@ -185,6 +184,7 @@ pub enum Message {
     ConfigEditThemeSuccess(String),
     ConfigEditThemeDanger(String),
     ConfigEditChildConfigPath(String),
+    ConfigToggleChildConfigPathRelativeToScripter(bool),
     SwitchToParentConfig,
     SwitchToChildConfig,
     ToggleScriptHidden(bool),
@@ -559,10 +559,9 @@ impl Application for MainWindow {
                 let script = config::ScriptDefinition {
                     uid: config::Guid::new(),
                     name: "new script".to_string(),
-                    icon: None,
-                    command: "".to_string(),
+                    icon: config::PathConfig::default(),
+                    command: config::PathConfig::default(),
                     arguments: "".to_string(),
-                    path_relative_to_scripter: false,
                     autorerun_count: 0,
                     ignore_previous_failures: false,
                     requires_arguments: false,
@@ -633,15 +632,29 @@ impl Application for MainWindow {
                 apply_script_edit(self, move |script| script.name = new_name)
             }
             Message::EditScriptCommand(new_command) => {
-                apply_script_edit(self, move |script| script.command = new_command)
+                apply_script_edit(self, move |script| script.command.path = new_command)
             }
-            Message::EditScriptIconPath(new_icon_path) => apply_script_edit(self, move |script| {
-                script.icon = if new_icon_path.is_empty() {
-                    None
-                } else {
-                    Some(new_icon_path)
-                }
-            }),
+            Message::ToggleScriptCommandRelativeToScripter(value) => {
+                apply_script_edit(self, |script| {
+                    script.command.path_type = if value {
+                        config::PathType::ScripterExecutableRelative
+                    } else {
+                        config::PathType::WorkingDirRelative
+                    }
+                })
+            }
+            Message::EditScriptIconPath(new_icon_path) => {
+                apply_script_edit(self, move |script| script.icon.path = new_icon_path)
+            }
+            Message::ToggleScriptIconPathRelativeToScripter(new_relative) => {
+                apply_script_edit(self, move |script| {
+                    script.icon.path_type = if new_relative {
+                        config::PathType::ScripterExecutableRelative
+                    } else {
+                        config::PathType::WorkingDirRelative
+                    }
+                })
+            }
             Message::EditArguments(new_arguments) => {
                 apply_script_edit(self, move |script| script.arguments = new_arguments)
             }
@@ -712,9 +725,6 @@ impl Application for MainWindow {
             }
             Message::ToggleIgnoreFailures(value) => {
                 apply_script_edit(self, |script| script.ignore_previous_failures = value)
-            }
-            Message::TogglePathRelativeToScripter(value) => {
-                apply_script_edit(self, |script| script.path_relative_to_scripter = value)
             }
             Message::EnterWindowEditMode => {
                 self.edit_data.window_edit_data = Some(WindowEditData::from_config(
@@ -850,11 +860,6 @@ impl Application for MainWindow {
                     .window_status_reactions = is_checked;
                 self.edit_data.is_dirty = true;
             }
-            Message::ConfigToggleIconPathRelativeToScripter(is_checked) => {
-                get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
-                    .icon_path_relative_to_scripter = is_checked;
-                self.edit_data.is_dirty = true;
-            }
             Message::ConfigToggleKeepWindowSize(is_checked) => {
                 get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
                     .keep_window_size = is_checked;
@@ -944,10 +949,14 @@ impl Application for MainWindow {
                 self.edit_data.is_dirty = true;
             }
             Message::ConfigEditChildConfigPath(new_value) => {
-                self.app_config.child_config_path = if new_value.is_empty() {
-                    None
+                self.app_config.child_config_path.path = new_value;
+                self.edit_data.is_dirty = true;
+            }
+            Message::ConfigToggleChildConfigPathRelativeToScripter(is_checked) => {
+                self.app_config.child_config_path.path_type = if is_checked {
+                    config::PathType::ScripterExecutableRelative
                 } else {
-                    Some(new_value)
+                    config::PathType::WorkingDirRelative
                 };
                 self.edit_data.is_dirty = true;
             }
@@ -1305,10 +1314,12 @@ fn produce_script_list_content<'a>(
                         _ => false,
                     };
 
-                    let item_button = button(if let Some(icon) = &script.icon {
+                    let item_button = button(if !script.icon.path.is_empty() {
                         row![
                             horizontal_space(6),
-                            image(paths.icons_path.join(icon)).width(22).height(22),
+                            image(config::get_full_path(paths, &script.icon))
+                                .width(22)
+                                .height(22),
                             horizontal_space(6),
                             text(&name_text),
                             horizontal_space(Length::Fill),
@@ -1336,10 +1347,12 @@ fn produce_script_list_content<'a>(
 
                     row![item_button]
                 } else {
-                    if let Some(icon) = &script.icon {
+                    if !script.icon.path.is_empty() {
                         row![
                             horizontal_space(10),
-                            image(paths.icons_path.join(icon)).width(22).height(22),
+                            image(config::get_full_path(paths, &script.icon))
+                                .width(22)
+                                .height(22),
                             horizontal_space(6),
                             text(&script.name)
                         ]
@@ -1568,9 +1581,9 @@ fn produce_execution_list_content<'a>(
                     );
                 }
                 row_data.push(horizontal_space(4).into());
-                if let Some(icon) = &script.icon {
+                if !script.icon.path.is_empty() {
                     row_data.push(
-                        image(path_caches.icons_path.join(&icon))
+                        image(config::get_full_path(path_caches, &script.icon))
                             .width(22)
                             .height(22)
                             .into(),
@@ -1703,7 +1716,11 @@ fn produce_execution_list_content<'a>(
                     "Reschedule",
                     Some(Message::RescheduleScripts)
                 ),
-                main_icon_button(icons.themed.remove.clone(), "Clear", Some(Message::ClearScripts)),
+                main_icon_button(
+                    icons.themed.remove.clone(),
+                    "Clear",
+                    Some(Message::ClearScripts)
+                ),
             ]
             .align_items(Alignment::Center)
             .spacing(5)
@@ -1731,17 +1748,26 @@ fn produce_execution_list_content<'a>(
             .any(|script| is_script_missing_arguments(script));
 
         let run_button = if has_scripts_missing_arguments {
-            column![tooltip(main_icon_button(
+            column![tooltip(
+                main_icon_button(icons.themed.play.clone(), "Run", None,),
+                "Some scripts are missing arguments",
+                tooltip::Position::Top
+            )
+            .style(theme::Container::Box)]
+        } else {
+            column![main_icon_button(
                 icons.themed.play.clone(),
                 "Run",
-                None,
-            ), "Some scripts are missing arguments", tooltip::Position::Top).style(theme::Container::Box)]
-        } else {
-            column![main_icon_button(icons.themed.play.clone(), "Run", Some(Message::RunScripts)),]
+                Some(Message::RunScripts)
+            ),]
         };
         row![
             run_button,
-            main_icon_button(icons.themed.remove.clone(), "Clear", Some(Message::ClearScripts)),
+            main_icon_button(
+                icons.themed.remove.clone(),
+                "Clear",
+                Some(Message::ClearScripts)
+            ),
         ]
         .align_items(Alignment::Center)
         .spacing(5)
@@ -1841,33 +1867,22 @@ fn produce_script_edit_content<'a>(
         );
 
         if currently_edited_script.script_type == EditScriptType::ScriptConfig {
-            parameters.push(text("Command:").into());
-            parameters.push(
-                text_input("command", &script.command)
-                    .on_input(move |new_arg| Message::EditScriptCommand(new_arg))
-                    .padding(5)
-                    .into(),
+            populate_path_editing_content(
+                "Command:",
+                "command",
+                &script.icon,
+                &mut parameters,
+                |path| Message::EditScriptCommand(path),
+                |val| Message::ToggleScriptCommandRelativeToScripter(val),
             );
 
-            parameters.push(
-                checkbox(
-                    "Is path relative to the scripter executable",
-                    script.path_relative_to_scripter,
-                    move |val| Message::TogglePathRelativeToScripter(val),
-                )
-                .into(),
-            );
-
-            let icon_path = match &script.icon {
-                Some(path) => path.as_str(),
-                None => EMPTY_STRING,
-            };
-            parameters.push(text("Path to the icon:").into());
-            parameters.push(
-                text_input("icon path", &icon_path)
-                    .on_input(move |new_arg| Message::EditScriptIconPath(new_arg))
-                    .padding(5)
-                    .into(),
+            populate_path_editing_content(
+                "Path to the icon:",
+                "path/to/icon.png",
+                &script.icon,
+                &mut parameters,
+                |path| Message::EditScriptIconPath(path),
+                |val| Message::ToggleScriptIconPathRelativeToScripter(val),
             );
         }
 
@@ -1990,85 +2005,64 @@ fn produce_config_edit_content<'a>(
 ) -> Column<'a, Message> {
     let rewritable_config = get_rewritable_config(&config, &window_edit.edit_type);
 
-    let always_on_top_checkbox = checkbox(
+    let mut list_elements: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
+
+    list_elements.push(checkbox(
         "Always on top (requires restart)",
         rewritable_config.always_on_top,
         move |val| Message::ConfigToggleAlwaysOnTop(val),
-    );
-    let window_status_reactions_checkbox = checkbox(
+    ).into());
+    list_elements.push(checkbox(
         "Window status reactions",
         rewritable_config.window_status_reactions,
         move |val| Message::ConfigToggleWindowStatusReactions(val),
-    );
-    let icon_path_relative_to_scripter_checkbox = checkbox(
-        "Icon path relative to scripter executable (requires restart)",
-        rewritable_config.icon_path_relative_to_scripter,
-        move |val| Message::ConfigToggleIconPathRelativeToScripter(val),
-    );
-    let keep_window_size_checkbox = checkbox(
+    ).into());
+    list_elements.push(checkbox(
         "Keep window size",
         rewritable_config.keep_window_size,
         move |val| Message::ConfigToggleKeepWindowSize(val),
-    );
-    let custom_theme_checkbox = checkbox(
+    ).into());
+    list_elements.push(checkbox(
         "Use custom theme",
         rewritable_config.custom_theme.is_some(),
         move |val| Message::ConfigToggleUseCustomTheme(val),
-    );
+    ).into());
 
-    let theme_edit_column = if let Some(_theme) = &rewritable_config.custom_theme {
-        column![
-            text("Background:"),
-            text_input("#000000", &window_edit.theme_color_background)
+    if let Some(_theme) = &rewritable_config.custom_theme {
+        list_elements.push(text("Background:").into());
+        list_elements.push(text_input("#000000", &window_edit.theme_color_background)
                 .on_input(move |new_value| Message::ConfigEditThemeBackground(new_value))
-                .padding(5),
-            text("Accent:"),
-            text_input("#000000", &window_edit.theme_color_text)
+                .padding(5).into());
+        list_elements.push(text("Accent:").into());
+        list_elements.push(text_input("#000000", &window_edit.theme_color_text)
                 .on_input(move |new_value| Message::ConfigEditThemeText(new_value))
-                .padding(5),
-            text("Primary:"),
-            text_input("#000000", &window_edit.theme_color_primary)
+                .padding(5).into());
+        list_elements.push(text("Primary:").into());
+        list_elements.push(text_input("#000000", &window_edit.theme_color_primary)
                 .on_input(move |new_value| Message::ConfigEditThemePrimary(new_value))
-                .padding(5),
-            text("Success:"),
-            text_input("#000000", &window_edit.theme_color_success)
+                .padding(5).into());
+        list_elements.push(text("Success:").into());
+        list_elements.push(text_input("#000000", &window_edit.theme_color_success)
                 .on_input(move |new_value| Message::ConfigEditThemeSuccess(new_value))
-                .padding(5),
-            text("Danger:"),
-            text_input("#000000", &window_edit.theme_color_danger)
+                .padding(5).into());
+        list_elements.push(text("Danger:").into());
+        list_elements.push(text_input("#000000", &window_edit.theme_color_danger)
                 .on_input(move |new_value| Message::ConfigEditThemeDanger(new_value))
-                .padding(5),
-        ]
-    } else {
-        column![]
-    };
+                .padding(5).into());
+    }
 
-    let child_config_column = if window_edit.edit_type == ConfigEditType::Parent {
-        let child_config_path = match &config.child_config_path {
-            Some(path) => path.as_str(),
-            None => EMPTY_STRING,
-        };
-        column![
-            text("Local config path (requires restart):"),
-            text_input("path/to/config.json", child_config_path)
-                .on_input(move |new_value| Message::ConfigEditChildConfigPath(new_value))
-                .padding(5),
-        ]
-    } else {
-        column![]
-    };
+    if window_edit.edit_type == ConfigEditType::Parent {
+        populate_path_editing_content(
+            "Local config path:",
+            "path/to/config.json",
+            &config.child_config_path,
+            &mut list_elements,
+            |path| Message::ConfigEditChildConfigPath(path),
+            |val| Message::ConfigToggleChildConfigPathRelativeToScripter(val),
+        );
+    }
 
-    let content = column![
-        always_on_top_checkbox,
-        window_status_reactions_checkbox,
-        icon_path_relative_to_scripter_checkbox,
-        keep_window_size_checkbox,
-        custom_theme_checkbox,
-        theme_edit_column,
-        child_config_column,
-    ];
-
-    return column![scrollable(content)]
+    return column![scrollable(column(list_elements))]
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
@@ -2449,4 +2443,29 @@ fn add_script_to_child_config(
 
 fn is_script_missing_arguments(script: &config::ScriptDefinition) -> bool {
     return script.requires_arguments && script.arguments.is_empty();
+}
+
+fn populate_path_editing_content(
+    caption: &str,
+    hint: &str,
+    path: &config::PathConfig,
+    edit_content: &mut Vec<Element<'_, Message, iced::Renderer>>,
+    on_path_changed: impl Fn(String) -> Message + 'static,
+    on_path_type_changed: impl Fn(bool) -> Message + 'static,
+) {
+    edit_content.push(text(caption).into());
+    edit_content.push(
+        text_input(hint, &path.path)
+            .on_input(on_path_changed)
+            .padding(5)
+            .into(),
+    );
+    edit_content.push(
+        checkbox(
+            "Path relative to scripter executable",
+            path.path_type == config::PathType::ScripterExecutableRelative,
+            on_path_type_changed,
+        )
+        .into(),
+    );
 }

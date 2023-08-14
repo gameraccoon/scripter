@@ -4,7 +4,6 @@ use std::os::windows::process::CommandExt;
 use chrono::{DateTime, Local};
 use crossbeam_channel::{unbounded, Receiver, RecvError, Sender};
 use std::io::{BufRead, Write};
-use std::path::Path;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -146,12 +145,11 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
 
     let scripts_to_run = execution_data.scripts_to_run.clone();
     let is_termination_requested = execution_data.is_termination_requested.clone();
-    let logs_path = app_config.paths.logs_path.clone();
-    let exe_folder_path = app_config.paths.exe_folder_path.clone();
+    let path_caches = app_config.paths.clone();
     let env_vars = app_config.env_vars.clone();
 
     execution_data.thread_join_handle = Some(std::thread::spawn(move || {
-        std::fs::remove_dir_all(&logs_path).ok();
+        std::fs::remove_dir_all(&path_caches.logs_path).ok();
 
         let mut has_previous_script_failed = false;
         let mut kill_requested = false;
@@ -184,7 +182,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                             } else {
                                 "".to_string()
                             },
-                            script.command,
+                            script.command.path,
                             script.arguments
                         ),
                         output_type: OutputType::Event,
@@ -193,12 +191,12 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                 }
 
                 let _ = std::fs::create_dir_all(config::get_script_log_directory(
-                    &logs_path,
+                    &path_caches.logs_path,
                     script_idx as isize,
                 ));
 
                 let output_file = std::fs::File::create(config::get_script_output_path(
-                    &logs_path,
+                    &path_caches.logs_path,
                     script_idx as isize,
                     script_state.retry_count,
                 ));
@@ -209,7 +207,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     (std::process::Stdio::null(), std::process::Stdio::null())
                 };
 
-                let command_line = get_script_with_arguments(&script, &exe_folder_path);
+                let command_line = get_script_with_arguments(&script, &path_caches);
 
                 #[cfg(target_os = "windows")]
                 let mut command = std::process::Command::new("cmd");
@@ -362,15 +360,18 @@ fn send_script_execution_status(
     let _result = tx.send((script_idx, script_state));
 }
 
-fn get_script_with_arguments(script: &config::ScriptDefinition, exe_folder_path: &Path) -> String {
-    let path = if script.path_relative_to_scripter {
-        exe_folder_path
-            .join(&script.command)
+fn get_script_with_arguments(
+    script: &config::ScriptDefinition,
+    path_caches: &config::PathCaches,
+) -> String {
+    let path = match script.command.path_type {
+        config::PathType::ScripterExecutableRelative => path_caches
+            .exe_folder_path
+            .join(&script.command.path)
             .to_str()
             .unwrap_or_default()
-            .to_string()
-    } else {
-        script.command.clone()
+            .to_string(),
+        config::PathType::WorkingDirRelative => script.command.path.clone(),
     };
 
     let escaped_path = escape_path(path);

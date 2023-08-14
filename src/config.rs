@@ -8,16 +8,38 @@ use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use crate::config;
 
 const DEFAULT_CONFIG_NAME: &str = "scripter_config.json";
 const WORK_PATH_CONFIG_NAME: &str = ".scripter_config.json";
 thread_local!(static GLOBAL_CONFIG: AppConfig = read_config());
 
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+pub enum PathType {
+    WorkingDirRelative,
+    ScripterExecutableRelative,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PathConfig {
+    pub path: String,
+    pub path_type: PathType,
+}
+
+impl Default for PathConfig {
+    fn default() -> PathConfig {
+        PathConfig {
+            path: String::new(),
+            path_type: PathType::WorkingDirRelative,
+        }
+    }
+}
+
+
 #[derive(Default, Clone, Deserialize, Serialize)]
 pub struct RewritableConfig {
     pub always_on_top: bool,
     pub window_status_reactions: bool,
-    pub icon_path_relative_to_scripter: bool,
     pub keep_window_size: bool,
     pub custom_theme: Option<CustomTheme>,
 }
@@ -27,7 +49,7 @@ pub struct AppConfig {
     pub version: String,
     pub rewritable: RewritableConfig,
     pub script_definitions: Vec<ScriptDefinition>,
-    pub child_config_path: Option<String>,
+    pub child_config_path: PathConfig,
     #[serde(skip)]
     pub paths: PathCaches,
     #[serde(skip)]
@@ -53,10 +75,9 @@ pub struct ChildConfig {
 pub struct ScriptDefinition {
     pub uid: Guid,
     pub name: String,
-    pub icon: Option<String>,
-    pub command: String,
+    pub icon: PathConfig,
+    pub command: PathConfig,
     pub arguments: String,
-    pub path_relative_to_scripter: bool,
     pub autorerun_count: usize,
     pub ignore_previous_failures: bool,
     pub requires_arguments: bool,
@@ -121,7 +142,6 @@ pub struct PathCaches {
     pub work_path: PathBuf,
     pub exe_folder_path: PathBuf,
     pub config_path: PathBuf,
-    pub icons_path: PathBuf,
 }
 
 #[derive(Default, Clone)]
@@ -131,7 +151,6 @@ struct AppArguments {
     custom_work_path: Option<String>,
     env_vars: Vec<(OsString, OsString)>,
     custom_title: Option<String>,
-    icons_path: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -207,16 +226,23 @@ pub fn save_config_to_file(config: &AppConfig) {
                 return;
             }
         };
-        if let Some(config_path) = &config.child_config_path {
-            let full_config_path = config.paths.exe_folder_path.join(config_path);
+        if !config.child_config_path.path.is_empty() {
+            let full_config_path = get_full_path(&config.paths, &config.child_config_path);
             let result = std::fs::write(&full_config_path, data);
             if let Err(err) = result {
                 eprintln!(
                     "Can't write child config file {}, error {}",
-                    &config_path, err
+                    &full_config_path.to_str().unwrap_or_default(), err
                 );
             }
         }
+    }
+}
+
+pub fn get_full_path(paths: &PathCaches, path_config: &PathConfig) -> PathBuf {
+    match path_config.path_type {
+        PathType::WorkingDirRelative => paths.work_path.join(&path_config.path),
+        PathType::ScripterExecutableRelative => paths.exe_folder_path.join(&path_config.path),
     }
 }
 
@@ -226,7 +252,6 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
         rewritable: RewritableConfig {
             always_on_top: false,
             window_status_reactions: true,
-            icon_path_relative_to_scripter: true,
             keep_window_size: false,
             custom_theme: None,
         },
@@ -243,14 +268,9 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
                 get_default_work_path()
             },
             exe_folder_path: get_exe_folder_path(),
-            icons_path: if let Some(icons_path) = app_arguments.icons_path.clone() {
-                PathBuf::from(icons_path)
-            } else {
-                get_default_icons_path()
-            },
             config_path,
         },
-        child_config_path: None,
+        child_config_path: config::PathConfig::default(),
         env_vars: app_arguments.env_vars,
         custom_title: app_arguments.custom_title,
         config_read_error: None,
@@ -411,8 +431,8 @@ pub fn read_config() -> AppConfig {
         );
     }
 
-    if let Some(child_config_path) = &mut config.child_config_path {
-        let full_child_config_path = default_config.paths.exe_folder_path.join(child_config_path);
+    if !config.child_config_path.path.is_empty() {
+        let full_child_config_path = get_full_path(&default_config.paths, &config.child_config_path);
         let child_config = match read_child_config(full_child_config_path.clone(), &config) {
             Ok(child_config) => child_config,
             Err(error) => {
@@ -432,18 +452,6 @@ pub fn read_config() -> AppConfig {
     config.paths = default_config.paths;
     config.env_vars = app_arguments.env_vars;
     config.custom_title = app_arguments.custom_title;
-
-    if !app_arguments.icons_path.is_some() && !config.rewritable.icon_path_relative_to_scripter {
-        config.paths.icons_path = config.paths.work_path.clone();
-    }
-
-    for script_definition in &mut config.script_definitions {
-        if let Some(icon) = &script_definition.icon {
-            if icon.is_empty() {
-                script_definition.icon = None;
-            }
-        }
-    }
 
     return config;
 }
@@ -587,7 +595,6 @@ fn get_app_arguments() -> AppArguments {
     let mut custom_work_path = None;
     let mut env_vars = Vec::new();
     let mut custom_title = None;
-    let mut icons_path = None;
 
     let args: Vec<String> = std::env::args().collect();
     for i in 1..args.len() {
@@ -615,10 +622,6 @@ fn get_app_arguments() -> AppArguments {
             if i + 1 < args.len() {
                 custom_title = Some(args[i + 1].clone());
             }
-        } else if arg == "--icons-path" {
-            if i + 1 < args.len() {
-                icons_path = Some(args[i + 1].clone());
-            }
         }
     }
 
@@ -628,7 +631,6 @@ fn get_app_arguments() -> AppArguments {
         custom_work_path,
         env_vars,
         custom_title,
-        icons_path,
     }
 }
 
@@ -653,10 +655,6 @@ fn get_default_logs_path() -> PathBuf {
 
 fn get_default_work_path() -> PathBuf {
     return std::env::current_dir().unwrap_or_default();
-}
-
-fn get_default_icons_path() -> PathBuf {
-    return get_exe_folder_path();
 }
 
 fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &AppConfig) {
