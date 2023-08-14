@@ -23,6 +23,7 @@ use crate::execution;
 use crate::style;
 
 const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: u32 = 30;
+const ONE_TITLE_LINE_HEIGHT: u32 = 16;
 const EMPTY_EXECUTION_LIST_HEIGHT: u32 = 150;
 
 #[derive(Clone)]
@@ -363,13 +364,20 @@ impl Application for MainWindow {
                         .clone();
 
                     let elements_count = self.execution_data.scripts_to_run.len() as u32;
+                    let title_lines =
+                        if let Some(custom_title) = self.app_config.custom_title.as_ref() {
+                            custom_title.lines().count() as u32
+                        } else {
+                            0
+                        };
 
                     return resize(
                         size.width as u32,
                         std::cmp::min(
                             size.height as u32,
                             EMPTY_EXECUTION_LIST_HEIGHT
-                                + elements_count * ONE_EXECUTION_LIST_ELEMENT_HEIGHT,
+                                + elements_count * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+                                + title_lines * ONE_TITLE_LINE_HEIGHT,
                         ),
                     );
                 }
