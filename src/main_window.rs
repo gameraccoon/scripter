@@ -1883,7 +1883,7 @@ fn produce_script_edit_content<'a>(
             populate_path_editing_content(
                 "Command:",
                 "command",
-                &script.icon,
+                &script.command,
                 &mut parameters,
                 |path| Message::EditScriptCommand(path),
                 |val| Message::ToggleScriptCommandRelativeToScripter(val),
