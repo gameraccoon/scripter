@@ -68,9 +68,14 @@ fn register_config_updaters() -> JsonConfigUpdater {
         }
     });
     json_config_updater.add_update_function("0.9.4", |config_json| {
-        let was_icon_path_relative_to_scripter = config_json["icon_path_relative_to_scripter"]
-            .as_bool()
-            .unwrap_or(false);
+        let was_icon_path_relative_to_scripter =
+            if let Some(rewritable_config) = config_json["rewritable"].as_object_mut() {
+                rewritable_config["icon_path_relative_to_scripter"]
+                    .as_bool()
+                    .unwrap_or(false)
+            } else {
+                false
+            };
 
         if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
             for script in script_definitions {
@@ -113,15 +118,18 @@ fn register_child_config_updaters() -> JsonConfigUpdater {
         });
     });
     json_config_updater.add_update_function("0.9.4", |config_json| {
-        let was_icon_path_relative_to_scripter = config_json["icon_path_relative_to_scripter"]
-            .as_bool()
-            .unwrap_or(false);
+        let was_icon_path_relative_to_scripter =
+            if let Some(rewritable_config) = config_json["rewritable"].as_object_mut() {
+                rewritable_config["icon_path_relative_to_scripter"]
+                    .as_bool()
+                    .unwrap_or(false)
+            } else {
+                false
+            };
 
         for_each_child_script_definition(config_json, |script| {
-            script["icon"] = convert_path_0_9_4(
-                script["icon"].take(),
-                was_icon_path_relative_to_scripter,
-            );
+            script["icon"] =
+                convert_path_0_9_4(script["icon"].take(), was_icon_path_relative_to_scripter);
             script["command"] = convert_path_0_9_4(
                 script["command"].take(),
                 script["path_relative_to_scripter"]
