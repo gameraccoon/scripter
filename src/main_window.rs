@@ -1934,6 +1934,7 @@ fn produce_script_edit_content<'a>(
                 .into(),
             );
 
+            parameters.push(text("Argument hint:").into());
             parameters.push(
                 text_input("", &script.arguments_hint)
                     .on_input(move |new_value| Message::EditArgumentsHint(new_value))
