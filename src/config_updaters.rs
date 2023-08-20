@@ -3,7 +3,7 @@ use crate::json_config_updater::{JsonConfigUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.9.5";
+pub static LATEST_CONFIG_VERSION: &str = "0.10.0";
 pub static LATEST_CHILD_CONFIG_VERSION: &str = "0.9.5";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
@@ -97,6 +97,13 @@ fn register_config_updaters() -> JsonConfigUpdater {
         if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
             for script in script_definitions {
                 script["arguments_hint"] = json!("\"arg1\" \"arg2\"");
+            }
+        }
+    });
+    json_config_updater.add_update_function("0.10.0", |config_json| {
+        if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
+            for script in script_definitions {
+                script["Original"] = script.take();
             }
         }
     });

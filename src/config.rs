@@ -35,6 +35,7 @@ impl Default for PathConfig {
     }
 }
 
+// Part of the config that can be fully overridden by the child config
 #[derive(Default, Clone, Deserialize, Serialize)]
 pub struct RewritableConfig {
     pub always_on_top: bool,
@@ -59,19 +60,26 @@ pub struct AppConfig {
     pub config_read_error: Option<String>,
     #[serde(skip)]
     pub child_config_body: Option<Box<ChildConfig>>,
+    #[serde(skip)]
+    pub displayed_configs_list_cache: Vec<ScriptListCacheRecord>,
+}
+
+#[derive(Default, Clone, Deserialize, Serialize)]
+pub struct ScriptListCacheRecord {
+    pub name: String,
+    pub full_icon_path: Option<PathBuf>,
+    pub is_hidden: bool,
 }
 
 #[derive(Default, Clone, Deserialize, Serialize)]
 pub struct ChildConfig {
     pub version: String,
     pub rewritable: RewritableConfig,
-    pub script_definitions: Vec<ChildScriptDefinition>,
-    #[serde(skip)]
-    pub config_definition_cache: Vec<ScriptDefinition>,
+    pub script_definitions: Vec<ScriptDefinition>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ScriptDefinition {
+pub struct OriginalScriptDefinition {
     pub uid: Guid,
     pub name: String,
     pub icon: PathConfig,
@@ -81,18 +89,34 @@ pub struct ScriptDefinition {
     pub ignore_previous_failures: bool,
     pub requires_arguments: bool,
     pub arguments_hint: String,
-    #[serde(skip)]
-    pub is_read_only: bool,
-    #[serde(skip)]
-    pub is_hidden: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum ChildScriptDefinition {
+pub struct PresetItem {
+    pub uid: Guid,
+    // possible overrides
+    pub name: Option<String>,
+    pub arguments: Option<String>,
+    pub autorerun_count: Option<usize>,
+    pub ignore_previous_failures: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ScriptPreset {
+    pub uid: Guid,
+    pub name: String,
+    pub icon: PathConfig,
+    pub items: Vec<PresetItem>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum ScriptDefinition {
     // taken from the parent config, second bool is whether it's hidden
-    Parent(Guid, bool),
-    // added in the child config
-    Added(ScriptDefinition),
+    ReferenceToParent(Guid, bool),
+    // added in the current config
+    Original(OriginalScriptDefinition),
+    // preset of multiple scripts
+    Preset(ScriptPreset),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -247,6 +271,17 @@ pub fn get_full_path(paths: &PathCaches, path_config: &PathConfig) -> PathBuf {
     }
 }
 
+pub fn get_full_optional_path(paths: &PathCaches, path_config: &PathConfig) -> Option<PathBuf> {
+    if path_config.path.is_empty() {
+        return None;
+    }
+
+    Some(match path_config.path_type {
+        PathType::WorkingDirRelative => paths.work_path.join(&path_config.path),
+        PathType::ScripterExecutableRelative => paths.exe_folder_path.join(&path_config.path),
+    })
+}
+
 fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppConfig {
     AppConfig {
         version: LATEST_CONFIG_VERSION.to_string(),
@@ -276,6 +311,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
         custom_title: app_arguments.custom_title,
         config_read_error: None,
         child_config_body: None,
+        displayed_configs_list_cache: Vec::new(),
     }
 }
 
@@ -284,7 +320,6 @@ pub fn get_default_child_config(parent_config: &AppConfig) -> ChildConfig {
         version: LATEST_CHILD_CONFIG_VERSION.to_string(),
         rewritable: parent_config.rewritable.clone(),
         script_definitions: Vec::new(),
-        config_definition_cache: Vec::new(),
     }
 }
 
@@ -435,7 +470,7 @@ pub fn read_config() -> AppConfig {
     if !config.child_config_path.path.is_empty() {
         let full_child_config_path =
             get_full_path(&default_config.paths, &config.child_config_path);
-        let child_config = match read_child_config(full_child_config_path.clone(), &config) {
+        let child_config = match read_child_config(full_child_config_path.clone(), &mut config) {
             Ok(child_config) => child_config,
             Err(error) => {
                 return default_config_with_error(
@@ -458,47 +493,6 @@ pub fn read_config() -> AppConfig {
     return config;
 }
 
-fn update_child_config_script_cache(child_config: &mut ChildConfig, parent_config: &AppConfig) {
-    child_config.config_definition_cache.clear();
-    for script_definition in &child_config.script_definitions {
-        match script_definition {
-            ChildScriptDefinition::Parent(parent_script_uid, is_hidden) => {
-                let parent_script = parent_config
-                    .script_definitions
-                    .iter()
-                    .find(|script| script.uid == *parent_script_uid);
-                match parent_script {
-                    Some(parent_script) => {
-                        child_config
-                            .config_definition_cache
-                            .push(parent_script.clone());
-                        let len = child_config.config_definition_cache.len();
-                        let added_config = &mut child_config.config_definition_cache[len - 1];
-                        added_config.is_read_only = true;
-                        added_config.is_hidden = *is_hidden;
-                    }
-                    None => {
-                        eprintln!(
-                            "Failed to find parent script with uid {}",
-                            parent_script_uid.data
-                        )
-                    }
-                }
-            }
-            ChildScriptDefinition::Added(script) => {
-                child_config.config_definition_cache.push(script.clone())
-            }
-        }
-    }
-}
-
-pub fn update_child_config_script_cache_from_config(app_config: &mut AppConfig) {
-    if let Some(mut child_config) = app_config.child_config_body.take() {
-        update_child_config_script_cache(&mut child_config, app_config);
-        app_config.child_config_body = Some(child_config);
-    };
-}
-
 pub fn populate_parent_scripts_from_config(app_config: &mut AppConfig) {
     if let Some(mut child_config) = app_config.child_config_body.take() {
         populate_parent_scripts(&mut child_config, app_config);
@@ -506,9 +500,26 @@ pub fn populate_parent_scripts_from_config(app_config: &mut AppConfig) {
     }
 }
 
+pub fn get_original_script_definition_by_uid(
+    app_config: &AppConfig,
+    script_uid: Guid,
+) -> Option<OriginalScriptDefinition> {
+    for script_definition in &app_config.script_definitions {
+        match script_definition {
+            ScriptDefinition::Original(script) => {
+                if script.uid == script_uid {
+                    return Some(script.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    return None;
+}
+
 fn read_child_config(
     config_path: PathBuf,
-    parent_config: &AppConfig,
+    parent_config: &mut AppConfig,
 ) -> Result<ChildConfig, String> {
     // if config file doesn't exist, create it
     if !config_path.exists() {
@@ -659,20 +670,30 @@ fn get_default_work_path() -> PathBuf {
     return std::env::current_dir().unwrap_or_default();
 }
 
-fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &AppConfig) {
+fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &mut AppConfig) {
     // find all the parent scripts that are missing from the child config, and populate them
     let mut previous_script_idx = None;
     let mut has_configs_to_remove = false;
     for script in &parent_config.script_definitions {
+        let original_script_uid = match script {
+            ScriptDefinition::ReferenceToParent(_, _) => {
+                continue;
+            }
+            ScriptDefinition::Original(script) => script.uid.clone(),
+            ScriptDefinition::Preset(preset) => preset.uid.clone(),
+        };
+
         // find position of the script in the child config
-        let script_idx = child_config.script_definitions.iter().position(
-            |child_script: &ChildScriptDefinition| match child_script {
-                ChildScriptDefinition::Parent(parent_script_uid, _is_hidden) => {
-                    *parent_script_uid == script.uid
-                }
-                _ => false,
-            },
-        );
+        let script_idx =
+            child_config
+                .script_definitions
+                .iter()
+                .position(|child_script: &ScriptDefinition| match child_script {
+                    ScriptDefinition::ReferenceToParent(parent_script_uid, _is_hidden) => {
+                        *parent_script_uid == original_script_uid
+                    }
+                    _ => false,
+                });
 
         match script_idx {
             Some(script_idx) => {
@@ -685,15 +706,16 @@ fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &AppCo
                         // insert the script after the previous script
                         child_config.script_definitions.insert(
                             *previous_script_idx + 1,
-                            ChildScriptDefinition::Parent(script.uid.clone(), false),
+                            ScriptDefinition::ReferenceToParent(original_script_uid.clone(), false),
                         );
                         *previous_script_idx = *previous_script_idx + 1;
                     }
                     None => {
                         // insert the script at the beginning
-                        child_config
-                            .script_definitions
-                            .insert(0, ChildScriptDefinition::Parent(script.uid.clone(), false));
+                        child_config.script_definitions.insert(
+                            0,
+                            ScriptDefinition::ReferenceToParent(original_script_uid.clone(), false),
+                        );
                         previous_script_idx = Some(0);
                     }
                 }
@@ -703,16 +725,18 @@ fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &AppCo
 
     if has_configs_to_remove {
         // remove all the scripts that are not in the parent config
-        child_config
-            .script_definitions
-            .retain(|child_script: &ChildScriptDefinition| match child_script {
-                ChildScriptDefinition::Parent(parent_script_uid, _is_hidden) => parent_config
+        child_config.script_definitions.retain(
+            |child_script: &ScriptDefinition| match child_script {
+                ScriptDefinition::ReferenceToParent(parent_script_uid, _is_hidden) => parent_config
                     .script_definitions
                     .iter()
-                    .any(|script| script.uid == *parent_script_uid),
+                    .any(|script| match script {
+                        ScriptDefinition::ReferenceToParent(_, _) => false,
+                        ScriptDefinition::Original(script) => *parent_script_uid == script.uid,
+                        ScriptDefinition::Preset(preset) => *parent_script_uid == preset.uid,
+                    }),
                 _ => true,
-            });
+            },
+        );
     }
-
-    update_child_config_script_cache(child_config, parent_config);
 }

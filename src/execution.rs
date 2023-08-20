@@ -120,13 +120,14 @@ pub fn add_script_to_execution(
     execution_data: &mut ScriptExecutionData,
     script: config::ScriptDefinition,
 ) {
+    match script {
+        config::ScriptDefinition::Original(_) => {}
+        _ => {
+            panic!("add_script_to_execution() can only be used with OriginalScriptDefinition");
+        }
+    }
+
     execution_data.scripts_to_run.push(script.clone());
-    execution_data.scripts_to_run.last_mut().unwrap().is_hidden = false;
-    execution_data
-        .scripts_to_run
-        .last_mut()
-        .unwrap()
-        .is_read_only = false;
     execution_data
         .scripts_status
         .push(get_default_script_execution_status());
@@ -154,7 +155,9 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
         let mut has_previous_script_failed = false;
         let mut kill_requested = false;
         for script_idx in 0..scripts_to_run.len() {
-            let script = &scripts_to_run[script_idx];
+            let config::ScriptDefinition::Original(script) = &scripts_to_run[script_idx] else {
+                panic!("run_scripts() can only be used with OriginalScriptDefinition");
+            };
             let mut script_state = get_default_script_execution_status();
             script_state.start_time = Some(Instant::now());
 
@@ -361,7 +364,7 @@ fn send_script_execution_status(
 }
 
 fn get_script_with_arguments(
-    script: &config::ScriptDefinition,
+    script: &config::OriginalScriptDefinition,
     path_caches: &config::PathCaches,
 ) -> String {
     let path = match script.command.path_type {
