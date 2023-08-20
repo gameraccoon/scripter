@@ -192,6 +192,7 @@ pub enum Message {
     ToggleScriptHidden(bool),
     CreateCopyOfParentScript(EditScriptId),
     MoveToParent(EditScriptId),
+    SaveAsPreset,
 }
 
 impl Application for MainWindow {
@@ -421,7 +422,7 @@ impl Application for MainWindow {
                             ) {
                                 execution::add_script_to_execution(
                                     &mut self.execution_data,
-                                    config::ScriptDefinition::Original(script.clone()),
+                                    script.clone(),
                                 );
                             }
                         }
@@ -587,40 +588,8 @@ impl Application for MainWindow {
                     requires_arguments: false,
                     arguments_hint: "\"arg1\" \"arg2\"".to_string(),
                 };
-                if let Some(window_edit_data) = &self.edit_data.window_edit_data {
-                    let script_idx = match window_edit_data.edit_type {
-                        ConfigEditType::Parent => Some(add_script_to_parent_config(
-                            &mut self.app_config,
-                            config::ScriptDefinition::Original(script),
-                        )),
-                        ConfigEditType::Child => add_script_to_child_config(
-                            &mut self.app_config,
-                            &self.edit_data,
-                            config::ScriptDefinition::Original(script),
-                        ),
-                    };
+                add_script_to_config(self, config::ScriptDefinition::Original(script));
 
-                    self.edit_data
-                        .window_edit_data
-                        .as_mut()
-                        .unwrap()
-                        .is_editing_config = false;
-
-                    if let Some(script_idx) = script_idx {
-                        set_selected_script(
-                            &mut self.edit_data.currently_edited_script,
-                            &self.execution_data,
-                            &get_script_definition_list_opt(
-                                &self.app_config,
-                                &self.edit_data.window_edit_data,
-                            ),
-                            &mut self.visual_caches,
-                            script_idx,
-                            EditScriptType::ScriptConfig,
-                        );
-                        self.edit_data.is_dirty = true;
-                    }
-                }
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
             Message::MoveExecutionScriptUp(script_idx) => {
@@ -1054,7 +1023,7 @@ impl Application for MainWindow {
                 if let Some(config) = &mut self.app_config.child_config_body {
                     config.script_definitions.insert(
                         script_id.idx + 1,
-                        config::ScriptDefinition::Original(new_script),
+                        new_script,
                     );
                     set_selected_script(
                         &mut self.edit_data.currently_edited_script,
@@ -1108,6 +1077,34 @@ impl Application for MainWindow {
                     }
                 }
                 update_config_cache(&mut self.app_config, &self.edit_data);
+            }
+            Message::SaveAsPreset => {
+                let mut preset = config::ScriptPreset {
+                    uid: config::Guid::new(),
+                    name: "new preset".to_string(),
+                    icon: Default::default(),
+                    items: vec![],
+                };
+
+                for script in &self.execution_data.scripts_to_run {
+                    match script {
+                        config::ScriptDefinition::Original(script) => {
+                            preset.items.push(config::PresetItem{
+                                uid: script.uid.clone(),
+                                name: None,
+                                arguments: None,
+                                autorerun_count: None,
+                                ignore_previous_failures: None,
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                add_script_to_config(
+                    self,
+                    config::ScriptDefinition::Preset(preset),
+                );
             }
         }
 
@@ -1746,7 +1743,19 @@ fn produce_execution_list_content<'a>(
     .into();
 
     let controls = column![if edit_data.window_edit_data.is_some() {
-        row![]
+        if !execution_data.scripts_to_run.is_empty() {
+            row![
+                main_icon_button(
+                    icons.themed.settings.clone(),
+                    "Save as preset",
+                    Some(Message::SaveAsPreset)
+                ),
+            ]
+            .align_items(Alignment::Center)
+            .spacing(5)
+        } else {
+            row![]
+        }
     } else if execution::has_finished_execution(&execution_data) {
         if !execution::is_waiting_execution_thread_to_finish(&execution_data) {
             row![
@@ -2037,7 +2046,16 @@ fn produce_script_edit_content<'a>(
                 );
             }
         }
-        config::ScriptDefinition::Preset(_) => {}
+        config::ScriptDefinition::Preset(_) => {
+            parameters.push(
+                edit_button(
+                    "Remove preset",
+                    Message::RemoveScript(currently_edited_script.clone()),
+                )
+                    .style(theme::Button::Destructive)
+                    .into(),
+            );
+        }
     }
 
     let content = column(parameters).spacing(10);
@@ -2479,6 +2497,9 @@ fn is_local_edited_script(
                     Some(config::ScriptDefinition::Original(_)) => {
                         return true;
                     }
+                    Some(config::ScriptDefinition::Preset(_)) => {
+                        return true;
+                    }
                     _ => {}
                 }
             }
@@ -2742,4 +2763,41 @@ fn get_script_definition<'a>(
     } else {
         &app_config.script_definitions[script_idx]
     };
+}
+
+fn add_script_to_config(app: &mut MainWindow, script: config::ScriptDefinition) {
+    if let Some(window_edit_data) = &app.edit_data.window_edit_data {
+        let script_idx = match window_edit_data.edit_type {
+            ConfigEditType::Parent => Some(add_script_to_parent_config(
+                &mut app.app_config,
+                script,
+            )),
+            ConfigEditType::Child => add_script_to_child_config(
+                &mut app.app_config,
+                &app.edit_data,
+                script,
+            ),
+        };
+
+        app.edit_data
+            .window_edit_data
+            .as_mut()
+            .unwrap()
+            .is_editing_config = false;
+
+        if let Some(script_idx) = script_idx {
+            set_selected_script(
+                &mut app.edit_data.currently_edited_script,
+                &app.execution_data,
+                &get_script_definition_list_opt(
+                    &app.app_config,
+                    &app.edit_data.window_edit_data,
+                ),
+                &mut app.visual_caches,
+                script_idx,
+                EditScriptType::ScriptConfig,
+            );
+            app.edit_data.is_dirty = true;
+        }
+    }
 }

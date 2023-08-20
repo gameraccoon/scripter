@@ -503,12 +503,17 @@ pub fn populate_parent_scripts_from_config(app_config: &mut AppConfig) {
 pub fn get_original_script_definition_by_uid(
     app_config: &AppConfig,
     script_uid: Guid,
-) -> Option<OriginalScriptDefinition> {
+) -> Option<ScriptDefinition> {
     for script_definition in &app_config.script_definitions {
         match script_definition {
             ScriptDefinition::Original(script) => {
                 if script.uid == script_uid {
-                    return Some(script.clone());
+                    return Some(script_definition.clone());
+                }
+            }
+            ScriptDefinition::Preset(preset) => {
+                if preset.uid == script_uid {
+                    return Some(script_definition.clone());
                 }
             }
             _ => {}
