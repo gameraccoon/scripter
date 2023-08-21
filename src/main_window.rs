@@ -2546,7 +2546,7 @@ fn is_script_missing_arguments(script: &config::ScriptDefinition) -> bool {
 }
 
 fn is_original_script_missing_arguments(script: &config::OriginalScriptDefinition) -> bool {
-    !script.requires_arguments && script.arguments.is_empty()
+    script.requires_arguments && script.arguments.is_empty()
 }
 
 fn populate_path_editing_content(
