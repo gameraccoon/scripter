@@ -625,10 +625,16 @@ impl Application for MainWindow {
                 );
             }
             Message::EditScriptName(new_name) => {
-                apply_script_edit(self, move |script| script.name = new_name)
+                if let Some(preset) = get_editing_preset(&mut self.app_config, &self.edit_data) {
+                    preset.name = new_name;
+                    self.edit_data.is_dirty = true;
+                    update_config_cache(&mut self.app_config, &self.edit_data);
+                } else {
+                    apply_script_edit(self, move |script| script.name = new_name);
+                }
             }
             Message::EditScriptCommand(new_command) => {
-                apply_script_edit(self, move |script| script.command.path = new_command)
+                apply_script_edit(self, move |script| script.command.path = new_command);
             }
             Message::ToggleScriptCommandRelativeToScripter(value) => {
                 apply_script_edit(self, |script| {
@@ -637,19 +643,33 @@ impl Application for MainWindow {
                     } else {
                         config::PathType::WorkingDirRelative
                     }
-                })
+                });
             }
             Message::EditScriptIconPath(new_icon_path) => {
-                apply_script_edit(self, move |script| script.icon.path = new_icon_path)
+                if let Some(preset) = get_editing_preset(&mut self.app_config, &self.edit_data) {
+                    preset.icon.path = new_icon_path;
+                    self.edit_data.is_dirty = true;
+                    update_config_cache(&mut self.app_config, &self.edit_data);
+                } else {
+                    apply_script_edit(self, move |script| script.icon.path = new_icon_path);
+                }
             }
             Message::ToggleScriptIconPathRelativeToScripter(new_relative) => {
-                apply_script_edit(self, move |script| {
-                    script.icon.path_type = if new_relative {
-                        config::PathType::ScripterExecutableRelative
-                    } else {
-                        config::PathType::WorkingDirRelative
-                    }
-                })
+                let new_path_type = if new_relative {
+                    config::PathType::ScripterExecutableRelative
+                } else {
+                    config::PathType::WorkingDirRelative
+                };
+
+                if let Some(preset) = get_editing_preset(&mut self.app_config, &self.edit_data) {
+                    preset.icon.path_type = new_path_type;
+                    self.edit_data.is_dirty = true;
+                    update_config_cache(&mut self.app_config, &self.edit_data);
+                } else {
+                    apply_script_edit(self, move |script| {
+                        script.icon.path_type = new_path_type;
+                    });
+                }
             }
             Message::EditArguments(new_arguments) => {
                 apply_script_edit(self, move |script| script.arguments = new_arguments)
@@ -1907,6 +1927,7 @@ fn produce_script_edit_content<'a>(
 
     match script {
         config::ScriptDefinition::Original(script) => {
+            parameters.push(text("Name:").into());
             parameters.push(
                 text_input("name", &script.name)
                     .on_input(move |new_arg| Message::EditScriptName(new_arg))
@@ -2046,7 +2067,24 @@ fn produce_script_edit_content<'a>(
                 );
             }
         }
-        config::ScriptDefinition::Preset(_) => {
+        config::ScriptDefinition::Preset(preset) => {
+            parameters.push(text("Preset name:").into());
+            parameters.push(
+                text_input("name", &preset.name)
+                    .on_input(move |new_arg| Message::EditScriptName(new_arg))
+                    .padding(5)
+                    .into(),
+            );
+
+            populate_path_editing_content(
+                "Path to the icon:",
+                "path/to/icon.png",
+                &preset.icon,
+                &mut parameters,
+                |path| Message::EditScriptIconPath(path),
+                |val| Message::ToggleScriptIconPathRelativeToScripter(val),
+            );
+
             parameters.push(
                 edit_button(
                     "Remove preset",
@@ -2765,6 +2803,28 @@ fn get_script_definition<'a>(
     };
 }
 
+fn get_script_definition_mut<'a>(
+    app_config: &'a mut config::AppConfig,
+    edit_data: &EditData,
+    script_idx: usize,
+) -> &'a mut config::ScriptDefinition {
+    let is_looking_at_child_config = if let Some(window_edit_data) = &edit_data.window_edit_data {
+        window_edit_data.edit_type == ConfigEditType::Child
+    } else {
+        app_config.child_config_body.is_some()
+    };
+
+    return if is_looking_at_child_config {
+        &mut app_config
+            .child_config_body
+            .as_mut()
+            .unwrap()
+            .script_definitions[script_idx]
+    } else {
+        &mut app_config.script_definitions[script_idx]
+    };
+}
+
 fn add_script_to_config(app: &mut MainWindow, script: config::ScriptDefinition) {
     if let Some(window_edit_data) = &app.edit_data.window_edit_data {
         let script_idx = match window_edit_data.edit_type {
@@ -2800,4 +2860,23 @@ fn add_script_to_config(app: &mut MainWindow, script: config::ScriptDefinition) 
             app.edit_data.is_dirty = true;
         }
     }
+}
+
+fn get_editing_preset<'a>(
+    app_config: &'a mut config::AppConfig,
+    edit_data: &EditData,
+) -> Option<&'a mut config::ScriptPreset> {
+    if let Some(script_id) = &edit_data.currently_edited_script {
+        if script_id.script_type == EditScriptType::ScriptConfig {
+            let script_definition = get_script_definition_mut(
+                app_config,
+                edit_data,
+                script_id.idx,
+            );
+            if let config::ScriptDefinition::Preset(preset) = script_definition {
+                return Some(preset);
+            }
+        }
+    }
+    return None;
 }
