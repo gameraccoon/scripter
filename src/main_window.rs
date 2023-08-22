@@ -420,9 +420,35 @@ impl Application for MainWindow {
                                 &self.app_config,
                                 preset_item.uid.clone(),
                             ) {
+                                let mut new_script = script.clone();
+
+                                match &mut new_script {
+                                    config::ScriptDefinition::Original(script) => {
+                                        if let Some(name) = &preset_item.name {
+                                            script.name = name.clone();
+                                        }
+
+                                        if let Some(arguments) = &preset_item.arguments {
+                                            script.arguments = arguments.clone();
+                                        }
+
+                                        if let Some(autorerun_count) = preset_item.autorerun_count {
+                                            script.autorerun_count = autorerun_count;
+                                        }
+
+                                        if let Some(ignore_previous_failures) =
+                                            preset_item.ignore_previous_failures
+                                        {
+                                            script.ignore_previous_failures =
+                                                ignore_previous_failures;
+                                        }
+                                    }
+                                    _ => {}
+                                };
+
                                 execution::add_script_to_execution(
                                     &mut self.execution_data,
-                                    script.clone(),
+                                    new_script,
                                 );
                             }
                         }
@@ -1041,10 +1067,9 @@ impl Application for MainWindow {
                 };
 
                 if let Some(config) = &mut self.app_config.child_config_body {
-                    config.script_definitions.insert(
-                        script_id.idx + 1,
-                        new_script,
-                    );
+                    config
+                        .script_definitions
+                        .insert(script_id.idx + 1, new_script);
                     set_selected_script(
                         &mut self.edit_data.currently_edited_script,
                         &self.execution_data,
@@ -1109,22 +1134,90 @@ impl Application for MainWindow {
                 for script in &self.execution_data.scripts_to_run {
                     match script {
                         config::ScriptDefinition::Original(script) => {
-                            preset.items.push(config::PresetItem{
+                            let original_script = config::get_original_script_definition_by_uid(
+                                &self.app_config,
+                                script.uid.clone(),
+                            );
+
+                            let original_script = if let Some(original_script) = original_script {
+                                match original_script {
+                                    config::ScriptDefinition::ReferenceToParent(uid, _) => {
+                                        config::get_original_script_definition_by_uid(
+                                            &self.app_config,
+                                            uid,
+                                        )
+                                    }
+                                    _ => Some(original_script),
+                                }
+                            } else {
+                                None
+                            };
+
+                            let original_script = if let Some(original_script) = original_script {
+                                match original_script {
+                                    config::ScriptDefinition::Original(script) => Some(script),
+                                    _ => None,
+                                }
+                            } else {
+                                None
+                            };
+
+                            let name = if let Some(original_script) = &original_script {
+                                if original_script.name == script.name {
+                                    None
+                                } else {
+                                    Some(script.name.clone())
+                                }
+                            } else {
+                                Some(script.name.clone())
+                            };
+
+                            let arguments = if let Some(original_script) = &original_script {
+                                if original_script.arguments == script.arguments {
+                                    None
+                                } else {
+                                    Some(script.arguments.clone())
+                                }
+                            } else {
+                                Some(script.arguments.clone())
+                            };
+
+                            let autorerun_count = if let Some(original_script) = &original_script {
+                                if original_script.autorerun_count == script.autorerun_count {
+                                    None
+                                } else {
+                                    Some(script.autorerun_count)
+                                }
+                            } else {
+                                Some(script.autorerun_count)
+                            };
+
+                            let ignore_previous_failures =
+                                if let Some(original_script) = original_script {
+                                    if original_script.ignore_previous_failures
+                                        == script.ignore_previous_failures
+                                    {
+                                        None
+                                    } else {
+                                        Some(script.ignore_previous_failures)
+                                    }
+                                } else {
+                                    Some(script.ignore_previous_failures)
+                                };
+
+                            preset.items.push(config::PresetItem {
                                 uid: script.uid.clone(),
-                                name: None,
-                                arguments: None,
-                                autorerun_count: None,
-                                ignore_previous_failures: None,
+                                name,
+                                arguments,
+                                autorerun_count,
+                                ignore_previous_failures,
                             });
                         }
                         _ => {}
                     }
                 }
 
-                add_script_to_config(
-                    self,
-                    config::ScriptDefinition::Preset(preset),
-                );
+                add_script_to_config(self, config::ScriptDefinition::Preset(preset));
             }
         }
 
@@ -1764,13 +1857,11 @@ fn produce_execution_list_content<'a>(
 
     let controls = column![if edit_data.window_edit_data.is_some() {
         if !execution_data.scripts_to_run.is_empty() {
-            row![
-                main_icon_button(
-                    icons.themed.settings.clone(),
-                    "Save as preset",
-                    Some(Message::SaveAsPreset)
-                ),
-            ]
+            row![main_icon_button(
+                icons.themed.settings.clone(),
+                "Save as preset",
+                Some(Message::SaveAsPreset)
+            ),]
             .align_items(Alignment::Center)
             .spacing(5)
         } else {
@@ -2090,8 +2181,8 @@ fn produce_script_edit_content<'a>(
                     "Remove preset",
                     Message::RemoveScript(currently_edited_script.clone()),
                 )
-                    .style(theme::Button::Destructive)
-                    .into(),
+                .style(theme::Button::Destructive)
+                .into(),
             );
         }
     }
@@ -2828,15 +2919,12 @@ fn get_script_definition_mut<'a>(
 fn add_script_to_config(app: &mut MainWindow, script: config::ScriptDefinition) {
     if let Some(window_edit_data) = &app.edit_data.window_edit_data {
         let script_idx = match window_edit_data.edit_type {
-            ConfigEditType::Parent => Some(add_script_to_parent_config(
-                &mut app.app_config,
-                script,
-            )),
-            ConfigEditType::Child => add_script_to_child_config(
-                &mut app.app_config,
-                &app.edit_data,
-                script,
-            ),
+            ConfigEditType::Parent => {
+                Some(add_script_to_parent_config(&mut app.app_config, script))
+            }
+            ConfigEditType::Child => {
+                add_script_to_child_config(&mut app.app_config, &app.edit_data, script)
+            }
         };
 
         app.edit_data
@@ -2849,10 +2937,7 @@ fn add_script_to_config(app: &mut MainWindow, script: config::ScriptDefinition) 
             set_selected_script(
                 &mut app.edit_data.currently_edited_script,
                 &app.execution_data,
-                &get_script_definition_list_opt(
-                    &app.app_config,
-                    &app.edit_data.window_edit_data,
-                ),
+                &get_script_definition_list_opt(&app.app_config, &app.edit_data.window_edit_data),
                 &mut app.visual_caches,
                 script_idx,
                 EditScriptType::ScriptConfig,
@@ -2868,11 +2953,7 @@ fn get_editing_preset<'a>(
 ) -> Option<&'a mut config::ScriptPreset> {
     if let Some(script_id) = &edit_data.currently_edited_script {
         if script_id.script_type == EditScriptType::ScriptConfig {
-            let script_definition = get_script_definition_mut(
-                app_config,
-                edit_data,
-                script_id.idx,
-            );
+            let script_definition = get_script_definition_mut(app_config, edit_data, script_id.idx);
             if let config::ScriptDefinition::Preset(preset) = script_definition {
                 return Some(preset);
             }
