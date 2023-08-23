@@ -1092,33 +1092,38 @@ impl Application for MainWindow {
                     }
 
                     if let Some(script) = config.script_definitions.get_mut(script_id.idx) {
-                        match script {
+                        let mut replacement_script = match script {
                             config::ScriptDefinition::Original(definition) => {
-                                let mut replacement_script =
-                                    config::ScriptDefinition::ReferenceToParent(
-                                        definition.uid.clone(),
-                                        false,
-                                    );
-                                swap(script, &mut replacement_script);
-                                self.app_config.script_definitions.push(replacement_script);
-                                if let Some(edit_data) = &mut self.edit_data.window_edit_data {
-                                    edit_data.edit_type = ConfigEditType::Parent;
-                                }
-                                set_selected_script(
-                                    &mut self.edit_data.currently_edited_script,
-                                    &self.execution_data,
-                                    &get_script_definition_list_opt(
-                                        &self.app_config,
-                                        &self.edit_data.window_edit_data,
-                                    ),
-                                    &mut self.visual_caches,
-                                    self.app_config.script_definitions.len() - 1,
-                                    EditScriptType::ScriptConfig,
-                                );
-                                self.edit_data.is_dirty = true;
+                                config::ScriptDefinition::ReferenceToParent(
+                                    definition.uid.clone(),
+                                    false,
+                                )
                             }
-                            _ => {}
-                        }
+                            config::ScriptDefinition::Preset(preset) => {
+                                config::ScriptDefinition::ReferenceToParent(
+                                    preset.uid.clone(),
+                                    false,
+                                )
+                            }
+                            _ => {
+                                return Command::none();
+                            }
+                        };
+
+                        swap(script, &mut replacement_script);
+                        self.app_config.script_definitions.push(replacement_script);
+                        set_selected_script(
+                            &mut self.edit_data.currently_edited_script,
+                            &self.execution_data,
+                            &get_script_definition_list_opt(
+                                &self.app_config,
+                                &self.edit_data.window_edit_data,
+                            ),
+                            &mut self.visual_caches,
+                            self.app_config.script_definitions.len() - 1,
+                            EditScriptType::ScriptConfig,
+                        );
+                        self.edit_data.is_dirty = true;
                     }
                 }
                 update_config_cache(&mut self.app_config, &self.edit_data);
@@ -2178,6 +2183,20 @@ fn produce_script_edit_content<'a>(
                 |path| Message::EditScriptIconPath(path),
                 |val| Message::ToggleScriptIconPathRelativeToScripter(val),
             );
+
+            if is_local_edited_script(
+                currently_edited_script.idx,
+                &app_config,
+                &edit_data.window_edit_data,
+            ) {
+                parameters.push(
+                    edit_button(
+                        "Make shared",
+                        Message::MoveToParent(currently_edited_script.clone()),
+                    )
+                    .into(),
+                );
+            }
 
             parameters.push(
                 edit_button(
