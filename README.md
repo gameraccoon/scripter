@@ -1,5 +1,5 @@
 # scripter
-![scripter_small](https://github.com/gameraccoon/scripter/assets/24990031/c2346d05-421f-4c9a-8c70-81e8c7794aef)
+![scripter_animation](https://github.com/gameraccoon/scripter/assets/24990031/39a17a9e-0835-49a5-910e-62785a48ec98)
 
 [![Builds and tests](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml/badge.svg)](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml)
 
@@ -21,7 +21,7 @@ Now you can schedule the exact combination of scripts to run in just a few click
 
 - Queue the execution of the specific chain of scripts that you need right now, just in a few clicks
 - Specify arguments, retry count, and some other parameters if needed
-- Configure what scripts you can run once. No need to edit scripts/config files manually before each unique run
+- Configure what scripts you can run once. No need to edit scripts or configs manually
 - See the state of the execution, or open the complete logs to see the details
 
 ## Getting Started
@@ -54,15 +54,14 @@ Now you can schedule the exact combination of scripts to run in just a few click
 1. Add the scripts you want to run to the queue and specify their arguments if needed
 1. Start the execution
 
-### Available arguments
+### Available arguments (advanced)
 - `--config-path <path>` - path to the JSON file with the configuration of scripter that should be used for this instance
 - `--work_path <path>` - path to the working directory that will be used to execute the scripts
 - `--logs-path <path>` - path to the directory where logs will be stored (requires write access)
 - `--env <key> <value>` - specify an environment variable that will be set to every script (can have multiple `--env` arguments)
 - `--title <title>` - specify an additional line of title that goes under the path in the Execution tab
-- `--icons-path <path>` - path to the directory that contains the app icons (if not specified, icon paths will be relative to the scripter directory)
 
-## Advanced usage
+## Advanced usage cases
 
 I wanted to keep the tool simple but at the same time useful for different situations. Every use case is a bit special, and here are some tricks you can do to achieve some desired behaviors (please share if you still lack some configuration options).
 
@@ -80,44 +79,9 @@ This makes it possible to run the same scripts in different configurations (e.g.
 - You can specify a path for a "child" config, splitting the config into two parts: parent and config, that can be edited independently.  
 This allows users of your scripts to add their own scripts without affecting the config you ship to them, and without ever needing to care about how they update their script definitions
 
-
-## Manual configurations
-
-### Global
-- `always_on_top` - true or false, specifies whether the window should try to be on top of other windows
-- `window_status_reactions` should scripter blink the icon in the taskbar when finished
-- `icon_path_relative_to_scripter` - true or false, specify whether the path for icons should be relative to scripter (true) or to the working directory (false). this option is ignored when `--icons-path` argument is provided.
-- `keep_window_size` - set to true if you don't want the app to change the window size (e.g. if it doesn't work well with your window manager)
-- `custom_theme` - specifies custom colors that form a visual theme
-- `child_config_path` - path to the "child" config that can be used for having local changes that don't affect the main config (e.g if the main config is shared between developers)
-
-Example of a dark theme:
-```json
-"custom_theme": {
-	"background": [0.25, 0.26, 0.29],
-	"text": [0.0, 0.0, 0.0],
-	"primary": [0.44, 0.53, 0.855],
-	"success": [0.31, 0.50, 0.17],
-	"danger": [1.0, 0.0, 0.0]
-}
-```
-
-### Per script
-
-- `uid` - a unique script identifier (UUID v4 is used by default)
-- `name` - the name of the script that will be shown in the list
-- `icon` - optional path to the icon that will be shown next to the script name
-- `command` - path to a script, or name of a command that is going to be executed
-- `arguments` - list of arguments that are going to be passed to the script or the command
-- `path_relative_to_scripter` - whether the path for the script/command should be relative to the scripter executable directory (instead of the working directory from where it was called)
-- `autorerun_count` - how many times the script will be retried before failing the execution
-- `ignore_previous_failures` - should this script be executed even if a script before failed
-
-
 ## Screenshots
-![image](https://github.com/gameraccoon/scripter/assets/24990031/ef21a887-e902-406f-af00-38411c383e27)
-![image](https://github.com/gameraccoon/scripter/assets/24990031/442c17bc-5f72-4fe6-ad63-098bd60fb882)
-
+![20230823_215456_scripter_CEVt1P](https://github.com/gameraccoon/scripter/assets/24990031/2d5fc8e0-f4ae-4919-b108-bbd475f03a70)
+![20230823_215906_scripter_nvHOt7](https://github.com/gameraccoon/scripter/assets/24990031/abcff320-c2c1-48d8-a4e8-86d3577164bc)
 
 ## License
 
