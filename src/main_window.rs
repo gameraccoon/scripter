@@ -1388,6 +1388,13 @@ fn main_icon_button(icon_handle: Handle, label: &str, message: Option<Message>) 
     }
 }
 
+fn main_button(label: &str, message: Message) -> Button<Message> {
+    button(row![text(label).width(Length::Shrink).size(16),])
+        .width(Length::Shrink)
+        .padding(8)
+        .on_press(message)
+}
+
 fn edit_mode_button<'a>(
     icon_handle: Handle,
     message: Message,
@@ -1857,13 +1864,9 @@ fn produce_execution_list_content<'a>(
 
     let controls = column![if edit_data.window_edit_data.is_some() {
         if !execution_data.scripts_to_run.is_empty() {
-            row![main_icon_button(
-                icons.themed.settings.clone(),
-                "Save as preset",
-                Some(Message::SaveAsPreset)
-            ),]
-            .align_items(Alignment::Center)
-            .spacing(5)
+            row![main_button("Save as preset", Message::SaveAsPreset)]
+                .align_items(Alignment::Center)
+                .spacing(5)
         } else {
             row![]
         }
