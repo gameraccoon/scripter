@@ -81,7 +81,7 @@ This allows users of your scripts to add their own scripts without affecting the
 
 ## Screenshots
 ![20230823_215456_scripter_CEVt1P](https://github.com/gameraccoon/scripter/assets/24990031/2d5fc8e0-f4ae-4919-b108-bbd475f03a70)
-![20230823_215906_scripter_nvHOt7](https://github.com/gameraccoon/scripter/assets/24990031/abcff320-c2c1-48d8-a4e8-86d3577164bc)
+![Screenshot from 2023-08-24 21-54-48](https://github.com/gameraccoon/scripter/assets/24990031/80478ade-fa2e-483b-90d3-ea6340222e18)
 
 ## License
 
