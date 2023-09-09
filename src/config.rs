@@ -293,7 +293,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             always_on_top: false,
             window_status_reactions: true,
             keep_window_size: false,
-            custom_theme: None,
+            custom_theme: Some(CustomTheme::default()),
         },
         script_definitions: Vec::new(),
         paths: PathCaches {
