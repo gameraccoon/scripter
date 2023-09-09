@@ -1657,7 +1657,19 @@ fn produce_script_list_content<'a>(
                 text_input("filter", &edit_data.script_filter,)
                     .on_input(Message::ScriptFilterChanged)
                     .width(Length::Fill),
-                horizontal_space(5),
+                horizontal_space(4),
+                if !edit_data.script_filter.is_empty() {
+                    column![
+                        vertical_space(Length::Fixed(4.0)),
+                        button(image(icons.themed.remove.clone()))
+                            .style(theme::Button::Destructive)
+                            .height(Length::Fixed(22.0))
+                            .on_press(Message::ScriptFilterChanged("".to_string())),
+                    ]
+                } else {
+                    column![]
+                },
+                horizontal_space(1),
             ]
         } else {
             row![]
