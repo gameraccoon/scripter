@@ -74,6 +74,8 @@ pub struct MainWindow {
 
 #[derive(Debug, Clone)]
 pub struct EditData {
+    // a string that is used to filter the list of scripts
+    script_filter: String,
     // identifies the script being edited, if any
     currently_edited_script: Option<EditScriptId>,
     // state of the global to the window editing mode
@@ -183,6 +185,7 @@ pub enum Message {
     ConfigToggleAlwaysOnTop(bool),
     ConfigToggleWindowStatusReactions(bool),
     ConfigToggleKeepWindowSize(bool),
+    ConfigToggleScriptFiltering(bool),
     ConfigToggleUseCustomTheme(bool),
     ConfigEditThemeBackground(String),
     ConfigEditThemeText(String),
@@ -199,6 +202,7 @@ pub enum Message {
     CreateCopyOfParentScript(EditScriptId),
     MoveToParent(EditScriptId),
     SaveAsPreset,
+    ScriptFilterChanged(String),
 }
 
 impl Application for MainWindow {
@@ -304,6 +308,7 @@ impl Application for MainWindow {
                 },
                 full_window_size: Size::new(0.0, 0.0),
                 edit_data: EditData {
+                    script_filter: String::new(),
                     window_edit_data: None,
                     currently_edited_script: None,
                     is_dirty: false,
@@ -789,6 +794,7 @@ impl Application for MainWindow {
                         ConfigEditType::Parent
                     },
                 ));
+                self.edit_data.script_filter = String::new();
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
@@ -916,6 +922,11 @@ impl Application for MainWindow {
             Message::ConfigToggleKeepWindowSize(is_checked) => {
                 get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
                     .keep_window_size = is_checked;
+                self.edit_data.is_dirty = true;
+            }
+            Message::ConfigToggleScriptFiltering(is_checked) => {
+                get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
+                    .enable_script_filtering = is_checked;
                 self.edit_data.is_dirty = true;
             }
             Message::ConfigToggleUseCustomTheme(is_checked) => {
@@ -1260,6 +1271,10 @@ impl Application for MainWindow {
 
                 add_script_to_config(self, config::ScriptDefinition::Preset(preset));
             }
+            Message::ScriptFilterChanged(new_filter_value) => {
+                self.edit_data.script_filter = new_filter_value;
+                update_config_cache(&mut self.app_config, &self.edit_data);
+            }
         }
 
         Command::none()
@@ -1560,10 +1575,7 @@ fn produce_script_list_content<'a>(
     .into();
 
     return if has_started_execution {
-        column![
-            vertical_space(if has_started_execution { 4 } else { 0 }),
-            scrollable(data),
-        ]
+        column![vertical_space(4), scrollable(data),]
     } else {
         let data_column = if let Some(window_edit_data) = &edit_data.window_edit_data {
             column![
@@ -1636,10 +1648,22 @@ fn produce_script_list_content<'a>(
             column![data]
         };
 
-        column![
-            vertical_space(if has_started_execution { 4 } else { 0 }),
-            scrollable(data_column),
-        ]
+        let filter_field = if config.rewritable.enable_script_filtering
+            && !has_started_execution
+            && edit_data.window_edit_data.is_none()
+        {
+            row![
+                horizontal_space(5),
+                text_input("filter", &edit_data.script_filter,)
+                    .on_input(Message::ScriptFilterChanged)
+                    .width(Length::Fill),
+                horizontal_space(5),
+            ]
+        } else {
+            row![]
+        };
+
+        column![filter_field, scrollable(data_column),]
     }
     .width(Length::Fill)
     .height(Length::Fill)
@@ -2319,6 +2343,14 @@ fn produce_config_edit_content<'a>(
     );
     list_elements.push(
         checkbox(
+            "Show script filter",
+            rewritable_config.enable_script_filtering,
+            move |val| Message::ConfigToggleScriptFiltering(val),
+        )
+            .into(),
+    );
+    list_elements.push(
+        checkbox(
             "Use custom theme",
             rewritable_config.custom_theme.is_some(),
             move |val| Message::ConfigToggleUseCustomTheme(val),
@@ -2838,6 +2870,10 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
         app_config.child_config_body.is_some()
     };
 
+    let is_script_filtered_out = |name: &str| -> bool {
+        !edit_data.script_filter.is_empty() && !name.contains(&edit_data.script_filter)
+    };
+
     let result_list = &mut app_config.displayed_configs_list_cache;
     let paths = &app_config.paths;
     if is_looking_at_child_config {
@@ -2876,10 +2912,11 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
                                 config::ScriptDefinition::Original(script) => script.icon.clone(),
                                 config::ScriptDefinition::Preset(preset) => preset.icon.clone(),
                             };
+                            let is_script_hidden = *is_hidden || is_script_filtered_out(&name);
                             result_list.push(config::ScriptListCacheRecord {
                                 name,
                                 full_icon_path: config::get_full_optional_path(paths, &icon),
-                                is_hidden: *is_hidden,
+                                is_hidden: is_script_hidden,
                             });
                         }
                         None => {
@@ -2894,14 +2931,14 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
                     result_list.push(config::ScriptListCacheRecord {
                         name: script.name.clone(),
                         full_icon_path: config::get_full_optional_path(paths, &script.icon),
-                        is_hidden: false,
+                        is_hidden: is_script_filtered_out(&script.name),
                     });
                 }
                 config::ScriptDefinition::Preset(preset) => {
                     result_list.push(config::ScriptListCacheRecord {
                         name: preset.name.clone(),
                         full_icon_path: config::get_full_optional_path(paths, &preset.icon),
-                        is_hidden: false,
+                        is_hidden: is_script_filtered_out(&preset.name),
                     });
                 }
             }
@@ -2917,14 +2954,14 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
                     result_list.push(config::ScriptListCacheRecord {
                         name: script.name.clone(),
                         full_icon_path: config::get_full_optional_path(paths, &script.icon),
-                        is_hidden: false,
+                        is_hidden: is_script_filtered_out(&script.name),
                     });
                 }
                 config::ScriptDefinition::Preset(preset) => {
                     result_list.push(config::ScriptListCacheRecord {
                         name: preset.name.clone(),
                         full_icon_path: config::get_full_optional_path(paths, &preset.icon),
-                        is_hidden: false,
+                        is_hidden: is_script_filtered_out(&preset.name),
                     });
                 }
             }

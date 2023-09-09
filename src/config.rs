@@ -41,6 +41,7 @@ pub struct RewritableConfig {
     pub always_on_top: bool,
     pub window_status_reactions: bool,
     pub keep_window_size: bool,
+    pub enable_script_filtering: bool,
     pub custom_theme: Option<CustomTheme>,
 }
 
@@ -293,6 +294,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             always_on_top: false,
             window_status_reactions: true,
             keep_window_size: false,
+            enable_script_filtering: true,
             custom_theme: Some(CustomTheme::default()),
         },
         script_definitions: Vec::new(),
