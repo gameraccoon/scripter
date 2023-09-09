@@ -1,54 +1,89 @@
 {
+  "version": "0.10.4",
+  "rewritable": {
+    "always_on_top": false,
+    "window_status_reactions": true,
+    "keep_window_size": false,
+    "custom_theme": {
+      "background": [
+        0.25,
+        0.2578125,
+        0.2890625
+      ],
+      "text": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "primary": [
+        0.44921875,
+        0.52734375,
+        0.8515625
+      ],
+      "success": [
+        0.30859375,
+        0.5,
+        0.16796875
+      ],
+      "danger": [
+        0.69921875,
+        0.296875,
+        0.296875
+      ],
+      "caption_text": [
+        0.69921875,
+        0.69921875,
+        0.69921875
+      ],
+      "error_text": [
+        0.8984375,
+        0.296875,
+        0.296875
+      ]
+    }
+  },
   "script_definitions": [
     {
-      "name": "example command",
-      "icon": "example_icons/example_icon.png",
-      "command": "echo",
-      "arguments": "test",
-      "path_relative_to_scripter": false,
-      "autorerun_count": 0,
-      "ignore_previous_failures": false
+      "Original": {
+        "uid": "1f043bc7-a55b-47ef-b531-2d5fc8446726",
+        "name": "example command",
+        "icon": {
+          "path": "example_icons/example_icon.png",
+          "path_type": "ScripterExecutableRelative"
+        },
+        "command": {
+          "path": "echo",
+          "path_type": "WorkingDirRelative"
+        },
+        "arguments": "test",
+        "autorerun_count": 0,
+        "ignore_previous_failures": false,
+        "requires_arguments": false,
+        "arguments_hint": "\"arg1\" \"arg2\""
+      }
     },
     {
-      "name": "example script",
-      "icon": "example_icons/example_icon.png",
-      "command": "example_scripts/example_script_1.bat",
-      "arguments": "",
-      "path_relative_to_scripter": true,
-      "autorerun_count": 0,
-      "ignore_previous_failures": false
+      "Original": {
+        "uid": "ba78c720-7566-4ace-83e3-17ff8e3a2648",
+        "name": "example script",
+        "icon": {
+          "path": "example_icons/example_icon.png",
+          "path_type": "ScripterExecutableRelative"
+        },
+        "command": {
+          "path": "example_scripts/example_script_1.bat",
+          "path_type": "ScripterExecutableRelative"
+        },
+        "arguments": "",
+        "autorerun_count": 0,
+        "ignore_previous_failures": false,
+        "requires_arguments": false,
+        "arguments_hint": "\"arg1\" \"arg2\""
+      }
     }
   ],
-  "version": "0.6.0",
-  "always_on_top": false,
-  "window_status_reactions": true,
-  "icon_path_relative_to_scripter": true,
-  "keep_window_size": false,
-  "custom_theme": {
-    "background": [
-      0.25,
-      0.26,
-      0.29
-    ],
-    "text": [
-      0.0,
-      0.0,
-      0.0
-    ],
-    "primary": [
-      0.44,
-      0.53,
-      0.855
-    ],
-    "success": [
-      0.31,
-      0.5,
-      0.17
-    ],
-    "danger": [
-      1.0,
-      0.0,
-      0.0
-    ]
+  "child_config_path": {
+    "path": "",
+    "path_type": "ScripterExecutableRelative"
   }
 }
