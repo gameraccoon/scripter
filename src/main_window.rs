@@ -111,6 +111,8 @@ struct WindowEditData {
     theme_color_primary: String,
     theme_color_success: String,
     theme_color_danger: String,
+    theme_color_caption_text: String,
+    theme_color_error_text: String,
 }
 
 impl WindowEditData {
@@ -133,6 +135,8 @@ impl WindowEditData {
             theme_color_primary: rgb_to_hex(&theme.primary),
             theme_color_success: rgb_to_hex(&theme.success),
             theme_color_danger: rgb_to_hex(&theme.danger),
+            theme_color_caption_text: rgb_to_hex(&theme.caption_text),
+            theme_color_error_text: rgb_to_hex(&theme.error_text),
         }
     }
 }
@@ -185,6 +189,8 @@ pub enum Message {
     ConfigEditThemePrimary(String),
     ConfigEditThemeSuccess(String),
     ConfigEditThemeDanger(String),
+    ConfigEditThemeCaptionText(String),
+    ConfigEditThemeErrorText(String),
     ConfigEditChildConfigPath(String),
     ConfigToggleChildConfigPathRelativeToScripter(bool),
     SwitchToParentConfig,
@@ -928,6 +934,12 @@ impl Application for MainWindow {
                                     .unwrap_or_default(),
                                 danger: hex_to_rgb(&window_edit_data.theme_color_danger)
                                     .unwrap_or_default(),
+                                caption_text: hex_to_rgb(
+                                    &window_edit_data.theme_color_caption_text,
+                                )
+                                .unwrap_or_default(),
+                                error_text: hex_to_rgb(&window_edit_data.theme_color_error_text)
+                                    .unwrap_or_default(),
                             }
                         } else {
                             config::CustomTheme::default()
@@ -991,6 +1003,30 @@ impl Application for MainWindow {
                     |edit_data, value| {
                         edit_data.theme_color_danger = value;
                         edit_data.theme_color_danger.clone()
+                    },
+                );
+                self.edit_data.is_dirty = true;
+            }
+            Message::ConfigEditThemeCaptionText(new_value) => {
+                apply_theme_color_from_string(
+                    self,
+                    new_value,
+                    |theme, value| theme.caption_text = value,
+                    |edit_data, value| {
+                        edit_data.theme_color_caption_text = value;
+                        edit_data.theme_color_caption_text.clone()
+                    },
+                );
+                self.edit_data.is_dirty = true;
+            }
+            Message::ConfigEditThemeErrorText(new_value) => {
+                apply_theme_color_from_string(
+                    self,
+                    new_value,
+                    |theme, value| theme.error_text = value,
+                    |edit_data, value| {
+                        edit_data.theme_color_error_text = value;
+                        edit_data.theme_color_error_text.clone()
                     },
                 );
                 self.edit_data.is_dirty = true;
@@ -1617,6 +1653,7 @@ fn produce_execution_list_content<'a>(
     custom_title: &Option<String>,
     icons: &IconCaches,
     edit_data: &EditData,
+    rewritable_config: &config::RewritableConfig,
 ) -> Column<'a, Message> {
     let mut title: Element<_> = text(path_caches.work_path.to_str().unwrap_or_default())
         .size(16)
@@ -1669,7 +1706,15 @@ fn produce_execution_list_content<'a>(
                 let status_tooltip;
                 let progress;
                 let style = if execution::has_script_failed(script_status) {
-                    theme.extended_palette().danger.weak.color
+                    if let Some(custom_theme) = &rewritable_config.custom_theme {
+                        iced::Color::from_rgb(
+                            custom_theme.error_text[0],
+                            custom_theme.error_text[1],
+                            custom_theme.error_text[2],
+                        )
+                    } else {
+                        theme.extended_palette().danger.weak.color
+                    }
                 } else {
                     if is_selected {
                         theme.extended_palette().primary.strong.text
@@ -1958,6 +2003,7 @@ fn produce_execution_list_content<'a>(
 fn produce_log_output_content<'a>(
     execution_data: &execution::ScriptExecutionData,
     theme: &Theme,
+    rewritable_config: &config::RewritableConfig,
 ) -> Column<'a, Message> {
     if !execution::has_started_execution(&execution_data) {
         return Column::new();
@@ -1966,6 +2012,27 @@ fn produce_log_output_content<'a>(
     let mut data_lines: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
     if let Ok(logs) = execution_data.recent_logs.try_lock() {
         if !logs.is_empty() {
+            let (caption_color, error_color) =
+                if let Some(custom_theme) = &rewritable_config.custom_theme {
+                    (
+                        iced::Color::from_rgb(
+                            custom_theme.caption_text[0],
+                            custom_theme.caption_text[1],
+                            custom_theme.caption_text[2],
+                        ),
+                        iced::Color::from_rgb(
+                            custom_theme.error_text[0],
+                            custom_theme.error_text[1],
+                            custom_theme.error_text[2],
+                        ),
+                    )
+                } else {
+                    (
+                        theme.extended_palette().primary.strong.color,
+                        theme.extended_palette().danger.weak.color,
+                    )
+                };
+
             data_lines.extend(logs.iter().map(|element| {
                 text(format!(
                     "[{}] {}",
@@ -1974,9 +2041,9 @@ fn produce_log_output_content<'a>(
                 ))
                 .style(match element.output_type {
                     execution::OutputType::StdOut => theme.extended_palette().primary.weak.text,
-                    execution::OutputType::StdErr => theme.extended_palette().danger.weak.color,
-                    execution::OutputType::Error => theme.extended_palette().danger.weak.color,
-                    execution::OutputType::Event => theme.extended_palette().primary.strong.color,
+                    execution::OutputType::StdErr => error_color,
+                    execution::OutputType::Error => error_color,
+                    execution::OutputType::Event => caption_color,
                 })
                 .into()
             }));
@@ -2295,6 +2362,20 @@ fn produce_config_edit_content<'a>(
                 .padding(5)
                 .into(),
         );
+        list_elements.push(text("Caption text:").into());
+        list_elements.push(
+            text_input("#000000", &window_edit.theme_color_caption_text)
+                .on_input(move |new_value| Message::ConfigEditThemeCaptionText(new_value))
+                .padding(5)
+                .into(),
+        );
+        list_elements.push(text("Error text:").into());
+        list_elements.push(
+            text_input("#000000", &window_edit.theme_color_error_text)
+                .on_input(move |new_value| Message::ConfigEditThemeErrorText(new_value))
+                .padding(5)
+                .into(),
+        );
     }
 
     if window_edit.edit_type == ConfigEditType::Parent {
@@ -2335,8 +2416,13 @@ fn view_content<'a>(
             &config.custom_title,
             &visual_caches.icons,
             edit_data,
+            get_rewritable_config_opt(&config, &edit_data.window_edit_data),
         ),
-        PaneVariant::LogOutput => produce_log_output_content(execution_data, theme),
+        PaneVariant::LogOutput => produce_log_output_content(
+            execution_data,
+            theme,
+            get_rewritable_config_opt(&config, &edit_data.window_edit_data),
+        ),
         PaneVariant::Parameters => match &edit_data.window_edit_data {
             Some(window_edit_data) if window_edit_data.is_editing_config => {
                 produce_config_edit_content(config, window_edit_data)

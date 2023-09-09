@@ -3,8 +3,8 @@ use crate::json_config_updater::{JsonConfigUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.10.0";
-pub static LATEST_CHILD_CONFIG_VERSION: &str = "0.10.0";
+pub static LATEST_CONFIG_VERSION: &str = "0.10.4";
+pub static LATEST_CHILD_CONFIG_VERSION: &str = "0.10.4";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -70,9 +70,11 @@ fn register_config_updaters() -> JsonConfigUpdater {
     json_config_updater.add_update_function("0.9.4", |config_json| {
         let was_icon_path_relative_to_scripter =
             if let Some(rewritable_config) = config_json["rewritable"].as_object_mut() {
-                rewritable_config["icon_path_relative_to_scripter"]
+                rewritable_config
+                    .get("icon_path_relative_to_scripter")
+                    .unwrap_or(&json!(false))
                     .as_bool()
-                    .unwrap_or(false)
+                    .unwrap_or_default()
             } else {
                 false
             };
@@ -107,6 +109,7 @@ fn register_config_updaters() -> JsonConfigUpdater {
             }
         }
     });
+    json_config_updater.add_update_function("0.10.4", add_caption_and_error_text_colors_0_10_4);
     // add update functions here
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -161,16 +164,14 @@ fn register_child_config_updaters() -> JsonConfigUpdater {
             }
         }
     });
+    json_config_updater.add_update_function("0.10.4", add_caption_and_error_text_colors_0_10_4);
     // add update functions here
     // don't forget to update LATEST_CHILD_CONFIG_VERSION at the beginning of the file
 
     json_config_updater
 }
 
-fn convert_path_0_9_4(
-    old_path: serde_json::Value,
-    is_relative_to_scripter: bool,
-) -> serde_json::Value {
+fn convert_path_0_9_4(old_path: JsonValue, is_relative_to_scripter: bool) -> JsonValue {
     let path_type = if is_relative_to_scripter {
         "ScripterExecutableRelative"
     } else {
@@ -190,9 +191,9 @@ fn convert_path_0_9_4(
     }
 }
 
-fn for_each_script_original_definition<F>(config_json: &mut serde_json::Value, mut f: F)
+fn for_each_script_original_definition<F>(config_json: &mut JsonValue, mut f: F)
 where
-    F: FnMut(&mut serde_json::Value),
+    F: FnMut(&mut JsonValue),
 {
     if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
         for script in script_definitions {
@@ -201,6 +202,23 @@ where
                     f(value);
                 }
             }
+        }
+    }
+}
+
+fn add_caption_and_error_text_colors_0_10_4(config_json: &mut JsonValue) {
+    if let Some(rewritable) = config_json["rewritable"].as_object_mut() {
+        if let Some(custom_theme) = rewritable["custom_theme"].as_object_mut() {
+            let primary = custom_theme
+                .get("primary")
+                .unwrap_or(&json!([0.0, 0.0, 0.5]))
+                .clone();
+            let danger = custom_theme
+                .get("danger")
+                .unwrap_or(&json!([0.5, 0.0, 0.0]))
+                .clone();
+            custom_theme.entry("caption_text").or_insert(primary);
+            custom_theme.entry("error_text").or_insert(danger);
         }
     }
 }

@@ -184,6 +184,8 @@ pub struct CustomTheme {
     pub primary: [f32; 3],
     pub success: [f32; 3],
     pub danger: [f32; 3],
+    pub caption_text: [f32; 3],
+    pub error_text: [f32; 3],
 }
 
 impl Default for CustomTheme {
@@ -194,6 +196,8 @@ impl Default for CustomTheme {
             primary: [0.45, 0.53, 0.855],
             success: [0.31, 0.5, 0.17],
             danger: [0.7, 0.3, 0.3],
+            caption_text: [0.7, 0.7, 0.7],
+            error_text: [0.9, 0.3, 0.3],
         }
     }
 }
