@@ -1,4 +1,3 @@
-use crate::config;
 use crate::config_updaters::{
     update_child_config_to_the_latest_version, update_config_to_the_latest_version,
     LATEST_CHILD_CONFIG_VERSION, LATEST_CONFIG_VERSION,
@@ -65,11 +64,12 @@ pub struct AppConfig {
     pub displayed_configs_list_cache: Vec<ScriptListCacheRecord>,
 }
 
-#[derive(Default, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct ScriptListCacheRecord {
     pub name: String,
     pub full_icon_path: Option<PathBuf>,
     pub is_hidden: bool,
+    pub original_script_uid: Guid,
 }
 
 #[derive(Default, Clone, Deserialize, Serialize)]
@@ -312,7 +312,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             exe_folder_path: get_exe_folder_path(),
             config_path,
         },
-        child_config_path: config::PathConfig::default(),
+        child_config_path: PathConfig::default(),
         env_vars: app_arguments.env_vars,
         custom_title: app_arguments.custom_title,
         config_read_error: None,
@@ -510,22 +510,41 @@ pub fn get_original_script_definition_by_uid(
     app_config: &AppConfig,
     script_uid: Guid,
 ) -> Option<ScriptDefinition> {
+    if let Some(child_config) = &app_config.child_config_body {
+        for script_definition in &child_config.script_definitions {
+            if original_script_definition_search_predicate(script_definition, &script_uid) {
+                return Some(script_definition.clone());
+            }
+        }
+    }
+
     for script_definition in &app_config.script_definitions {
-        match script_definition {
-            ScriptDefinition::Original(script) => {
-                if script.uid == script_uid {
-                    return Some(script_definition.clone());
-                }
-            }
-            ScriptDefinition::Preset(preset) => {
-                if preset.uid == script_uid {
-                    return Some(script_definition.clone());
-                }
-            }
-            _ => {}
+        if original_script_definition_search_predicate(script_definition, &script_uid) {
+            return Some(script_definition.clone());
         }
     }
     return None;
+}
+
+fn original_script_definition_search_predicate(
+    script_definition: &ScriptDefinition,
+    script_uid: &Guid,
+) -> bool {
+    match script_definition {
+        ScriptDefinition::Original(script) => {
+            if script.uid == *script_uid {
+                return true;
+            }
+            return false;
+        }
+        ScriptDefinition::Preset(preset) => {
+            if preset.uid == *script_uid {
+                return true;
+            }
+            return false;
+        }
+        _ => false,
+    }
 }
 
 fn read_child_config(

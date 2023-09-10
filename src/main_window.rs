@@ -150,7 +150,7 @@ pub enum Message {
     Resized(pane_grid::ResizeEvent),
     Maximize(pane_grid::Pane, Size),
     Restore,
-    AddScriptToRun(usize),
+    AddScriptToExecution(config::Guid),
     RunScripts,
     StopScripts,
     ClearScripts,
@@ -407,13 +407,19 @@ impl Application for MainWindow {
                     );
                 }
             }
-            Message::AddScriptToRun(script_idx) => {
+            Message::AddScriptToExecution(script_uid) => {
                 if execution::has_started_execution(&self.execution_data) {
                     return Command::none();
                 }
 
                 let original_script =
-                    get_original_script_definition(&self.app_config, &self.edit_data, script_idx);
+                    config::get_original_script_definition_by_uid(&self.app_config, script_uid);
+
+                let original_script = if let Some(original_script) = original_script {
+                    original_script
+                } else {
+                    return Command::none();
+                };
 
                 match original_script {
                     config::ScriptDefinition::ReferenceToParent(_, _) => {
@@ -1548,7 +1554,7 @@ fn produce_script_list_content<'a>(
                         theme::Button::Secondary
                     })
                     .on_press(if edit_data.window_edit_data.is_none() {
-                        Message::AddScriptToRun(i)
+                        Message::AddScriptToExecution(script.original_script_uid.clone())
                     } else {
                         Message::OpenScriptConfigEditing(i)
                     });
@@ -2359,7 +2365,7 @@ fn produce_config_edit_content<'a>(
             rewritable_config.enable_script_filtering,
             move |val| Message::ConfigToggleScriptFiltering(val),
         )
-            .into(),
+        .into(),
     );
     list_elements.push(
         checkbox(
@@ -2929,6 +2935,7 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
                                 name,
                                 full_icon_path: config::get_full_optional_path(paths, &icon),
                                 is_hidden: is_script_hidden,
+                                original_script_uid: parent_script_uid.clone(),
                             });
                         }
                         None => {
@@ -2944,6 +2951,7 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
                         name: script.name.clone(),
                         full_icon_path: config::get_full_optional_path(paths, &script.icon),
                         is_hidden: is_script_filtered_out(&script.name),
+                        original_script_uid: script.uid.clone(),
                     });
                 }
                 config::ScriptDefinition::Preset(preset) => {
@@ -2951,6 +2959,7 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
                         name: preset.name.clone(),
                         full_icon_path: config::get_full_optional_path(paths, &preset.icon),
                         is_hidden: is_script_filtered_out(&preset.name),
+                        original_script_uid: preset.uid.clone(),
                     });
                 }
             }
@@ -2967,6 +2976,7 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
                         name: script.name.clone(),
                         full_icon_path: config::get_full_optional_path(paths, &script.icon),
                         is_hidden: is_script_filtered_out(&script.name),
+                        original_script_uid: script.uid.clone(),
                     });
                 }
                 config::ScriptDefinition::Preset(preset) => {
@@ -2974,58 +2984,11 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
                         name: preset.name.clone(),
                         full_icon_path: config::get_full_optional_path(paths, &preset.icon),
                         is_hidden: is_script_filtered_out(&preset.name),
+                        original_script_uid: preset.uid.clone(),
                     });
                 }
             }
         }
-    }
-}
-
-fn get_original_script_definition<'a>(
-    app_config: &'a config::AppConfig,
-    edit_data: &EditData,
-    script_idx: usize,
-) -> &'a config::ScriptDefinition {
-    let is_looking_at_child_config = if let Some(window_edit_data) = &edit_data.window_edit_data {
-        window_edit_data.edit_type == ConfigEditType::Child
-    } else {
-        app_config.child_config_body.is_some()
-    };
-
-    if is_looking_at_child_config {
-        let child_config = app_config.child_config_body.as_ref().unwrap();
-        let parent_script_definitions = &app_config.script_definitions;
-
-        let script_definition = &child_config.script_definitions[script_idx];
-        match script_definition {
-            config::ScriptDefinition::ReferenceToParent(parent_script_uid, _) => {
-                let parent_script = parent_script_definitions
-                    .iter()
-                    .find(|script| match script {
-                        config::ScriptDefinition::Original(script) => {
-                            script.uid == *parent_script_uid
-                        }
-                        config::ScriptDefinition::Preset(preset) => {
-                            preset.uid == *parent_script_uid
-                        }
-                        _ => false,
-                    });
-                match parent_script {
-                    Some(parent_script) => return &parent_script,
-                    None => {
-                        panic!(
-                            "Failed to find parent script with uid {}",
-                            parent_script_uid.data
-                        )
-                    }
-                }
-            }
-            _ => {
-                return &script_definition;
-            }
-        }
-    } else {
-        return &app_config.script_definitions[script_idx];
     }
 }
 
