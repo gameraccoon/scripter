@@ -2888,8 +2888,21 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
         app_config.child_config_body.is_some()
     };
 
+    let binding = edit_data.script_filter.to_lowercase();
+    let search_words = binding.split_whitespace().collect::<Vec<&str>>();
+
     let is_script_filtered_out = |name: &str| -> bool {
-        !edit_data.script_filter.is_empty() && !name.contains(&edit_data.script_filter)
+        !search_words.is_empty() && {
+            let mut is_filtered_out = false;
+            let lowercase_name = name.to_lowercase();
+            for search_word in &search_words {
+                if !lowercase_name.contains(search_word) {
+                    is_filtered_out = true;
+                    break;
+                }
+            }
+            is_filtered_out
+        }
     };
 
     let result_list = &mut app_config.displayed_configs_list_cache;
