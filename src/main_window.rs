@@ -9,7 +9,7 @@ use iced::widget::{
     text, text_input, tooltip, vertical_space, Button, Column,
 };
 use iced::window::{request_user_attention, resize};
-use iced::{executor, ContentFit};
+use iced::{executor, keyboard, ContentFit, Event};
 use iced::{time, Size};
 use iced::{Application, Command, Element, Length, Subscription};
 use iced_lazy::responsive;
@@ -203,6 +203,7 @@ pub enum Message {
     MoveToParent(EditScriptId),
     SaveAsPreset,
     ScriptFilterChanged(String),
+    RequestCloseApp,
 }
 
 impl Application for MainWindow {
@@ -1281,6 +1282,23 @@ impl Application for MainWindow {
                 self.edit_data.script_filter = new_filter_value;
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
+            Message::RequestCloseApp => {
+                let exit_thread_command = || {
+                    Command::perform(async {}, |()| {
+                        std::process::exit(0);
+                    })
+                };
+
+                if execution::has_started_execution(&self.execution_data) {
+                    if execution::has_finished_execution(&self.execution_data) {
+                        if !execution::is_waiting_execution_thread_to_finish(&self.execution_data) {
+                            return exit_thread_command();
+                        }
+                    }
+                } else {
+                    return exit_thread_command();
+                }
+            }
         }
 
         Command::none()
@@ -1361,7 +1379,31 @@ impl Application for MainWindow {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        time::every(Duration::from_millis(100)).map(Message::Tick)
+        Subscription::batch([
+            iced::subscription::events_with(|event, status| {
+                if let iced::event::Status::Captured = status {
+                    return None;
+                }
+
+                match event {
+                    Event::Keyboard(keyboard::Event::KeyPressed {
+                        modifiers,
+                        key_code,
+                    }) if modifiers.command() => handle_ctrl_hotkey(key_code),
+                    _ => None,
+                }
+            }),
+            time::every(Duration::from_millis(100)).map(Message::Tick),
+        ])
+    }
+}
+
+fn handle_ctrl_hotkey(key_code: keyboard::KeyCode) -> Option<Message> {
+    use keyboard::KeyCode;
+
+    match key_code {
+        KeyCode::W => Some(Message::RequestCloseApp),
+        _ => None,
     }
 }
 
