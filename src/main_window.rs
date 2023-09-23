@@ -17,6 +17,7 @@ use std::mem::swap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
+use once_cell::sync::Lazy;
 
 use crate::config;
 use crate::execution;
@@ -25,6 +26,8 @@ use crate::style;
 const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: u32 = 30;
 const ONE_TITLE_LINE_HEIGHT: u32 = 16;
 const EMPTY_EXECUTION_LIST_HEIGHT: u32 = 150;
+
+static FILTER_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 
 #[derive(Clone)]
 struct ThemedIcons {
@@ -204,6 +207,7 @@ pub enum Message {
     SaveAsPreset,
     ScriptFilterChanged(String),
     RequestCloseApp,
+    FocusFilter,
 }
 
 impl Application for MainWindow {
@@ -1299,6 +1303,9 @@ impl Application for MainWindow {
                     return exit_thread_command();
                 }
             }
+            Message::FocusFilter => {
+                return text_input::focus(FILTER_INPUT_ID.clone())
+            }
         }
 
         Command::none()
@@ -1403,6 +1410,7 @@ fn handle_ctrl_hotkey(key_code: keyboard::KeyCode) -> Option<Message> {
 
     match key_code {
         KeyCode::W => Some(Message::RequestCloseApp),
+        KeyCode::F => Some(Message::FocusFilter),
         _ => None,
     }
 }
@@ -1702,7 +1710,8 @@ fn produce_script_list_content<'a>(
         {
             row![
                 horizontal_space(5),
-                text_input("filter", &edit_data.script_filter,)
+                text_input("filter", &edit_data.script_filter)
+                    .id(FILTER_INPUT_ID.clone())
                     .on_input(Message::ScriptFilterChanged)
                     .width(Length::Fill),
                 horizontal_space(4),

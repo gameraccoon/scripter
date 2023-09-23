@@ -2567,6 +2567,7 @@ dependencies = [
  "crossbeam-channel",
  "iced",
  "iced_lazy",
+ "once_cell",
  "rand",
  "serde",
  "serde_json",
