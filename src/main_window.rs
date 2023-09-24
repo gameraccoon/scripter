@@ -27,6 +27,20 @@ const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: u32 = 30;
 const ONE_TITLE_LINE_HEIGHT: u32 = 16;
 const EMPTY_EXECUTION_LIST_HEIGHT: u32 = 150;
 
+// depending on whether it's macOS or not we need to name the key Ctrl or Command
+#[cfg(target_os = "macos")]
+const FILTER_COMMAND_HINT: &str = "Command+F to focus Filter";
+#[cfg(not(target_os = "macos"))]
+const FILTER_COMMAND_HINT: &str = "Ctrl+F to focus Filter";
+#[cfg(target_os = "macos")]
+const RUN_COMMAND_HINT: &str = "Command+R to Run";
+#[cfg(not(target_os = "macos"))]
+const RUN_COMMAND_HINT: &str = "Ctrl+R to Run";
+#[cfg(target_os = "macos")]
+const EDIT_COMMAND_HINT: &str = "Command+E to Edit";
+#[cfg(not(target_os = "macos"))]
+const EDIT_COMMAND_HINT: &str = "Ctrl+E to Edit";
+
 static FILTER_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 
 #[derive(Clone)]
@@ -148,7 +162,7 @@ impl WindowEditData {
 struct WindowState {
     pane_focus: Option<pane_grid::Pane>,
     full_window_size: Size,
-    is_ctrl_down: bool,
+    is_command_key_down: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -214,7 +228,7 @@ pub enum Message {
     ScriptFilterChanged(String),
     RequestCloseApp,
     FocusFilter,
-    OnCtrlStateChanged(bool),
+    OnCommandKeyStateChanged(bool),
 }
 
 impl Application for MainWindow {
@@ -326,7 +340,7 @@ impl Application for MainWindow {
                 window_state: WindowState {
                     pane_focus: None,
                     full_window_size: Size::new(0.0, 0.0),
-                    is_ctrl_down: false,
+                    is_command_key_down: false,
                 },
             },
             Command::none(),
@@ -499,7 +513,7 @@ impl Application for MainWindow {
                     EditScriptType::ExecutionList,
                 );
 
-                if self.window_state.is_ctrl_down {
+                if self.window_state.is_command_key_down {
                     run_scheduled_scripts(self);
                 }
             }
@@ -1299,8 +1313,8 @@ impl Application for MainWindow {
                 }
             }
             Message::FocusFilter => return text_input::focus(FILTER_INPUT_ID.clone()),
-            Message::OnCtrlStateChanged(is_ctrl_down) => {
-                self.window_state.is_ctrl_down = is_ctrl_down;
+            Message::OnCommandKeyStateChanged(is_command_key_down) => {
+                self.window_state.is_command_key_down = is_command_key_down;
             }
         }
 
@@ -1329,6 +1343,7 @@ impl Application for MainWindow {
                         &self.execution_data,
                         is_maximized,
                         size,
+                        &self.window_state,
                     ))
                     .padding(10)
                     .style(if is_focused {
@@ -1392,7 +1407,7 @@ impl Application for MainWindow {
                     key_code,
                 }) => {
                     if key_code.eq(&KeyCode::LControl) || key_code.eq(&KeyCode::RControl) {
-                        return Some(Message::OnCtrlStateChanged(true));
+                        return Some(Message::OnCommandKeyStateChanged(true));
                     }
 
                     let is_command_key_down = modifiers.command();
@@ -1407,7 +1422,7 @@ impl Application for MainWindow {
                     key_code,
                 }) => {
                     if key_code.eq(&KeyCode::LControl) || key_code.eq(&KeyCode::RControl) {
-                        Some(Message::OnCtrlStateChanged(false))
+                        Some(Message::OnCommandKeyStateChanged(false))
                     } else {
                         None
                     }
@@ -1533,10 +1548,17 @@ fn edit_mode_button<'a>(
     icon_handle: Handle,
     message: Message,
     is_dirty: bool,
+    window_state: &WindowState,
 ) -> Button<'a, Message> {
-    button(row![image(icon_handle)
+    let icon = image(icon_handle)
         .width(Length::Fixed(12.0))
-        .height(Length::Fixed(12.0))])
+        .height(Length::Fixed(12.0));
+
+    button(if window_state.is_command_key_down {
+        row![text(EDIT_COMMAND_HINT).size(12), horizontal_space(4), icon]
+    } else {
+        row![icon]
+    })
     .style(if is_dirty {
         theme::Button::Positive
     } else {
@@ -1577,8 +1599,8 @@ fn produce_script_list_content<'a>(
                         name_text += " [hidden]";
                     }
 
-                    if edit_data.window_edit_data.is_none() && window_state.is_ctrl_down {
-                        name_text = format!("[add+run] {}", name_text);
+                    if edit_data.window_edit_data.is_none() && window_state.is_command_key_down {
+                        name_text = format!("[add&run] {}", name_text);
                     }
 
                     let edit_buttons = if edit_data.window_edit_data.is_some() {
@@ -1737,10 +1759,17 @@ fn produce_script_list_content<'a>(
         {
             row![
                 horizontal_space(5),
-                text_input("filter", &edit_data.script_filter)
-                    .id(FILTER_INPUT_ID.clone())
-                    .on_input(Message::ScriptFilterChanged)
-                    .width(Length::Fill),
+                text_input(
+                    if window_state.is_command_key_down {
+                        FILTER_COMMAND_HINT
+                    } else {
+                        "filter"
+                    },
+                    &edit_data.script_filter
+                )
+                .id(FILTER_INPUT_ID.clone())
+                .on_input(Message::ScriptFilterChanged)
+                .width(Length::Fill),
                 horizontal_space(4),
                 if !edit_data.script_filter.is_empty() {
                     column![
@@ -1774,6 +1803,7 @@ fn produce_execution_list_content<'a>(
     icons: &IconCaches,
     edit_data: &EditData,
     rewritable_config: &config::RewritableConfig,
+    window_state: &WindowState,
 ) -> Column<'a, Message> {
     let mut title: Element<_> = text(path_caches.work_path.to_str().unwrap_or_default())
         .size(16)
@@ -2079,9 +2109,15 @@ fn produce_execution_list_content<'a>(
             .iter()
             .any(|script| is_script_missing_arguments(script));
 
+        let run_name = if window_state.is_command_key_down {
+            RUN_COMMAND_HINT
+        } else {
+            "Run"
+        };
+
         let run_button = if has_scripts_missing_arguments {
             column![tooltip(
-                main_icon_button(icons.themed.play.clone(), "Run", None,),
+                main_icon_button(icons.themed.play.clone(), run_name, None,),
                 "Some scripts are missing arguments",
                 tooltip::Position::Top
             )
@@ -2089,7 +2125,7 @@ fn produce_execution_list_content<'a>(
         } else {
             column![main_icon_button(
                 icons.themed.play.clone(),
-                "Run",
+                run_name,
                 Some(Message::RunScripts)
             ),]
         };
@@ -2550,6 +2586,7 @@ fn view_content<'a>(
             &visual_caches.icons,
             edit_data,
             get_rewritable_config_opt(&config, &edit_data.window_edit_data),
+            window_state,
         ),
         PaneVariant::LogOutput => produce_log_output_content(
             execution_data,
@@ -2581,6 +2618,7 @@ fn view_controls<'a>(
     execution_data: &execution::ScriptExecutionData,
     is_maximized: bool,
     size: Size,
+    window_state: &WindowState,
 ) -> Element<'a, Message> {
     let mut row = row![].spacing(5);
 
@@ -2594,6 +2632,7 @@ fn view_controls<'a>(
                     icons.themed.edit.clone(),
                     Message::EnterWindowEditMode,
                     edit_data.is_dirty,
+                    window_state,
                 ),
                 "Enter editing mode",
                 tooltip::Position::Left,
