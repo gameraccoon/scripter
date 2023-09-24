@@ -1402,6 +1402,7 @@ fn handle_ctrl_hotkey(key_code: keyboard::KeyCode, status: &event::Status) -> Op
         KeyCode::W => Some(Message::RequestCloseApp),
         KeyCode::F => Some(Message::FocusFilter),
         KeyCode::E => Some(Message::TrySwitchWindowEditMode),
+        KeyCode::R => Some(Message::RunScripts),
         _ => None,
     }
 }
