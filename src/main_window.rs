@@ -1634,7 +1634,7 @@ fn produce_script_list_content<'a>(
                             horizontal_space(6),
                             image(icon_path).width(22).height(22),
                             horizontal_space(6),
-                            text(&name_text),
+                            text(&name_text).height(22),
                             horizontal_space(Length::Fill),
                             edit_buttons,
                         ]
@@ -1665,7 +1665,7 @@ fn produce_script_list_content<'a>(
                             horizontal_space(10),
                             image(icon_path).width(22).height(22),
                             horizontal_space(6),
-                            text(&script.name)
+                            text(&script.name).height(22)
                         ]
                     } else {
                         row![horizontal_space(10), text(&script.name).height(22)]
