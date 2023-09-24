@@ -1401,33 +1401,46 @@ impl Application for MainWindow {
         use keyboard::KeyCode;
 
         Subscription::batch([
-            iced::subscription::events_with(|event, status| match event {
-                Event::Keyboard(keyboard::Event::KeyPressed {
-                    modifiers,
-                    key_code,
-                }) => {
-                    if key_code.eq(&KeyCode::LControl) || key_code.eq(&KeyCode::RControl) {
-                        return Some(Message::OnCommandKeyStateChanged(true));
+            iced::subscription::events_with(|event, status| {
+                let is_command_key = |key_code: KeyCode| {
+                    #[cfg(target_os = "macos")]
+                    {
+                        key_code.eq(&KeyCode::LWin) || key_code.eq(&KeyCode::RWin)
                     }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        key_code.eq(&KeyCode::LControl) || key_code.eq(&KeyCode::RControl)
+                    }
+                };
 
-                    let is_command_key_down = modifiers.command();
-                    if is_command_key_down {
-                        handle_command_hotkey(key_code, &status)
-                    } else {
-                        None
+                match event {
+                    Event::Keyboard(keyboard::Event::KeyPressed {
+                        modifiers,
+                        key_code,
+                    }) => {
+                        if is_command_key(key_code) {
+                            return Some(Message::OnCommandKeyStateChanged(true));
+                        }
+
+                        let is_command_key_down = modifiers.command();
+                        if is_command_key_down {
+                            handle_command_hotkey(key_code, &status)
+                        } else {
+                            None
+                        }
                     }
-                }
-                Event::Keyboard(keyboard::Event::KeyReleased {
-                    modifiers: _modifiers,
-                    key_code,
-                }) => {
-                    if key_code.eq(&KeyCode::LControl) || key_code.eq(&KeyCode::RControl) {
-                        Some(Message::OnCommandKeyStateChanged(false))
-                    } else {
-                        None
+                    Event::Keyboard(keyboard::Event::KeyReleased {
+                        modifiers: _modifiers,
+                        key_code,
+                    }) => {
+                        if is_command_key(key_code) {
+                            Some(Message::OnCommandKeyStateChanged(false))
+                        } else {
+                            None
+                        }
                     }
+                    _ => None,
                 }
-                _ => None,
             }),
             time::every(Duration::from_millis(100)).map(Message::Tick),
         ])
