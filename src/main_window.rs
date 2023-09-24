@@ -66,13 +66,12 @@ pub struct VisualCaches {
 
 pub struct MainWindow {
     panes: pane_grid::State<AppPane>,
-    focus: Option<pane_grid::Pane>,
     execution_data: execution::ScriptExecutionData,
     app_config: config::AppConfig,
     theme: Theme,
     visual_caches: VisualCaches,
-    full_window_size: Size,
     edit_data: EditData,
+    window_state: WindowState,
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +145,12 @@ impl WindowEditData {
     }
 }
 
+struct WindowState {
+    pane_focus: Option<pane_grid::Pane>,
+    full_window_size: Size,
+    is_ctrl_down: bool,
+}
+
 #[derive(Debug, Clone)]
 pub enum Message {
     Clicked(pane_grid::Pane),
@@ -209,6 +214,7 @@ pub enum Message {
     ScriptFilterChanged(String),
     RequestCloseApp,
     FocusFilter,
+    OnCtrlStateChanged(bool),
 }
 
 impl Application for MainWindow {
@@ -242,7 +248,6 @@ impl Application for MainWindow {
         let mut result = (
             MainWindow {
                 panes,
-                focus: None,
                 execution_data: execution::new_execution_data(),
                 theme: get_theme(&app_config, &None),
                 app_config,
@@ -312,12 +317,16 @@ impl Application for MainWindow {
                         },
                     },
                 },
-                full_window_size: Size::new(0.0, 0.0),
                 edit_data: EditData {
                     script_filter: String::new(),
                     window_edit_data: None,
                     currently_edited_script: None,
                     is_dirty: false,
+                },
+                window_state: WindowState {
+                    pane_focus: None,
+                    full_window_size: Size::new(0.0, 0.0),
+                    is_ctrl_down: false,
                 },
             },
             Command::none(),
@@ -359,7 +368,7 @@ impl Application for MainWindow {
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::Clicked(pane) => {
-                self.focus = Some(pane);
+                self.window_state.pane_focus = Some(pane);
             }
             Message::Resized(pane_grid::ResizeEvent { split, ratio }) => {
                 self.panes.resize(&split, ratio);
@@ -369,12 +378,12 @@ impl Application for MainWindow {
             }
             Message::Dragged(_) => {}
             Message::Maximize(pane, window_size) => {
-                self.focus = Some(pane);
+                self.window_state.pane_focus = Some(pane);
                 self.panes.maximize(&pane);
                 if !get_rewritable_config_opt(&self.app_config, &self.edit_data.window_edit_data)
                     .keep_window_size
                 {
-                    self.full_window_size = window_size.clone();
+                    self.window_state.full_window_size = window_size.clone();
                     let size = self
                         .panes
                         .layout()
@@ -408,8 +417,8 @@ impl Application for MainWindow {
                     .keep_window_size
                 {
                     return resize(
-                        self.full_window_size.width as u32,
-                        self.full_window_size.height as u32,
+                        self.window_state.full_window_size.width as u32,
+                        self.window_state.full_window_size.height as u32,
                     );
                 }
             }
@@ -489,18 +498,12 @@ impl Application for MainWindow {
                     script_idx,
                     EditScriptType::ExecutionList,
                 );
-            }
-            Message::RunScripts => {
-                if self.execution_data.scripts_to_run.is_empty() {
-                    return Command::none();
-                }
 
-                if !execution::has_started_execution(&self.execution_data) {
-                    self.visual_caches.recent_logs.clear();
-                    reset_selected_script(&mut self.edit_data.currently_edited_script);
-                    execution::run_scripts(&mut self.execution_data, &self.app_config);
+                if self.window_state.is_ctrl_down {
+                    run_scheduled_scripts(self);
                 }
             }
+            Message::RunScripts => run_scheduled_scripts(self),
             Message::StopScripts => {
                 if execution::has_started_execution(&self.execution_data)
                     && !execution::has_finished_execution(&self.execution_data)
@@ -1296,13 +1299,16 @@ impl Application for MainWindow {
                 }
             }
             Message::FocusFilter => return text_input::focus(FILTER_INPUT_ID.clone()),
+            Message::OnCtrlStateChanged(is_ctrl_down) => {
+                self.window_state.is_ctrl_down = is_ctrl_down;
+            }
         }
 
         Command::none()
     }
 
     fn view(&self) -> Element<Message> {
-        let focus = self.focus;
+        let focus = self.window_state.pane_focus;
         let total_panes = self.panes.len();
 
         let pane_grid = responsive(move |size| {
@@ -1346,6 +1352,7 @@ impl Application for MainWindow {
                         &self.visual_caches,
                         &self.app_config,
                         &self.edit_data,
+                        &self.window_state,
                     )
                 }))
                 .title_bar(title_bar)
@@ -1376,12 +1383,35 @@ impl Application for MainWindow {
     }
 
     fn subscription(&self) -> Subscription<Message> {
+        use keyboard::KeyCode;
+
         Subscription::batch([
             iced::subscription::events_with(|event, status| match event {
                 Event::Keyboard(keyboard::Event::KeyPressed {
                     modifiers,
                     key_code,
-                }) if modifiers.command() => handle_ctrl_hotkey(key_code, &status),
+                }) => {
+                    if key_code.eq(&KeyCode::LControl) || key_code.eq(&KeyCode::RControl) {
+                        return Some(Message::OnCtrlStateChanged(true));
+                    }
+
+                    let is_command_key_down = modifiers.command();
+                    if is_command_key_down {
+                        handle_command_hotkey(key_code, &status)
+                    } else {
+                        None
+                    }
+                }
+                Event::Keyboard(keyboard::Event::KeyReleased {
+                    modifiers: _modifiers,
+                    key_code,
+                }) => {
+                    if key_code.eq(&KeyCode::LControl) || key_code.eq(&KeyCode::RControl) {
+                        Some(Message::OnCtrlStateChanged(false))
+                    } else {
+                        None
+                    }
+                }
                 _ => None,
             }),
             time::every(Duration::from_millis(100)).map(Message::Tick),
@@ -1389,7 +1419,7 @@ impl Application for MainWindow {
     }
 }
 
-fn handle_ctrl_hotkey(key_code: keyboard::KeyCode, status: &event::Status) -> Option<Message> {
+fn handle_command_hotkey(key_code: keyboard::KeyCode, status: &event::Status) -> Option<Message> {
     use keyboard::KeyCode;
 
     let _is_input_captured_by_a_widget = if let event::Status::Captured = status {
@@ -1522,6 +1552,7 @@ fn produce_script_list_content<'a>(
     config: &config::AppConfig,
     edit_data: &EditData,
     icons: &IconCaches,
+    window_state: &WindowState,
 ) -> Column<'a, Message> {
     if let Some(error) = &config.config_read_error {
         return column![text(format!("Error: {}", error))];
@@ -1544,6 +1575,10 @@ fn produce_script_list_content<'a>(
                     }
                     if script.is_hidden {
                         name_text += " [hidden]";
+                    }
+
+                    if edit_data.window_edit_data.is_none() && window_state.is_ctrl_down {
+                        name_text = format!("[add+run] {}", name_text);
                     }
 
                     let edit_buttons = if edit_data.window_edit_data.is_some() {
@@ -2497,11 +2532,16 @@ fn view_content<'a>(
     visual_caches: &VisualCaches,
     config: &config::AppConfig,
     edit_data: &EditData,
+    window_state: &WindowState,
 ) -> Element<'a, Message> {
     let content = match variant {
-        PaneVariant::ScriptList => {
-            produce_script_list_content(execution_data, config, edit_data, &visual_caches.icons)
-        }
+        PaneVariant::ScriptList => produce_script_list_content(
+            execution_data,
+            config,
+            edit_data,
+            &visual_caches.icons,
+            window_state,
+        ),
         PaneVariant::ExecutionList => produce_execution_list_content(
             execution_data,
             paths,
@@ -3158,4 +3198,25 @@ fn exit_window_edit_mode(app: &mut MainWindow) {
     reset_selected_script(&mut app.edit_data.currently_edited_script);
     apply_theme(app);
     update_config_cache(&mut app.app_config, &app.edit_data);
+}
+
+fn run_scheduled_scripts(app: &mut MainWindow) {
+    if app.execution_data.scripts_to_run.is_empty() {
+        return;
+    }
+
+    if app
+        .execution_data
+        .scripts_to_run
+        .iter()
+        .any(|script| is_script_missing_arguments(script))
+    {
+        return;
+    }
+
+    if !execution::has_started_execution(&app.execution_data) {
+        app.visual_caches.recent_logs.clear();
+        reset_selected_script(&mut app.edit_data.currently_edited_script);
+        execution::run_scripts(&mut app.execution_data, &app.app_config);
+    }
 }
