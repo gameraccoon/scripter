@@ -13,11 +13,11 @@ use iced::{executor, keyboard, ContentFit, Event};
 use iced::{time, Size};
 use iced::{Application, Command, Element, Length, Subscription};
 use iced_lazy::responsive;
+use once_cell::sync::Lazy;
 use std::mem::swap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
-use once_cell::sync::Lazy;
 
 use crate::config;
 use crate::execution;
@@ -1303,9 +1303,7 @@ impl Application for MainWindow {
                     return exit_thread_command();
                 }
             }
-            Message::FocusFilter => {
-                return text_input::focus(FILTER_INPUT_ID.clone())
-            }
+            Message::FocusFilter => return text_input::focus(FILTER_INPUT_ID.clone()),
         }
 
         Command::none()
