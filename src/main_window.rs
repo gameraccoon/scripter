@@ -9,7 +9,7 @@ use iced::widget::{
     text, text_input, tooltip, vertical_space, Button, Column,
 };
 use iced::window::{request_user_attention, resize};
-use iced::{executor, keyboard, ContentFit, Event};
+use iced::{executor, keyboard, ContentFit, Event, event};
 use iced::{time, Size};
 use iced::{Application, Command, Element, Length, Subscription};
 use iced_lazy::responsive;
@@ -1386,15 +1386,11 @@ impl Application for MainWindow {
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
             iced::subscription::events_with(|event, status| {
-                if let iced::event::Status::Captured = status {
-                    return None;
-                }
-
                 match event {
                     Event::Keyboard(keyboard::Event::KeyPressed {
                         modifiers,
                         key_code,
-                    }) if modifiers.command() => handle_ctrl_hotkey(key_code),
+                    }) if modifiers.command() => handle_ctrl_hotkey(key_code, &status),
                     _ => None,
                 }
             }),
@@ -1403,8 +1399,14 @@ impl Application for MainWindow {
     }
 }
 
-fn handle_ctrl_hotkey(key_code: keyboard::KeyCode) -> Option<Message> {
+fn handle_ctrl_hotkey(key_code: keyboard::KeyCode, status: &event::Status) -> Option<Message> {
     use keyboard::KeyCode;
+
+    let _is_input_captured_by_a_widget = if let event::Status::Captured = status {
+        true
+    } else {
+        false
+    };
 
     match key_code {
         KeyCode::W => Some(Message::RequestCloseApp),
