@@ -9,7 +9,7 @@ use iced::widget::{
     text, text_input, tooltip, vertical_space, Button, Column,
 };
 use iced::window::{request_user_attention, resize};
-use iced::{executor, keyboard, ContentFit, Event, event};
+use iced::{event, executor, keyboard, ContentFit, Event};
 use iced::{time, Size};
 use iced::{Application, Command, Element, Length, Subscription};
 use iced_lazy::responsive;
@@ -179,6 +179,7 @@ pub enum Message {
     ToggleIgnoreFailures(bool),
     EnterWindowEditMode,
     ExitWindowEditMode,
+    TrySwitchWindowEditMode,
     SaveConfig,
     RevertConfig,
     OpenScriptConfigEditing(usize),
@@ -795,25 +796,16 @@ impl Application for MainWindow {
             Message::ToggleIgnoreFailures(value) => {
                 apply_script_edit(self, |script| script.ignore_previous_failures = value)
             }
-            Message::EnterWindowEditMode => {
-                self.edit_data.window_edit_data = Some(WindowEditData::from_config(
-                    &self.app_config,
-                    false,
-                    if self.app_config.child_config_body.is_some() {
-                        ConfigEditType::Child
+            Message::EnterWindowEditMode => enter_window_edit_mode(self),
+            Message::ExitWindowEditMode => exit_window_edit_mode(self),
+            Message::TrySwitchWindowEditMode => {
+                if !self.execution_data.has_started {
+                    if !self.edit_data.window_edit_data.is_some() {
+                        enter_window_edit_mode(self);
                     } else {
-                        ConfigEditType::Parent
-                    },
-                ));
-                self.edit_data.script_filter = String::new();
-                reset_selected_script(&mut self.edit_data.currently_edited_script);
-                update_config_cache(&mut self.app_config, &self.edit_data);
-            }
-            Message::ExitWindowEditMode => {
-                self.edit_data.window_edit_data = None;
-                reset_selected_script(&mut self.edit_data.currently_edited_script);
-                apply_theme(self);
-                update_config_cache(&mut self.app_config, &self.edit_data);
+                        exit_window_edit_mode(self);
+                    }
+                }
             }
             Message::SaveConfig => {
                 config::save_config_to_file(&self.app_config);
@@ -1385,14 +1377,12 @@ impl Application for MainWindow {
 
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
-            iced::subscription::events_with(|event, status| {
-                match event {
-                    Event::Keyboard(keyboard::Event::KeyPressed {
-                        modifiers,
-                        key_code,
-                    }) if modifiers.command() => handle_ctrl_hotkey(key_code, &status),
-                    _ => None,
-                }
+            iced::subscription::events_with(|event, status| match event {
+                Event::Keyboard(keyboard::Event::KeyPressed {
+                    modifiers,
+                    key_code,
+                }) if modifiers.command() => handle_ctrl_hotkey(key_code, &status),
+                _ => None,
             }),
             time::every(Duration::from_millis(100)).map(Message::Tick),
         ])
@@ -1411,6 +1401,7 @@ fn handle_ctrl_hotkey(key_code: keyboard::KeyCode, status: &event::Status) -> Op
     match key_code {
         KeyCode::W => Some(Message::RequestCloseApp),
         KeyCode::F => Some(Message::FocusFilter),
+        KeyCode::E => Some(Message::TrySwitchWindowEditMode),
         _ => None,
     }
 }
@@ -3144,4 +3135,26 @@ fn get_editing_preset<'a>(
         }
     }
     return None;
+}
+
+fn enter_window_edit_mode(app: &mut MainWindow) {
+    app.edit_data.window_edit_data = Some(WindowEditData::from_config(
+        &app.app_config,
+        false,
+        if app.app_config.child_config_body.is_some() {
+            ConfigEditType::Child
+        } else {
+            ConfigEditType::Parent
+        },
+    ));
+    app.edit_data.script_filter = String::new();
+    reset_selected_script(&mut app.edit_data.currently_edited_script);
+    update_config_cache(&mut app.app_config, &app.edit_data);
+}
+
+fn exit_window_edit_mode(app: &mut MainWindow) {
+    app.edit_data.window_edit_data = None;
+    reset_selected_script(&mut app.edit_data.currently_edited_script);
+    apply_theme(app);
+    update_config_cache(&mut app.app_config, &app.edit_data);
 }
