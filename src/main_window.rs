@@ -1642,23 +1642,26 @@ fn produce_script_list_content<'a>(
                         _ => false,
                     };
 
-                    let item_button = button(if let Some(icon_path) = &script.full_icon_path {
-                        row![
-                            horizontal_space(6),
-                            image(icon_path).width(22).height(22),
-                            horizontal_space(6),
-                            text(&name_text).height(22),
-                            horizontal_space(Length::Fill),
-                            edit_buttons,
-                        ]
-                    } else {
-                        row![
-                            horizontal_space(6),
-                            text(&name_text).height(22),
-                            horizontal_space(Length::Fill),
-                            edit_buttons,
-                        ]
-                    })
+                    let item_button = button(
+                        if let Some(icon_path) = &script.full_icon_path {
+                            row![
+                                horizontal_space(6),
+                                image(icon_path).width(22).height(22),
+                                horizontal_space(6),
+                                text(&name_text).height(22),
+                                horizontal_space(Length::Fill),
+                                edit_buttons,
+                            ]
+                        } else {
+                            row![
+                                horizontal_space(6),
+                                text(&name_text).height(22),
+                                horizontal_space(Length::Fill),
+                                edit_buttons,
+                            ]
+                        }
+                        .height(22),
+                    )
                     .padding(4)
                     .style(if is_selected {
                         theme::Button::Primary
@@ -1683,6 +1686,7 @@ fn produce_script_list_content<'a>(
                     } else {
                         row![horizontal_space(10), text(&script.name).height(22)]
                     }
+                    .height(22)
                 }
                 .into()
             })
