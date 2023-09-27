@@ -1585,6 +1585,7 @@ fn edit_mode_button<'a>(
 fn produce_script_list_content<'a>(
     execution_data: &execution::ScriptExecutionData,
     config: &config::AppConfig,
+    rewritable_config: &config::RewritableConfig,
     edit_data: &EditData,
     icons: &IconCaches,
     window_state: &WindowState,
@@ -1770,7 +1771,7 @@ fn produce_script_list_content<'a>(
             column![data]
         };
 
-        let filter_field = if config.rewritable.enable_script_filtering
+        let filter_field = if rewritable_config.enable_script_filtering
             && !has_started_execution
             && edit_data.window_edit_data.is_none()
         {
@@ -2587,10 +2588,13 @@ fn view_content<'a>(
     edit_data: &EditData,
     window_state: &WindowState,
 ) -> Element<'a, Message> {
+    let rewritable_config = get_rewritable_config_opt(&config, &edit_data.window_edit_data);
+
     let content = match variant {
         PaneVariant::ScriptList => produce_script_list_content(
             execution_data,
             config,
+            rewritable_config,
             edit_data,
             &visual_caches.icons,
             window_state,
@@ -2602,13 +2606,13 @@ fn view_content<'a>(
             &config.custom_title,
             &visual_caches.icons,
             edit_data,
-            get_rewritable_config_opt(&config, &edit_data.window_edit_data),
+            rewritable_config,
             window_state,
         ),
         PaneVariant::LogOutput => produce_log_output_content(
             execution_data,
             theme,
-            get_rewritable_config_opt(&config, &edit_data.window_edit_data),
+            rewritable_config,
         ),
         PaneVariant::Parameters => match &edit_data.window_edit_data {
             Some(window_edit_data) if window_edit_data.is_editing_config => {
