@@ -56,6 +56,7 @@ struct ThemedIcons {
     back: Handle,
     log: Handle,
     edit: Handle,
+    quick_launch: Handle,
 }
 
 struct IconCaches {
@@ -293,6 +294,7 @@ impl Application for MainWindow {
                             back: Handle::from_memory(include_bytes!("../res/icons/back-w.png")),
                             log: Handle::from_memory(include_bytes!("../res/icons/log-w.png")),
                             edit: Handle::from_memory(include_bytes!("../res/icons/edit-w.png")),
+                            quick_launch: Handle::from_memory(include_bytes!("../res/icons/quick_launch-w.png")),
                         },
                         dark: ThemedIcons {
                             play: Handle::from_memory(include_bytes!("../res/icons/play-b.png")),
@@ -310,6 +312,7 @@ impl Application for MainWindow {
                             back: Handle::from_memory(include_bytes!("../res/icons/back-b.png")),
                             log: Handle::from_memory(include_bytes!("../res/icons/log-b.png")),
                             edit: Handle::from_memory(include_bytes!("../res/icons/edit-b.png")),
+                            quick_launch: Handle::from_memory(include_bytes!("../res/icons/quick_launch-b.png")),
                         },
 
                         themed: ThemedIcons {
@@ -328,6 +331,7 @@ impl Application for MainWindow {
                             back: Handle::from_memory(include_bytes!("../res/icons/back-b.png")),
                             log: Handle::from_memory(include_bytes!("../res/icons/log-b.png")),
                             edit: Handle::from_memory(include_bytes!("../res/icons/edit-b.png")),
+                            quick_launch: Handle::from_memory(include_bytes!("../res/icons/quick_launch-b.png")),
                         },
                     },
                 },
@@ -1613,9 +1617,7 @@ fn produce_script_list_content<'a>(
                         name_text += " [hidden]";
                     }
 
-                    if edit_data.window_edit_data.is_none() && window_state.is_command_key_down {
-                        name_text = format!("[add&run] {}", name_text);
-                    }
+                    let will_run_on_click = edit_data.window_edit_data.is_none() && window_state.is_command_key_down;
 
                     let edit_buttons = if edit_data.window_edit_data.is_some() {
                         row![
@@ -1634,6 +1636,20 @@ fn produce_script_list_content<'a>(
                         row![]
                     };
 
+                    let icon = if will_run_on_click {
+                        row![
+                            horizontal_space(6),
+                            image(icons.themed.quick_launch.clone()).width(22).height(22),
+                        ]
+                    } else if let Some(icon_path) = &script.full_icon_path {
+                        row![
+                            horizontal_space(6),
+                            image(icon_path).width(22).height(22),
+                        ]
+                    } else {
+                        row![]
+                    };
+
                     let is_selected = match &edit_data.currently_edited_script {
                         Some(EditScriptId { idx, script_type })
                             if *idx == i && *script_type == EditScriptType::ScriptConfig =>
@@ -1644,23 +1660,13 @@ fn produce_script_list_content<'a>(
                     };
 
                     let item_button = button(
-                        if let Some(icon_path) = &script.full_icon_path {
                             row![
-                                horizontal_space(6),
-                                image(icon_path).width(22).height(22),
+                                icon,
                                 horizontal_space(6),
                                 text(&name_text).height(22),
                                 horizontal_space(Length::Fill),
                                 edit_buttons,
                             ]
-                        } else {
-                            row![
-                                horizontal_space(6),
-                                text(&name_text).height(22),
-                                horizontal_space(Length::Fill),
-                                edit_buttons,
-                            ]
-                        }
                         .height(22),
                     )
                     .padding(4)
