@@ -294,7 +294,9 @@ impl Application for MainWindow {
                             back: Handle::from_memory(include_bytes!("../res/icons/back-w.png")),
                             log: Handle::from_memory(include_bytes!("../res/icons/log-w.png")),
                             edit: Handle::from_memory(include_bytes!("../res/icons/edit-w.png")),
-                            quick_launch: Handle::from_memory(include_bytes!("../res/icons/quick_launch-w.png")),
+                            quick_launch: Handle::from_memory(include_bytes!(
+                                "../res/icons/quick_launch-w.png"
+                            )),
                         },
                         dark: ThemedIcons {
                             play: Handle::from_memory(include_bytes!("../res/icons/play-b.png")),
@@ -312,7 +314,9 @@ impl Application for MainWindow {
                             back: Handle::from_memory(include_bytes!("../res/icons/back-b.png")),
                             log: Handle::from_memory(include_bytes!("../res/icons/log-b.png")),
                             edit: Handle::from_memory(include_bytes!("../res/icons/edit-b.png")),
-                            quick_launch: Handle::from_memory(include_bytes!("../res/icons/quick_launch-b.png")),
+                            quick_launch: Handle::from_memory(include_bytes!(
+                                "../res/icons/quick_launch-b.png"
+                            )),
                         },
 
                         themed: ThemedIcons {
@@ -331,7 +335,9 @@ impl Application for MainWindow {
                             back: Handle::from_memory(include_bytes!("../res/icons/back-b.png")),
                             log: Handle::from_memory(include_bytes!("../res/icons/log-b.png")),
                             edit: Handle::from_memory(include_bytes!("../res/icons/edit-b.png")),
-                            quick_launch: Handle::from_memory(include_bytes!("../res/icons/quick_launch-b.png")),
+                            quick_launch: Handle::from_memory(include_bytes!(
+                                "../res/icons/quick_launch-b.png"
+                            )),
                         },
                     },
                 },
@@ -1617,7 +1623,8 @@ fn produce_script_list_content<'a>(
                         name_text += " [hidden]";
                     }
 
-                    let will_run_on_click = edit_data.window_edit_data.is_none() && window_state.is_command_key_down;
+                    let will_run_on_click =
+                        edit_data.window_edit_data.is_none() && window_state.is_command_key_down;
 
                     let edit_buttons = if edit_data.window_edit_data.is_some() {
                         row![
@@ -1639,13 +1646,12 @@ fn produce_script_list_content<'a>(
                     let icon = if will_run_on_click {
                         row![
                             horizontal_space(6),
-                            image(icons.themed.quick_launch.clone()).width(22).height(22),
+                            image(icons.themed.quick_launch.clone())
+                                .width(22)
+                                .height(22),
                         ]
                     } else if let Some(icon_path) = &script.full_icon_path {
-                        row![
-                            horizontal_space(6),
-                            image(icon_path).width(22).height(22),
-                        ]
+                        row![horizontal_space(6), image(icon_path).width(22).height(22),]
                     } else {
                         row![]
                     };
@@ -1660,13 +1666,13 @@ fn produce_script_list_content<'a>(
                     };
 
                     let item_button = button(
-                            row![
-                                icon,
-                                horizontal_space(6),
-                                text(&name_text).height(22),
-                                horizontal_space(Length::Fill),
-                                edit_buttons,
-                            ]
+                        row![
+                            icon,
+                            horizontal_space(6),
+                            text(&name_text).height(22),
+                            horizontal_space(Length::Fill),
+                            edit_buttons,
+                        ]
                         .height(22),
                     )
                     .padding(4)
@@ -2615,11 +2621,9 @@ fn view_content<'a>(
             rewritable_config,
             window_state,
         ),
-        PaneVariant::LogOutput => produce_log_output_content(
-            execution_data,
-            theme,
-            rewritable_config,
-        ),
+        PaneVariant::LogOutput => {
+            produce_log_output_content(execution_data, theme, rewritable_config)
+        }
         PaneVariant::Parameters => match &edit_data.window_edit_data {
             Some(window_edit_data) if window_edit_data.is_editing_config => {
                 produce_config_edit_content(config, window_edit_data)
