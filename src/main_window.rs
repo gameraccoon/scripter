@@ -3285,4 +3285,7 @@ fn run_scheduled_scripts(app: &mut MainWindow) {
         reset_selected_script(&mut app.edit_data.currently_edited_script);
         execution::run_scripts(&mut app.execution_data, &app.app_config);
     }
+
+    app.edit_data.script_filter = String::new();
+    update_config_cache(&mut app.app_config, &app.edit_data);
 }
