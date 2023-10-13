@@ -272,108 +272,99 @@ impl Application for MainWindow {
 
         let app_config = config::get_app_config_copy();
 
-        let mut result = (
-            MainWindow {
-                panes,
-                pane_by_pane_type,
-                execution_data: execution::new_execution_data(),
-                theme: get_theme(&app_config, &None),
-                app_config,
-                visual_caches: VisualCaches {
-                    autorerun_count: String::new(),
-                    recent_logs: Vec::new(),
-                    icons: IconCaches {
-                        idle: Handle::from_memory(include_bytes!("../res/icons/idle.png")),
-                        in_progress: Handle::from_memory(include_bytes!(
-                            "../res/icons/in-progress.png"
+        let mut main_window = MainWindow {
+            panes,
+            pane_by_pane_type,
+            execution_data: execution::new_execution_data(),
+            theme: get_theme(&app_config, &None),
+            app_config,
+            visual_caches: VisualCaches {
+                autorerun_count: String::new(),
+                recent_logs: Vec::new(),
+                icons: IconCaches {
+                    idle: Handle::from_memory(include_bytes!("../res/icons/idle.png")),
+                    in_progress: Handle::from_memory(include_bytes!(
+                        "../res/icons/in-progress.png"
+                    )),
+                    succeeded: Handle::from_memory(include_bytes!("../res/icons/positive.png")),
+                    failed: Handle::from_memory(include_bytes!("../res/icons/negative.png")),
+                    skipped: Handle::from_memory(include_bytes!("../res/icons/skip.png")),
+
+                    bright: ThemedIcons {
+                        play: Handle::from_memory(include_bytes!("../res/icons/play-w.png")),
+                        stop: Handle::from_memory(include_bytes!("../res/icons/stop-w.png")),
+                        retry: Handle::from_memory(include_bytes!("../res/icons/retry-w.png")),
+                        remove: Handle::from_memory(include_bytes!("../res/icons/remove-w.png")),
+                        plus: Handle::from_memory(include_bytes!("../res/icons/plus-w.png")),
+                        settings: Handle::from_memory(include_bytes!(
+                            "../res/icons/settings-w.png"
                         )),
-                        succeeded: Handle::from_memory(include_bytes!("../res/icons/positive.png")),
-                        failed: Handle::from_memory(include_bytes!("../res/icons/negative.png")),
-                        skipped: Handle::from_memory(include_bytes!("../res/icons/skip.png")),
+                        up: Handle::from_memory(include_bytes!("../res/icons/up-w.png")),
+                        down: Handle::from_memory(include_bytes!("../res/icons/down-w.png")),
+                        back: Handle::from_memory(include_bytes!("../res/icons/back-w.png")),
+                        log: Handle::from_memory(include_bytes!("../res/icons/log-w.png")),
+                        edit: Handle::from_memory(include_bytes!("../res/icons/edit-w.png")),
+                        quick_launch: Handle::from_memory(include_bytes!(
+                            "../res/icons/quick_launch-w.png"
+                        )),
+                    },
+                    dark: ThemedIcons {
+                        play: Handle::from_memory(include_bytes!("../res/icons/play-b.png")),
+                        stop: Handle::from_memory(include_bytes!("../res/icons/stop-b.png")),
+                        retry: Handle::from_memory(include_bytes!("../res/icons/retry-b.png")),
+                        remove: Handle::from_memory(include_bytes!("../res/icons/remove-b.png")),
+                        plus: Handle::from_memory(include_bytes!("../res/icons/plus-b.png")),
+                        settings: Handle::from_memory(include_bytes!(
+                            "../res/icons/settings-b.png"
+                        )),
+                        up: Handle::from_memory(include_bytes!("../res/icons/up-b.png")),
+                        down: Handle::from_memory(include_bytes!("../res/icons/down-b.png")),
+                        back: Handle::from_memory(include_bytes!("../res/icons/back-b.png")),
+                        log: Handle::from_memory(include_bytes!("../res/icons/log-b.png")),
+                        edit: Handle::from_memory(include_bytes!("../res/icons/edit-b.png")),
+                        quick_launch: Handle::from_memory(include_bytes!(
+                            "../res/icons/quick_launch-b.png"
+                        )),
+                    },
 
-                        bright: ThemedIcons {
-                            play: Handle::from_memory(include_bytes!("../res/icons/play-w.png")),
-                            stop: Handle::from_memory(include_bytes!("../res/icons/stop-w.png")),
-                            retry: Handle::from_memory(include_bytes!("../res/icons/retry-w.png")),
-                            remove: Handle::from_memory(include_bytes!(
-                                "../res/icons/remove-w.png"
-                            )),
-                            plus: Handle::from_memory(include_bytes!("../res/icons/plus-w.png")),
-                            settings: Handle::from_memory(include_bytes!(
-                                "../res/icons/settings-w.png"
-                            )),
-                            up: Handle::from_memory(include_bytes!("../res/icons/up-w.png")),
-                            down: Handle::from_memory(include_bytes!("../res/icons/down-w.png")),
-                            back: Handle::from_memory(include_bytes!("../res/icons/back-w.png")),
-                            log: Handle::from_memory(include_bytes!("../res/icons/log-w.png")),
-                            edit: Handle::from_memory(include_bytes!("../res/icons/edit-w.png")),
-                            quick_launch: Handle::from_memory(include_bytes!(
-                                "../res/icons/quick_launch-w.png"
-                            )),
-                        },
-                        dark: ThemedIcons {
-                            play: Handle::from_memory(include_bytes!("../res/icons/play-b.png")),
-                            stop: Handle::from_memory(include_bytes!("../res/icons/stop-b.png")),
-                            retry: Handle::from_memory(include_bytes!("../res/icons/retry-b.png")),
-                            remove: Handle::from_memory(include_bytes!(
-                                "../res/icons/remove-b.png"
-                            )),
-                            plus: Handle::from_memory(include_bytes!("../res/icons/plus-b.png")),
-                            settings: Handle::from_memory(include_bytes!(
-                                "../res/icons/settings-b.png"
-                            )),
-                            up: Handle::from_memory(include_bytes!("../res/icons/up-b.png")),
-                            down: Handle::from_memory(include_bytes!("../res/icons/down-b.png")),
-                            back: Handle::from_memory(include_bytes!("../res/icons/back-b.png")),
-                            log: Handle::from_memory(include_bytes!("../res/icons/log-b.png")),
-                            edit: Handle::from_memory(include_bytes!("../res/icons/edit-b.png")),
-                            quick_launch: Handle::from_memory(include_bytes!(
-                                "../res/icons/quick_launch-b.png"
-                            )),
-                        },
-
-                        themed: ThemedIcons {
-                            play: Handle::from_memory(include_bytes!("../res/icons/play-b.png")),
-                            stop: Handle::from_memory(include_bytes!("../res/icons/stop-b.png")),
-                            retry: Handle::from_memory(include_bytes!("../res/icons/retry-b.png")),
-                            remove: Handle::from_memory(include_bytes!(
-                                "../res/icons/remove-b.png"
-                            )),
-                            plus: Handle::from_memory(include_bytes!("../res/icons/plus-b.png")),
-                            settings: Handle::from_memory(include_bytes!(
-                                "../res/icons/settings-b.png"
-                            )),
-                            up: Handle::from_memory(include_bytes!("../res/icons/up-b.png")),
-                            down: Handle::from_memory(include_bytes!("../res/icons/down-b.png")),
-                            back: Handle::from_memory(include_bytes!("../res/icons/back-b.png")),
-                            log: Handle::from_memory(include_bytes!("../res/icons/log-b.png")),
-                            edit: Handle::from_memory(include_bytes!("../res/icons/edit-b.png")),
-                            quick_launch: Handle::from_memory(include_bytes!(
-                                "../res/icons/quick_launch-b.png"
-                            )),
-                        },
+                    themed: ThemedIcons {
+                        play: Handle::from_memory(include_bytes!("../res/icons/play-b.png")),
+                        stop: Handle::from_memory(include_bytes!("../res/icons/stop-b.png")),
+                        retry: Handle::from_memory(include_bytes!("../res/icons/retry-b.png")),
+                        remove: Handle::from_memory(include_bytes!("../res/icons/remove-b.png")),
+                        plus: Handle::from_memory(include_bytes!("../res/icons/plus-b.png")),
+                        settings: Handle::from_memory(include_bytes!(
+                            "../res/icons/settings-b.png"
+                        )),
+                        up: Handle::from_memory(include_bytes!("../res/icons/up-b.png")),
+                        down: Handle::from_memory(include_bytes!("../res/icons/down-b.png")),
+                        back: Handle::from_memory(include_bytes!("../res/icons/back-b.png")),
+                        log: Handle::from_memory(include_bytes!("../res/icons/log-b.png")),
+                        edit: Handle::from_memory(include_bytes!("../res/icons/edit-b.png")),
+                        quick_launch: Handle::from_memory(include_bytes!(
+                            "../res/icons/quick_launch-b.png"
+                        )),
                     },
                 },
-                edit_data: EditData {
-                    script_filter: String::new(),
-                    window_edit_data: None,
-                    currently_edited_script: None,
-                    is_dirty: false,
-                },
-                window_state: WindowState {
-                    pane_focus: None,
-                    cursor_script: None,
-                    full_window_size: Size::new(0.0, 0.0),
-                    is_command_key_down: false,
-                },
             },
-            Command::none(),
-        );
+            edit_data: EditData {
+                script_filter: String::new(),
+                window_edit_data: None,
+                currently_edited_script: None,
+                is_dirty: false,
+            },
+            window_state: WindowState {
+                pane_focus: None,
+                cursor_script: None,
+                full_window_size: Size::new(0.0, 0.0),
+                is_command_key_down: false,
+            },
+        };
 
-        update_theme_icons(&mut result.0);
-        update_config_cache(&mut result.0.app_config, &result.0.edit_data);
+        update_theme_icons(&mut main_window);
+        update_config_cache(&mut main_window.app_config, &main_window.edit_data);
 
-        return result;
+        return (main_window, Command::none());
     }
 
     fn title(&self) -> String {
