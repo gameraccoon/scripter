@@ -1277,18 +1277,7 @@ impl Application for MainWindow {
                 }
             }
             Message::FocusFilter => {
-                if self.panes.maximized().is_none() {
-                    if let Some(focus) = self.window_state.pane_focus {
-                        if &self.panes.panes[&focus].variant != &PaneVariant::ScriptList {
-                            self.window_state.pane_focus =
-                                Some(self.pane_by_pane_type[&PaneVariant::ScriptList]);
-                        }
-                    } else {
-                        self.window_state.pane_focus =
-                            Some(self.pane_by_pane_type[&PaneVariant::ScriptList]);
-                    }
-                }
-                return text_input::focus(FILTER_INPUT_ID.clone());
+                return focus_filter(self);
             }
             Message::OnCommandKeyStateChanged(is_command_key_down) => {
                 self.window_state.is_command_key_down = is_command_key_down;
@@ -3458,4 +3447,17 @@ fn add_script_to_execution(app: &mut MainWindow, script_uid: config::Guid) -> bo
     );
 
     return true;
+}
+
+fn focus_filter(app: &mut MainWindow) -> Command<Message> {
+    if app.panes.maximized().is_none() {
+        if let Some(focus) = app.window_state.pane_focus {
+            if &app.panes.panes[&focus].variant != &PaneVariant::ScriptList {
+                app.window_state.pane_focus = Some(app.pane_by_pane_type[&PaneVariant::ScriptList]);
+            }
+        } else {
+            app.window_state.pane_focus = Some(app.pane_by_pane_type[&PaneVariant::ScriptList]);
+        }
+    }
+    return text_input::focus(FILTER_INPUT_ID.clone());
 }
