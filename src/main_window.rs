@@ -55,6 +55,7 @@ const EDIT_COMMAND_HINT: &str = "Command+E to Edit";
 const EDIT_COMMAND_HINT: &str = "Ctrl+E to Edit";
 
 static FILTER_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
+static ARGUMENTS_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 
 #[derive(Clone)]
 struct ThemedIcons {
@@ -113,7 +114,7 @@ pub struct EditData {
     is_dirty: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum EditScriptType {
     ScriptConfig,
     ExecutionList,
@@ -250,6 +251,7 @@ pub enum Message {
     MoveScriptDown,
     MoveScriptUp,
     CursorConfirm,
+    SwitchPaneFocus(bool),
 }
 
 impl Application for MainWindow {
@@ -410,13 +412,6 @@ impl Application for MainWindow {
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::Clicked(pane) => {
-                if self.window_state.pane_focus != Some(pane) {
-                    if pane == self.pane_by_pane_type[&PaneVariant::ScriptList]
-                        || pane == self.pane_by_pane_type[&PaneVariant::ExecutionList]
-                    {
-                        clean_script_selection(&mut self.window_state.cursor_script);
-                    }
-                }
                 self.window_state.pane_focus = Some(pane);
             }
             Message::Resized(pane_grid::ResizeEvent { split, ratio }) => {
@@ -1200,112 +1195,10 @@ impl Application for MainWindow {
                 self.window_state.is_command_key_down = is_command_key_down;
             }
             Message::MoveCursorUp => {
-                if execution::has_started_execution(&self.execution_data) {
-                    return Command::none();
-                }
-
-                let focused_pane = if let Some(focus) = self.window_state.pane_focus {
-                    self.panes.panes[&focus].variant
-                } else {
-                    return Command::none();
-                };
-
-                if focused_pane == PaneVariant::ScriptList {
-                    if !self.edit_data.window_edit_data.is_some() {
-                        // normal list of scripts
-                        let scripts_count = self.app_config.displayed_configs_list_cache.len();
-
-                        if scripts_count > 0 {
-                            if let Some(cursor_script) = &mut self.window_state.cursor_script {
-                                if cursor_script.idx > 0 {
-                                    cursor_script.idx -= 1;
-                                } else {
-                                    cursor_script.idx = scripts_count - 1;
-                                }
-                            } else {
-                                self.window_state.cursor_script = Some(EditScriptId {
-                                    idx: scripts_count - 1,
-                                    script_type: EditScriptType::ScriptConfig,
-                                });
-                            }
-                        }
-                    } else {
-                        // edited script
-                        let scripts_count = self.app_config.displayed_configs_list_cache.len();
-
-                        let next_selection = if scripts_count == 0 {
-                            None
-                        } else {
-                            if let Some(edited_script) = &self.window_state.cursor_script {
-                                if edited_script.idx > 0 {
-                                    Some(edited_script.idx - 1)
-                                } else {
-                                    Some(scripts_count - 1)
-                                }
-                            } else {
-                                Some(scripts_count - 1)
-                            }
-                        };
-
-                        if let Some(next_selection) = next_selection {
-                            select_edited_script(self, next_selection);
-                        }
-                    }
-                }
+                move_cursor(self, true);
             }
             Message::MoveCursorDown => {
-                if execution::has_started_execution(&self.execution_data) {
-                    return Command::none();
-                }
-
-                let focused_pane = if let Some(focus) = self.window_state.pane_focus {
-                    self.panes.panes[&focus].variant
-                } else {
-                    return Command::none();
-                };
-
-                if focused_pane == PaneVariant::ScriptList {
-                    if !self.edit_data.window_edit_data.is_some() {
-                        // normal list of scripts
-                        let scripts_count = self.app_config.displayed_configs_list_cache.len();
-
-                        if scripts_count > 0 {
-                            if let Some(cursor_script) = &mut self.window_state.cursor_script {
-                                if cursor_script.idx < scripts_count - 1 {
-                                    cursor_script.idx += 1;
-                                } else {
-                                    cursor_script.idx = 0;
-                                }
-                            } else {
-                                self.window_state.cursor_script = Some(EditScriptId {
-                                    idx: 0,
-                                    script_type: EditScriptType::ScriptConfig,
-                                });
-                            }
-                        }
-                    } else {
-                        // edited script
-                        let scripts_count = self.app_config.displayed_configs_list_cache.len();
-
-                        let next_selection = if scripts_count == 0 {
-                            None
-                        } else {
-                            if let Some(edited_script) = &self.window_state.cursor_script {
-                                if edited_script.idx < scripts_count - 1 {
-                                    Some(edited_script.idx + 1)
-                                } else {
-                                    Some(0)
-                                }
-                            } else {
-                                Some(0)
-                            }
-                        };
-
-                        if let Some(next_selection) = next_selection {
-                            select_edited_script(self, next_selection);
-                        }
-                    }
-                }
+                move_cursor(self, false);
             }
             Message::MoveScriptDown => {
                 if execution::has_started_execution(&self.execution_data) {
@@ -1350,8 +1243,7 @@ impl Application for MainWindow {
                     return Command::none();
                 }
 
-                if self.edit_data.window_edit_data.is_some()
-                {
+                if self.edit_data.window_edit_data.is_some() {
                     return Command::none();
                 }
 
@@ -1377,6 +1269,35 @@ impl Application for MainWindow {
                             }
                         }
                     }
+                }
+            }
+            Message::SwitchPaneFocus(is_forward) => {
+                let new_selection = get_next_pane_selection(self, is_forward);
+
+                let mut should_select_arguments = false;
+
+                if new_selection == PaneVariant::Parameters {
+                    if let Some(focus) = self.window_state.pane_focus {
+                        if self.panes.panes[&focus].variant != PaneVariant::Parameters {
+                            if let Some(cursor_script) = &self.window_state.cursor_script {
+                                match cursor_script.script_type {
+                                    EditScriptType::ScriptConfig => {
+                                        should_select_arguments =
+                                            self.edit_data.window_edit_data.is_some();
+                                    }
+                                    EditScriptType::ExecutionList => {
+                                        should_select_arguments = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                self.window_state.pane_focus = Some(self.pane_by_pane_type[&new_selection]);
+
+                if should_select_arguments {
+                    return text_input::focus(ARGUMENTS_INPUT_ID.clone());
                 }
             }
         }
@@ -1548,6 +1469,7 @@ fn handle_shift_hotkey(
     match key_code {
         KeyCode::Down => Some(Message::MoveScriptDown),
         KeyCode::Up => Some(Message::MoveScriptUp),
+        KeyCode::Tab => Some(Message::SwitchPaneFocus(false)),
         _ => None,
     }
 }
@@ -1563,6 +1485,7 @@ fn handle_key_press(
         KeyCode::Down => Some(Message::MoveCursorDown),
         KeyCode::Up => Some(Message::MoveCursorUp),
         KeyCode::Enter => Some(Message::CursorConfirm),
+        KeyCode::Tab => Some(Message::SwitchPaneFocus(true)),
         _ => None,
     }
 }
@@ -2442,6 +2365,7 @@ fn produce_script_edit_content<'a>(
                         },
                     )
                     .padding(5)
+                    .id(ARGUMENTS_INPUT_ID.clone())
                     .into(),
             );
             if currently_edited_script.script_type == EditScriptType::ScriptConfig {
@@ -3488,6 +3412,7 @@ fn add_script_to_execution(
     if should_focus {
         let script_idx = app.execution_data.scripts_to_run.len() - 1;
         select_execution_script(app, script_idx);
+        app.window_state.pane_focus = Some(app.pane_by_pane_type[&PaneVariant::ExecutionList]);
     }
 
     return true;
@@ -3545,6 +3470,13 @@ fn select_execution_script(app: &mut MainWindow, script_idx: usize) {
         script_idx,
         EditScriptType::ExecutionList,
     );
+}
+
+fn select_script_by_type(app: &mut MainWindow, script_idx: usize, script_type: EditScriptType) {
+    match script_type {
+        EditScriptType::ScriptConfig => select_edited_script(app, script_idx),
+        EditScriptType::ExecutionList => select_execution_script(app, script_idx),
+    }
 }
 
 fn move_config_script_up(app: &mut MainWindow, index: usize) {
@@ -3605,4 +3537,133 @@ fn move_config_script_down(app: &mut MainWindow, index: usize) {
     }
 
     update_config_cache(&mut app.app_config, &app.edit_data);
+}
+
+fn move_cursor(app: &mut MainWindow, is_up: bool) {
+    if execution::has_started_execution(&app.execution_data) {
+        return;
+    }
+
+    let focused_pane = if let Some(focus) = app.window_state.pane_focus {
+        app.panes.panes[&focus].variant
+    } else {
+        return;
+    };
+
+    if focused_pane == PaneVariant::ScriptList || focused_pane == PaneVariant::ExecutionList {
+        let pane_script_type = match focused_pane {
+            PaneVariant::ScriptList => EditScriptType::ScriptConfig,
+            PaneVariant::ExecutionList => EditScriptType::ExecutionList,
+            _ => unreachable!(),
+        };
+
+        let scripts_count = match focused_pane {
+            PaneVariant::ScriptList => app.app_config.displayed_configs_list_cache.len(),
+            PaneVariant::ExecutionList => app.execution_data.scripts_to_run.len(),
+            _ => unreachable!(),
+        };
+
+        if scripts_count == 0 {
+            return;
+        }
+
+        let cursor_script_type = app
+            .window_state
+            .cursor_script
+            .as_ref()
+            .map(|x| x.script_type);
+        let cursor_script_idx = app.window_state.cursor_script.as_ref().map(|x| x.idx);
+
+        let next_selection = if cursor_script_idx.is_none()
+            || (cursor_script_idx.is_some() && cursor_script_type != Some(pane_script_type))
+        {
+            if is_up {
+                scripts_count - 1
+            } else {
+                0
+            }
+        } else {
+            let cursor_script_idx = cursor_script_idx.unwrap_or_default();
+            if is_up {
+                if cursor_script_idx > 0 {
+                    cursor_script_idx - 1
+                } else {
+                    scripts_count - 1
+                }
+            } else {
+                if cursor_script_idx + 1 < scripts_count {
+                    cursor_script_idx + 1
+                } else {
+                    0
+                }
+            }
+        };
+
+        select_script_by_type(app, next_selection, pane_script_type);
+    }
+}
+
+fn get_next_pane_selection(app: &MainWindow, is_forward: bool) -> PaneVariant {
+    if let Some(focus) = app.window_state.pane_focus {
+        // try to predict what the user wants to do
+
+        let is_editing = app.edit_data.window_edit_data.is_some();
+        let selected_script_type = app
+            .window_state
+            .cursor_script
+            .as_ref()
+            .map(|s| &s.script_type);
+
+        let have_scripts_in_execution = !app.execution_data.scripts_to_run.is_empty();
+        let have_parameters_open = if let Some(selected_script_type) = selected_script_type {
+            selected_script_type == &EditScriptType::ExecutionList || is_editing
+        } else {
+            false
+        };
+        let circle_clockwise = if let Some(selected_script_type) = selected_script_type {
+            let editing_script =
+                selected_script_type == &EditScriptType::ScriptConfig && is_editing;
+            editing_script != is_forward
+        } else {
+            is_forward
+        };
+
+        if &app.panes.panes[&focus].variant == &PaneVariant::ScriptList {
+            if !have_scripts_in_execution || !have_parameters_open {
+                if !have_scripts_in_execution && !have_parameters_open {
+                    PaneVariant::ScriptList
+                } else if !have_scripts_in_execution {
+                    PaneVariant::Parameters
+                } else {
+                    PaneVariant::ExecutionList
+                }
+            } else if circle_clockwise {
+                PaneVariant::ExecutionList
+            } else {
+                PaneVariant::Parameters
+            }
+        } else if &app.panes.panes[&focus].variant == &PaneVariant::ExecutionList {
+            if !have_parameters_open {
+                PaneVariant::ScriptList
+            } else if circle_clockwise {
+                PaneVariant::Parameters
+            } else {
+                PaneVariant::ScriptList
+            }
+        } else if &app.panes.panes[&focus].variant == &PaneVariant::Parameters {
+            if !have_scripts_in_execution {
+                PaneVariant::ScriptList
+            } else if circle_clockwise {
+                PaneVariant::ScriptList
+            } else {
+                PaneVariant::ExecutionList
+            }
+        } else {
+            // if we're in the log pane, go to the script list
+            PaneVariant::ScriptList
+        }
+    } else {
+        // if no panes selected, select ScriptList
+        PaneVariant::ScriptList
+    }
 }
