@@ -539,17 +539,7 @@ impl Application for MainWindow {
                 }
             }
             Message::OpenScriptEditing(script_idx) => {
-                set_selected_script(
-                    &mut self.edit_data.currently_edited_script,
-                    &self.execution_data,
-                    &get_script_definition_list_opt(
-                        &self.app_config,
-                        &self.edit_data.window_edit_data,
-                    ),
-                    &mut self.visual_caches,
-                    script_idx,
-                    EditScriptType::ExecutionList,
-                );
+                select_execution_script(self, script_idx);
             }
             Message::CloseScriptEditing => {
                 reset_selected_script(&mut self.edit_data.currently_edited_script);
@@ -639,33 +629,13 @@ impl Application for MainWindow {
                 self.execution_data
                     .scripts_to_run
                     .swap(script_idx, script_idx - 1);
-                set_selected_script(
-                    &mut self.edit_data.currently_edited_script,
-                    &self.execution_data,
-                    &get_script_definition_list_opt(
-                        &self.app_config,
-                        &self.edit_data.window_edit_data,
-                    ),
-                    &mut self.visual_caches,
-                    script_idx - 1,
-                    EditScriptType::ExecutionList,
-                );
+                select_execution_script(self, script_idx - 1);
             }
             Message::MoveExecutionScriptDown(script_idx) => {
                 self.execution_data
                     .scripts_to_run
                     .swap(script_idx, script_idx + 1);
-                set_selected_script(
-                    &mut self.edit_data.currently_edited_script,
-                    &self.execution_data,
-                    &get_script_definition_list_opt(
-                        &self.app_config,
-                        &self.edit_data.window_edit_data,
-                    ),
-                    &mut self.visual_caches,
-                    script_idx + 1,
-                    EditScriptType::ExecutionList,
-                );
+                select_execution_script(self, script_idx + 1);
             }
             Message::EditScriptName(new_name) => {
                 if let Some(preset) = get_editing_preset(&mut self.app_config, &self.edit_data) {
@@ -3507,14 +3477,7 @@ fn add_script_to_execution(
 
     if should_focus {
         let script_idx = app.execution_data.scripts_to_run.len() - 1;
-        set_selected_script(
-            &mut app.edit_data.currently_edited_script,
-            &app.execution_data,
-            &get_script_definition_list_opt(&app.app_config, &app.edit_data.window_edit_data),
-            &mut app.visual_caches,
-            script_idx,
-            EditScriptType::ExecutionList,
-        );
+        select_execution_script(app, script_idx);
     }
 
     return true;
@@ -3562,6 +3525,17 @@ fn select_edited_script(app: &mut MainWindow, script_idx: usize) {
     if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
         window_edit_data.is_editing_config = false;
     }
+}
+
+fn select_execution_script(app: &mut MainWindow, script_idx: usize) {
+    set_selected_script(
+        &mut app.edit_data.currently_edited_script,
+        &app.execution_data,
+        &app.execution_data.scripts_to_run,
+        &mut app.visual_caches,
+        script_idx,
+        EditScriptType::ExecutionList,
+    );
 }
 
 fn move_config_script_up(app: &mut MainWindow, index: usize) {
