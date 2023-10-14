@@ -107,8 +107,6 @@ pub struct MainWindow {
 pub struct EditData {
     // a string that is used to filter the list of scripts
     script_filter: String,
-    // identifies the script being edited, if any
-    currently_edited_script: Option<EditScriptId>,
     // state of the global to the window editing mode
     window_edit_data: Option<WindowEditData>,
     // do we have unsaved changes
@@ -366,7 +364,6 @@ impl Application for MainWindow {
             edit_data: EditData {
                 script_filter: String::new(),
                 window_edit_data: None,
-                currently_edited_script: None,
                 is_dirty: false,
             },
             window_state: WindowState {
@@ -414,7 +411,11 @@ impl Application for MainWindow {
         match message {
             Message::Clicked(pane) => {
                 if self.window_state.pane_focus != Some(pane) {
-                    self.window_state.cursor_script = None;
+                    if pane == self.pane_by_pane_type[&PaneVariant::ScriptList]
+                        || pane == self.pane_by_pane_type[&PaneVariant::ExecutionList]
+                    {
+                        clean_script_selection(&mut self.window_state.cursor_script);
+                    }
                 }
                 self.window_state.pane_focus = Some(pane);
             }
@@ -427,7 +428,7 @@ impl Application for MainWindow {
             Message::Dragged(_) => {}
             Message::Maximize(pane, window_size) => {
                 if self.window_state.pane_focus != Some(pane) {
-                    self.window_state.cursor_script = None;
+                    clean_script_selection(&mut self.window_state.cursor_script);
                 }
                 self.window_state.pane_focus = Some(pane);
                 self.panes.maximize(&pane);
@@ -542,8 +543,7 @@ impl Application for MainWindow {
                 select_execution_script(self, script_idx);
             }
             Message::CloseScriptEditing => {
-                clean_script_selection(&mut self.edit_data.currently_edited_script);
-                self.window_state.cursor_script = None;
+                clean_script_selection(&mut self.window_state.cursor_script);
             }
             Message::DuplicateConfigScript(script_id) => {
                 match script_id.script_type {
@@ -572,7 +572,7 @@ impl Application for MainWindow {
                     },
                     EditScriptType::ExecutionList => {}
                 };
-                if let Some(script) = &mut self.edit_data.currently_edited_script {
+                if let Some(script) = &mut self.window_state.cursor_script {
                     script.idx = script_id.idx + 1;
                     script.script_type = script_id.script_type;
                 }
@@ -606,8 +606,7 @@ impl Application for MainWindow {
                         );
                     }
                 }
-                clean_script_selection(&mut self.edit_data.currently_edited_script);
-                self.window_state.cursor_script = None;
+                clean_script_selection(&mut self.window_state.cursor_script);
             }
             Message::AddScriptToConfig => {
                 let script = config::OriginalScriptDefinition {
@@ -638,7 +637,9 @@ impl Application for MainWindow {
                 select_execution_script(self, script_idx + 1);
             }
             Message::EditScriptName(new_name) => {
-                if let Some(preset) = get_editing_preset(&mut self.app_config, &self.edit_data) {
+                if let Some(preset) =
+                    get_editing_preset(&mut self.app_config, &self.edit_data, &self.window_state)
+                {
                     preset.name = new_name;
                     self.edit_data.is_dirty = true;
                     update_config_cache(&mut self.app_config, &self.edit_data);
@@ -659,7 +660,9 @@ impl Application for MainWindow {
                 });
             }
             Message::EditScriptIconPath(new_icon_path) => {
-                if let Some(preset) = get_editing_preset(&mut self.app_config, &self.edit_data) {
+                if let Some(preset) =
+                    get_editing_preset(&mut self.app_config, &self.edit_data, &self.window_state)
+                {
                     preset.icon.path = new_icon_path;
                     self.edit_data.is_dirty = true;
                     update_config_cache(&mut self.app_config, &self.edit_data);
@@ -674,7 +677,9 @@ impl Application for MainWindow {
                     config::PathType::WorkingDirRelative
                 };
 
-                if let Some(preset) = get_editing_preset(&mut self.app_config, &self.edit_data) {
+                if let Some(preset) =
+                    get_editing_preset(&mut self.app_config, &self.edit_data, &self.window_state)
+                {
                     preset.icon.path_type = new_path_type;
                     self.edit_data.is_dirty = true;
                     update_config_cache(&mut self.app_config, &self.edit_data);
@@ -793,8 +798,7 @@ impl Application for MainWindow {
                 config::populate_parent_scripts_from_config(&mut self.app_config);
                 apply_theme(self);
                 self.edit_data.is_dirty = false;
-                clean_script_selection(&mut self.edit_data.currently_edited_script);
-                self.window_state.cursor_script = None;
+                clean_script_selection(&mut self.window_state.cursor_script);
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
             Message::OpenScriptConfigEditing(script_idx) => {
@@ -823,8 +827,7 @@ impl Application for MainWindow {
                         ));
                     }
                 };
-                clean_script_selection(&mut self.edit_data.currently_edited_script);
-                self.window_state.cursor_script = None;
+                clean_script_selection(&mut self.window_state.cursor_script);
             }
             Message::ConfigToggleAlwaysOnTop(is_checked) => {
                 get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
@@ -972,21 +975,19 @@ impl Application for MainWindow {
                 self.edit_data.is_dirty = true;
             }
             Message::SwitchToParentConfig => {
-                clean_script_selection(&mut self.edit_data.currently_edited_script);
+                clean_script_selection(&mut self.window_state.cursor_script);
                 switch_config_edit_mode(self, ConfigEditType::Parent);
                 apply_theme(self);
                 update_config_cache(&mut self.app_config, &self.edit_data);
-                self.window_state.cursor_script = None;
             }
             Message::SwitchToChildConfig => {
-                clean_script_selection(&mut self.edit_data.currently_edited_script);
+                clean_script_selection(&mut self.window_state.cursor_script);
                 switch_config_edit_mode(self, ConfigEditType::Child);
                 apply_theme(self);
                 update_config_cache(&mut self.app_config, &self.edit_data);
-                self.window_state.cursor_script = None;
             }
             Message::ToggleScriptHidden(is_hidden) => {
-                let Some(script_id) = &mut self.edit_data.currently_edited_script else {
+                let Some(script_id) = &mut self.window_state.cursor_script else {
                     return Command::none();
                 };
 
@@ -1173,7 +1174,7 @@ impl Application for MainWindow {
             Message::ScriptFilterChanged(new_filter_value) => {
                 self.edit_data.script_filter = new_filter_value;
                 update_config_cache(&mut self.app_config, &self.edit_data);
-                self.window_state.cursor_script = None;
+                clean_script_selection(&mut self.window_state.cursor_script);
             }
             Message::RequestCloseApp => {
                 let exit_thread_command = || {
@@ -1235,7 +1236,7 @@ impl Application for MainWindow {
                         let next_selection = if scripts_count == 0 {
                             None
                         } else {
-                            if let Some(edited_script) = &self.edit_data.currently_edited_script {
+                            if let Some(edited_script) = &self.window_state.cursor_script {
                                 if edited_script.idx > 0 {
                                     Some(edited_script.idx - 1)
                                 } else {
@@ -1289,7 +1290,7 @@ impl Application for MainWindow {
                         let next_selection = if scripts_count == 0 {
                             None
                         } else {
-                            if let Some(edited_script) = &self.edit_data.currently_edited_script {
+                            if let Some(edited_script) = &self.window_state.cursor_script {
                                 if edited_script.idx < scripts_count - 1 {
                                     Some(edited_script.idx + 1)
                                 } else {
@@ -1319,7 +1320,7 @@ impl Application for MainWindow {
 
                 if focused_pane == PaneVariant::ScriptList {
                     if self.edit_data.window_edit_data.is_some() {
-                        if let Some(edited_script) = &self.edit_data.currently_edited_script {
+                        if let Some(edited_script) = &self.window_state.cursor_script {
                             move_config_script_down(self, edited_script.idx);
                         }
                     }
@@ -1338,7 +1339,7 @@ impl Application for MainWindow {
 
                 if focused_pane == PaneVariant::ScriptList {
                     if self.edit_data.window_edit_data.is_some() {
-                        if let Some(edited_script) = &self.edit_data.currently_edited_script {
+                        if let Some(edited_script) = &self.window_state.cursor_script {
                             move_config_script_up(self, edited_script.idx);
                         }
                     }
@@ -1346,6 +1347,11 @@ impl Application for MainWindow {
             }
             Message::CursorConfirm => {
                 if execution::has_started_execution(&self.execution_data) {
+                    return Command::none();
+                }
+
+                if self.edit_data.window_edit_data.is_some()
+                {
                     return Command::none();
                 }
 
@@ -1741,20 +1747,13 @@ fn produce_script_list_content<'a>(
                         row![]
                     };
 
-                    let is_selected = match &edit_data.currently_edited_script {
+                    let is_selected = match &window_state.cursor_script {
                         Some(EditScriptId { idx, script_type })
                             if *idx == i && *script_type == EditScriptType::ScriptConfig =>
                         {
                             true
                         }
-                        _ => match &window_state.cursor_script {
-                            Some(EditScriptId { idx, script_type })
-                                if *idx == i && *script_type == EditScriptType::ScriptConfig =>
-                            {
-                                true
-                            }
-                            _ => false,
-                        },
+                        _ => false,
                     };
 
                     let item_button = button(
@@ -1966,7 +1965,7 @@ fn produce_execution_list_content<'a>(
                     String::new()
                 };
 
-                let is_selected = match &edit_data.currently_edited_script {
+                let is_selected = match &window_state.cursor_script {
                     Some(selected_script) => {
                         selected_script.idx == i
                             && selected_script.script_type == EditScriptType::ExecutionList
@@ -2356,14 +2355,21 @@ fn produce_script_edit_content<'a>(
     visual_caches: &VisualCaches,
     edit_data: &EditData,
     app_config: &config::AppConfig,
+    window_state: &WindowState,
 ) -> Column<'a, Message> {
     if execution::has_started_execution(&execution_data) {
         return Column::new();
     }
 
-    let Some(currently_edited_script) = &edit_data.currently_edited_script else {
+    let Some(currently_edited_script) = &window_state.cursor_script else {
         return Column::new();
     };
+
+    if currently_edited_script.script_type == EditScriptType::ScriptConfig {
+        if edit_data.window_edit_data.is_none() {
+            return Column::new();
+        }
+    }
 
     let edit_button = |label, message| {
         button(
@@ -2734,7 +2740,13 @@ fn view_content<'a>(
             Some(window_edit_data) if window_edit_data.is_editing_config => {
                 produce_config_edit_content(config, window_edit_data)
             }
-            _ => produce_script_edit_content(execution_data, visual_caches, edit_data, config),
+            _ => produce_script_edit_content(
+                execution_data,
+                visual_caches,
+                edit_data,
+                config,
+                window_state,
+            ),
         },
     };
 
@@ -2826,7 +2838,7 @@ fn apply_script_edit(
     app: &mut MainWindow,
     edit_fn: impl FnOnce(&mut config::OriginalScriptDefinition),
 ) {
-    if let Some(script_id) = &app.edit_data.currently_edited_script {
+    if let Some(script_id) = &app.window_state.cursor_script {
         match script_id.script_type {
             EditScriptType::ScriptConfig => match &app.edit_data.window_edit_data {
                 Some(window_edit_data) if window_edit_data.edit_type == ConfigEditType::Child => {
@@ -3352,8 +3364,9 @@ fn add_script_to_config(app: &mut MainWindow, script: config::ScriptDefinition) 
 fn get_editing_preset<'a>(
     app_config: &'a mut config::AppConfig,
     edit_data: &EditData,
+    window_state: &WindowState,
 ) -> Option<&'a mut config::ScriptPreset> {
-    if let Some(script_id) = &edit_data.currently_edited_script {
+    if let Some(script_id) = &window_state.cursor_script {
         if script_id.script_type == EditScriptType::ScriptConfig {
             let script_definition = get_script_definition_mut(app_config, edit_data, script_id.idx);
             if let config::ScriptDefinition::Preset(preset) = script_definition {
@@ -3375,17 +3388,15 @@ fn enter_window_edit_mode(app: &mut MainWindow) {
         },
     ));
     app.edit_data.script_filter = String::new();
-    clean_script_selection(&mut app.edit_data.currently_edited_script);
+    clean_script_selection(&mut app.window_state.cursor_script);
     update_config_cache(&mut app.app_config, &app.edit_data);
-    app.window_state.cursor_script = None;
 }
 
 fn exit_window_edit_mode(app: &mut MainWindow) {
     app.edit_data.window_edit_data = None;
-    clean_script_selection(&mut app.edit_data.currently_edited_script);
+    clean_script_selection(&mut app.window_state.cursor_script);
     apply_theme(app);
     update_config_cache(&mut app.app_config, &app.edit_data);
-    app.window_state.cursor_script = None;
 }
 
 fn run_scheduled_scripts(app: &mut MainWindow) {
@@ -3404,9 +3415,8 @@ fn run_scheduled_scripts(app: &mut MainWindow) {
 
     if !execution::has_started_execution(&app.execution_data) {
         app.visual_caches.recent_logs.clear();
-        clean_script_selection(&mut app.edit_data.currently_edited_script);
+        clean_script_selection(&mut app.window_state.cursor_script);
         execution::run_scripts(&mut app.execution_data, &app.app_config);
-        app.window_state.cursor_script = None;
     }
 
     app.edit_data.script_filter = String::new();
@@ -3509,13 +3519,12 @@ fn clear_scripts(app: &mut MainWindow) {
     join_execution_thread(&mut app.execution_data);
     app.execution_data = execution::new_execution_data();
     app.execution_data.has_started = false;
-    clean_script_selection(&mut app.edit_data.currently_edited_script);
-    app.window_state.cursor_script = None;
+    clean_script_selection(&mut app.window_state.cursor_script);
 }
 
 fn select_edited_script(app: &mut MainWindow, script_idx: usize) {
     set_selected_script(
-        &mut app.edit_data.currently_edited_script,
+        &mut app.window_state.cursor_script,
         &app.execution_data,
         &get_script_definition_list_opt(&app.app_config, &app.edit_data.window_edit_data),
         &mut app.visual_caches,
@@ -3529,7 +3538,7 @@ fn select_edited_script(app: &mut MainWindow, script_idx: usize) {
 
 fn select_execution_script(app: &mut MainWindow, script_idx: usize) {
     set_selected_script(
-        &mut app.edit_data.currently_edited_script,
+        &mut app.window_state.cursor_script,
         &app.execution_data,
         &app.execution_data.scripts_to_run,
         &mut app.visual_caches,
@@ -3558,7 +3567,7 @@ fn move_config_script_up(app: &mut MainWindow, index: usize) {
         }
     }
 
-    if let Some(edited_script) = &app.edit_data.currently_edited_script {
+    if let Some(edited_script) = &app.window_state.cursor_script {
         if edited_script.idx == index && index > 0 {
             select_edited_script(app, index - 1);
         }
@@ -3587,7 +3596,7 @@ fn move_config_script_down(app: &mut MainWindow, index: usize) {
         }
     }
 
-    if let Some(edited_script) = &app.edit_data.currently_edited_script {
+    if let Some(edited_script) = &app.window_state.cursor_script {
         if edited_script.idx == index
             && index + 1 < app.app_config.displayed_configs_list_cache.len()
         {
