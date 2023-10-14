@@ -1623,6 +1623,7 @@ fn produce_script_list_content<'a>(
     edit_data: &EditData,
     icons: &IconCaches,
     window_state: &WindowState,
+    theme: &Theme,
 ) -> Column<'a, Message> {
     if let Some(error) = &config.config_read_error {
         return column![text(format!("Error: {}", error))];
@@ -1827,10 +1828,18 @@ fn produce_script_list_content<'a>(
                 if !edit_data.script_filter.is_empty() {
                     column![
                         vertical_space(Length::Fixed(4.0)),
-                        button(image(icons.themed.remove.clone()))
-                            .style(theme::Button::Destructive)
-                            .height(Length::Fixed(22.0))
-                            .on_press(Message::ScriptFilterChanged("".to_string())),
+                        button(image(
+                            (if theme.extended_palette().danger.base.text.r > 0.5 {
+                                &icons.bright
+                            } else {
+                                &icons.dark
+                            })
+                            .remove
+                            .clone()
+                        ))
+                        .style(theme::Button::Destructive)
+                        .height(Length::Fixed(22.0))
+                        .on_press(Message::ScriptFilterChanged("".to_string())),
                     ]
                 } else {
                     column![]
@@ -2029,7 +2038,7 @@ fn produce_execution_list_content<'a>(
                     row_data.push(
                         tooltip(
                             inline_icon_button(
-                                (if theme.extended_palette().danger.strong.text.r > 0.5 {
+                                (if theme.extended_palette().danger.base.text.r > 0.5 {
                                     &icons.bright
                                 } else {
                                     &icons.dark
@@ -2655,6 +2664,7 @@ fn view_content<'a>(
             edit_data,
             &visual_caches.icons,
             window_state,
+            theme,
         ),
         PaneVariant::ExecutionList => produce_execution_list_content(
             execution_data,
