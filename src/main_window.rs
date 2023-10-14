@@ -1191,6 +1191,18 @@ impl Application for MainWindow {
                             move_config_script_down(self, edited_script.idx);
                         }
                     }
+                } else if focused_pane == PaneVariant::ExecutionList {
+                    if let Some(cursor_script) = &self.window_state.cursor_script {
+                        if cursor_script.script_type == EditScriptType::ExecutionList {
+                            if cursor_script.idx + 1 >= self.execution_data.scripts_to_run.len() {
+                                return Command::none();
+                            }
+                            self.execution_data
+                                .scripts_to_run
+                                .swap(cursor_script.idx, cursor_script.idx + 1);
+                            select_execution_script(self, cursor_script.idx + 1);
+                        }
+                    }
                 }
             }
             Message::MoveScriptUp => {
@@ -1208,6 +1220,18 @@ impl Application for MainWindow {
                     if self.edit_data.window_edit_data.is_some() {
                         if let Some(edited_script) = &self.window_state.cursor_script {
                             move_config_script_up(self, edited_script.idx);
+                        }
+                    }
+                } else if focused_pane == PaneVariant::ExecutionList {
+                    if let Some(cursor_script) = &self.window_state.cursor_script {
+                        if cursor_script.script_type == EditScriptType::ExecutionList {
+                            if cursor_script.idx == 0 {
+                                return Command::none();
+                            }
+                            self.execution_data
+                                .scripts_to_run
+                                .swap(cursor_script.idx, cursor_script.idx - 1);
+                            select_execution_script(self, cursor_script.idx - 1);
                         }
                     }
                 }
