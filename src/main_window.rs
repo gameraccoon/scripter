@@ -542,7 +542,7 @@ impl Application for MainWindow {
                 select_execution_script(self, script_idx);
             }
             Message::CloseScriptEditing => {
-                reset_selected_script(&mut self.edit_data.currently_edited_script);
+                clean_script_selection(&mut self.edit_data.currently_edited_script);
                 self.window_state.cursor_script = None;
             }
             Message::DuplicateConfigScript(script_id) => {
@@ -606,7 +606,7 @@ impl Application for MainWindow {
                         );
                     }
                 }
-                reset_selected_script(&mut self.edit_data.currently_edited_script);
+                clean_script_selection(&mut self.edit_data.currently_edited_script);
                 self.window_state.cursor_script = None;
             }
             Message::AddScriptToConfig => {
@@ -793,7 +793,7 @@ impl Application for MainWindow {
                 config::populate_parent_scripts_from_config(&mut self.app_config);
                 apply_theme(self);
                 self.edit_data.is_dirty = false;
-                reset_selected_script(&mut self.edit_data.currently_edited_script);
+                clean_script_selection(&mut self.edit_data.currently_edited_script);
                 self.window_state.cursor_script = None;
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
@@ -823,7 +823,7 @@ impl Application for MainWindow {
                         ));
                     }
                 };
-                reset_selected_script(&mut self.edit_data.currently_edited_script);
+                clean_script_selection(&mut self.edit_data.currently_edited_script);
                 self.window_state.cursor_script = None;
             }
             Message::ConfigToggleAlwaysOnTop(is_checked) => {
@@ -972,14 +972,14 @@ impl Application for MainWindow {
                 self.edit_data.is_dirty = true;
             }
             Message::SwitchToParentConfig => {
-                reset_selected_script(&mut self.edit_data.currently_edited_script);
+                clean_script_selection(&mut self.edit_data.currently_edited_script);
                 switch_config_edit_mode(self, ConfigEditType::Parent);
                 apply_theme(self);
                 update_config_cache(&mut self.app_config, &self.edit_data);
                 self.window_state.cursor_script = None;
             }
             Message::SwitchToChildConfig => {
-                reset_selected_script(&mut self.edit_data.currently_edited_script);
+                clean_script_selection(&mut self.edit_data.currently_edited_script);
                 switch_config_edit_mode(self, ConfigEditType::Child);
                 apply_theme(self);
                 update_config_cache(&mut self.app_config, &self.edit_data);
@@ -1596,7 +1596,7 @@ fn set_selected_script(
     };
 }
 
-fn reset_selected_script(currently_edited_script: &mut Option<EditScriptId>) {
+fn clean_script_selection(currently_edited_script: &mut Option<EditScriptId>) {
     *currently_edited_script = None;
 }
 
@@ -3375,14 +3375,14 @@ fn enter_window_edit_mode(app: &mut MainWindow) {
         },
     ));
     app.edit_data.script_filter = String::new();
-    reset_selected_script(&mut app.edit_data.currently_edited_script);
+    clean_script_selection(&mut app.edit_data.currently_edited_script);
     update_config_cache(&mut app.app_config, &app.edit_data);
     app.window_state.cursor_script = None;
 }
 
 fn exit_window_edit_mode(app: &mut MainWindow) {
     app.edit_data.window_edit_data = None;
-    reset_selected_script(&mut app.edit_data.currently_edited_script);
+    clean_script_selection(&mut app.edit_data.currently_edited_script);
     apply_theme(app);
     update_config_cache(&mut app.app_config, &app.edit_data);
     app.window_state.cursor_script = None;
@@ -3404,7 +3404,7 @@ fn run_scheduled_scripts(app: &mut MainWindow) {
 
     if !execution::has_started_execution(&app.execution_data) {
         app.visual_caches.recent_logs.clear();
-        reset_selected_script(&mut app.edit_data.currently_edited_script);
+        clean_script_selection(&mut app.edit_data.currently_edited_script);
         execution::run_scripts(&mut app.execution_data, &app.app_config);
         app.window_state.cursor_script = None;
     }
@@ -3509,7 +3509,7 @@ fn clear_scripts(app: &mut MainWindow) {
     join_execution_thread(&mut app.execution_data);
     app.execution_data = execution::new_execution_data();
     app.execution_data.has_started = false;
-    reset_selected_script(&mut app.edit_data.currently_edited_script);
+    clean_script_selection(&mut app.edit_data.currently_edited_script);
     app.window_state.cursor_script = None;
 }
 
