@@ -1066,17 +1066,7 @@ impl Application for MainWindow {
                     config
                         .script_definitions
                         .insert(script_id.idx + 1, new_script);
-                    set_selected_script(
-                        &mut self.edit_data.currently_edited_script,
-                        &self.execution_data,
-                        &get_script_definition_list_opt(
-                            &self.app_config,
-                            &self.edit_data.window_edit_data,
-                        ),
-                        &mut self.visual_caches,
-                        script_id.idx + 1,
-                        EditScriptType::ScriptConfig,
-                    );
+                    select_edited_script(self, script_id.idx + 1);
                     self.edit_data.is_dirty = true;
                 }
                 update_config_cache(&mut self.app_config, &self.edit_data);
@@ -1108,17 +1098,7 @@ impl Application for MainWindow {
 
                         swap(script, &mut replacement_script);
                         self.app_config.script_definitions.push(replacement_script);
-                        set_selected_script(
-                            &mut self.edit_data.currently_edited_script,
-                            &self.execution_data,
-                            &get_script_definition_list_opt(
-                                &self.app_config,
-                                &self.edit_data.window_edit_data,
-                            ),
-                            &mut self.visual_caches,
-                            self.app_config.script_definitions.len() - 1,
-                            EditScriptType::ScriptConfig,
-                        );
+                        select_edited_script(self, self.app_config.script_definitions.len() - 1);
                         self.edit_data.is_dirty = true;
                     }
                 }
@@ -3393,14 +3373,7 @@ fn add_script_to_config(app: &mut MainWindow, script: config::ScriptDefinition) 
             .is_editing_config = false;
 
         if let Some(script_idx) = script_idx {
-            set_selected_script(
-                &mut app.edit_data.currently_edited_script,
-                &app.execution_data,
-                &get_script_definition_list_opt(&app.app_config, &app.edit_data.window_edit_data),
-                &mut app.visual_caches,
-                script_idx,
-                EditScriptType::ScriptConfig,
-            );
+            select_edited_script(app, script_idx);
             app.edit_data.is_dirty = true;
         }
     }
@@ -3613,14 +3586,7 @@ fn move_config_script_up(app: &mut MainWindow, index: usize) {
 
     if let Some(edited_script) = &app.edit_data.currently_edited_script {
         if edited_script.idx == index && index > 0 {
-            set_selected_script(
-                &mut app.edit_data.currently_edited_script,
-                &app.execution_data,
-                &get_script_definition_list_opt(&app.app_config, &app.edit_data.window_edit_data),
-                &mut app.visual_caches,
-                index - 1,
-                EditScriptType::ScriptConfig,
-            );
+            select_edited_script(app, index - 1);
         }
     }
 
@@ -3651,14 +3617,7 @@ fn move_config_script_down(app: &mut MainWindow, index: usize) {
         if edited_script.idx == index
             && index + 1 < app.app_config.displayed_configs_list_cache.len()
         {
-            set_selected_script(
-                &mut app.edit_data.currently_edited_script,
-                &app.execution_data,
-                &get_script_definition_list_opt(&app.app_config, &app.edit_data.window_edit_data),
-                &mut app.visual_caches,
-                index + 1,
-                EditScriptType::ScriptConfig,
-            );
+            select_edited_script(app, index + 1);
         }
     }
 
