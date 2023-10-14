@@ -38,6 +38,18 @@ const RUN_COMMAND_HINT: &str = "Command+R to Run";
 #[cfg(not(target_os = "macos"))]
 const RUN_COMMAND_HINT: &str = "Ctrl+R to Run";
 #[cfg(target_os = "macos")]
+const RESCHEDULE_COMMAND_HINT: &str = "Command+R to Reschedule";
+#[cfg(not(target_os = "macos"))]
+const RESCHEDULE_COMMAND_HINT: &str = "Ctrl+R to Reschedule";
+#[cfg(target_os = "macos")]
+const STOP_COMMAND_HINT: &str = "Command+C to Stop";
+#[cfg(not(target_os = "macos"))]
+const STOP_COMMAND_HINT: &str = "Ctrl+C to Stop";
+#[cfg(target_os = "macos")]
+const CLEAR_COMMAND_HINT: &str = "Command+C to Clear";
+#[cfg(not(target_os = "macos"))]
+const CLEAR_COMMAND_HINT: &str = "Ctrl+C to Clear";
+#[cfg(target_os = "macos")]
 const EDIT_COMMAND_HINT: &str = "Command+E to Edit";
 #[cfg(not(target_os = "macos"))]
 const EDIT_COMMAND_HINT: &str = "Ctrl+E to Edit";
@@ -178,8 +190,10 @@ pub enum Message {
     Restore,
     AddScriptToExecution(config::Guid),
     RunScripts,
+    RunOrRescheduleScripts,
     StopScripts,
     ClearScripts,
+    StopOrClearScripts,
     RescheduleScripts,
     Tick(Instant),
     OpenScriptEditing(usize),
@@ -471,6 +485,15 @@ impl Application for MainWindow {
                     run_scheduled_scripts(self);
                 }
             }
+            Message::RunOrRescheduleScripts => {
+                if !execution::has_started_execution(&self.execution_data) {
+                    if self.edit_data.window_edit_data.is_none() {
+                        run_scheduled_scripts(self);
+                    }
+                } else {
+                    reschedule_scripts(self);
+                }
+            }
             Message::StopScripts => {
                 if execution::has_started_execution(&self.execution_data)
                     && !execution::has_finished_execution(&self.execution_data)
@@ -478,21 +501,17 @@ impl Application for MainWindow {
                     execution::request_stop_execution(&mut self.execution_data);
                 }
             }
-            Message::ClearScripts => {
-                join_execution_thread(&mut self.execution_data);
-                self.execution_data = execution::new_execution_data();
-                self.execution_data.has_started = false;
-                reset_selected_script(&mut self.edit_data.currently_edited_script);
-                self.window_state.cursor_script = None;
-            }
-            Message::RescheduleScripts => {
-                join_execution_thread(&mut self.execution_data);
-                if !execution::has_started_execution(&self.execution_data) {
-                    return Command::none();
+            Message::StopOrClearScripts => {
+                if execution::has_started_execution(&self.execution_data)
+                    && !execution::has_finished_execution(&self.execution_data)
+                {
+                    execution::request_stop_execution(&mut self.execution_data);
+                } else if !execution::is_waiting_execution_thread_to_finish(&self.execution_data) {
+                    clear_scripts(self);
                 }
-
-                execution::reset_execution_progress(&mut self.execution_data);
             }
+            Message::ClearScripts => clear_scripts(self),
+            Message::RescheduleScripts => reschedule_scripts(self),
             Message::Tick(_now) => {
                 if let Some(rx) = &self.execution_data.progress_receiver {
                     if let Ok(progress) = rx.try_recv() {
@@ -1510,7 +1529,8 @@ fn handle_command_hotkey(
         KeyCode::W => Some(Message::RequestCloseApp),
         KeyCode::F => Some(Message::FocusFilter),
         KeyCode::E => Some(Message::TrySwitchWindowEditMode),
-        KeyCode::R => Some(Message::RunScripts),
+        KeyCode::R => Some(Message::RunOrRescheduleScripts),
+        KeyCode::C => Some(Message::StopOrClearScripts),
         KeyCode::Enter => Some(Message::CursorConfirm),
         _ => None,
     }
@@ -2154,6 +2174,12 @@ fn produce_execution_list_content<'a>(
     .align_items(Alignment::Start)
     .into();
 
+    let clear_name = if window_state.is_command_key_down {
+        CLEAR_COMMAND_HINT
+    } else {
+        "Clear"
+    };
+
     let controls = column![if edit_data.window_edit_data.is_some() {
         if !execution_data.scripts_to_run.is_empty() {
             row![main_button("Save as preset", Message::SaveAsPreset)]
@@ -2167,12 +2193,16 @@ fn produce_execution_list_content<'a>(
             row![
                 main_icon_button(
                     icons.themed.retry.clone(),
-                    "Reschedule",
+                    if window_state.is_command_key_down {
+                        RESCHEDULE_COMMAND_HINT
+                    } else {
+                        "Reschedule"
+                    },
                     Some(Message::RescheduleScripts)
                 ),
                 main_icon_button(
                     icons.themed.remove.clone(),
-                    "Clear",
+                    clear_name,
                     Some(Message::ClearScripts)
                 ),
             ]
@@ -2190,7 +2220,11 @@ fn produce_execution_list_content<'a>(
         } else {
             row![main_icon_button(
                 icons.themed.stop.clone(),
-                "Stop",
+                if window_state.is_command_key_down {
+                    STOP_COMMAND_HINT
+                } else {
+                    "Stop"
+                },
                 Some(Message::StopScripts)
             )]
             .align_items(Alignment::Center)
@@ -2225,7 +2259,7 @@ fn produce_execution_list_content<'a>(
             run_button,
             main_icon_button(
                 icons.themed.remove.clone(),
-                "Clear",
+                clear_name,
                 Some(Message::ClearScripts)
             ),
         ]
@@ -3457,4 +3491,21 @@ fn focus_filter(app: &mut MainWindow) -> Command<Message> {
         }
     }
     return text_input::focus(FILTER_INPUT_ID.clone());
+}
+
+fn reschedule_scripts(app: &mut MainWindow) {
+    if !execution::has_started_execution(&app.execution_data) {
+        return;
+    }
+    join_execution_thread(&mut app.execution_data);
+
+    execution::reset_execution_progress(&mut app.execution_data);
+}
+
+fn clear_scripts(app: &mut MainWindow) {
+    join_execution_thread(&mut app.execution_data);
+    app.execution_data = execution::new_execution_data();
+    app.execution_data.has_started = false;
+    reset_selected_script(&mut app.edit_data.currently_edited_script);
+    app.window_state.cursor_script = None;
 }
