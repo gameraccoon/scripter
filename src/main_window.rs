@@ -249,6 +249,8 @@ pub enum Message {
     OnCommandKeyStateChanged(bool),
     MoveCursorUp,
     MoveCursorDown,
+    MoveScriptDown,
+    MoveScriptUp,
     CursorConfirm,
 }
 
@@ -829,49 +831,10 @@ impl Application for MainWindow {
                 select_edited_script(self, script_idx);
             }
             Message::MoveConfigScriptUp(index) => {
-                if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
-                    match window_edit_data.edit_type {
-                        ConfigEditType::Parent => {
-                            if index >= 1 && index < self.app_config.script_definitions.len() {
-                                self.app_config.script_definitions.swap(index, index - 1);
-                                self.edit_data.is_dirty = true;
-                            }
-                        }
-                        ConfigEditType::Child => {
-                            if let Some(child_config_body) = &mut self.app_config.child_config_body
-                            {
-                                if index >= 1 && index < child_config_body.script_definitions.len()
-                                {
-                                    child_config_body.script_definitions.swap(index, index - 1);
-                                    self.edit_data.is_dirty = true;
-                                }
-                            }
-                        }
-                    }
-                }
-                update_config_cache(&mut self.app_config, &self.edit_data);
+                move_config_script_up(self, index);
             }
             Message::MoveConfigScriptDown(index) => {
-                if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
-                    match window_edit_data.edit_type {
-                        ConfigEditType::Parent => {
-                            if index < self.app_config.script_definitions.len() - 1 {
-                                self.app_config.script_definitions.swap(index, index + 1);
-                                self.edit_data.is_dirty = true;
-                            }
-                        }
-                        ConfigEditType::Child => {
-                            if let Some(child_config_body) = &mut self.app_config.child_config_body
-                            {
-                                if index < child_config_body.script_definitions.len() - 1 {
-                                    child_config_body.script_definitions.swap(index, index + 1);
-                                    self.edit_data.is_dirty = true;
-                                }
-                            }
-                        }
-                    }
-                }
-                update_config_cache(&mut self.app_config, &self.edit_data);
+                move_config_script_down(self, index);
             }
             Message::ToggleConfigEditing => {
                 match &mut self.edit_data.window_edit_data {
@@ -1393,6 +1356,44 @@ impl Application for MainWindow {
                     }
                 }
             }
+            Message::MoveScriptDown => {
+                if execution::has_started_execution(&self.execution_data) {
+                    return Command::none();
+                }
+
+                let focused_pane = if let Some(focus) = self.window_state.pane_focus {
+                    self.panes.panes[&focus].variant
+                } else {
+                    return Command::none();
+                };
+
+                if focused_pane == PaneVariant::ScriptList {
+                    if self.edit_data.window_edit_data.is_some() {
+                        if let Some(edited_script) = &self.edit_data.currently_edited_script {
+                            move_config_script_down(self, edited_script.idx);
+                        }
+                    }
+                }
+            }
+            Message::MoveScriptUp => {
+                if execution::has_started_execution(&self.execution_data) {
+                    return Command::none();
+                }
+
+                let focused_pane = if let Some(focus) = self.window_state.pane_focus {
+                    self.panes.panes[&focus].variant
+                } else {
+                    return Command::none();
+                };
+
+                if focused_pane == PaneVariant::ScriptList {
+                    if self.edit_data.window_edit_data.is_some() {
+                        if let Some(edited_script) = &self.edit_data.currently_edited_script {
+                            move_config_script_up(self, edited_script.idx);
+                        }
+                    }
+                }
+            }
             Message::CursorConfirm => {
                 if execution::has_started_execution(&self.execution_data) {
                     return Command::none();
@@ -1533,8 +1534,11 @@ impl Application for MainWindow {
                         };
 
                         let is_command_key_down = modifiers.command();
+                        let is_shift_key_down = modifiers.shift();
                         if is_command_key_down {
                             handle_command_hotkey(key_code, &status, is_input_captured_by_a_widget)
+                        } else if is_shift_key_down {
+                            handle_shift_hotkey(key_code, &status, is_input_captured_by_a_widget)
                         } else {
                             handle_key_press(key_code, &status, is_input_captured_by_a_widget)
                         }
@@ -1571,6 +1575,20 @@ fn handle_command_hotkey(
         KeyCode::R => Some(Message::RunOrRescheduleScripts),
         KeyCode::C => Some(Message::StopOrClearScripts),
         KeyCode::Enter => Some(Message::CursorConfirm),
+        _ => None,
+    }
+}
+
+fn handle_shift_hotkey(
+    key_code: keyboard::KeyCode,
+    _status: &event::Status,
+    _is_input_captured_by_a_widget: bool,
+) -> Option<Message> {
+    use keyboard::KeyCode;
+
+    match key_code {
+        KeyCode::Down => Some(Message::MoveScriptDown),
+        KeyCode::Up => Some(Message::MoveScriptUp),
         _ => None,
     }
 }
@@ -2111,7 +2129,7 @@ fn produce_execution_list_content<'a>(
                             .into(),
                         );
                     }
-                    if i < execution_data.scripts_to_run.len() - 1 {
+                    if i + 1 < execution_data.scripts_to_run.len() {
                         row_data.push(
                             inline_icon_button(
                                 icons.themed.down.clone(),
@@ -3561,4 +3579,78 @@ fn select_edited_script(app: &mut MainWindow, script_idx: usize) {
     if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
         window_edit_data.is_editing_config = false;
     }
+}
+
+fn move_config_script_up(app: &mut MainWindow, index: usize) {
+    if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
+        match window_edit_data.edit_type {
+            ConfigEditType::Parent => {
+                if index >= 1 && index < app.app_config.script_definitions.len() {
+                    app.app_config.script_definitions.swap(index, index - 1);
+                    app.edit_data.is_dirty = true;
+                }
+            }
+            ConfigEditType::Child => {
+                if let Some(child_config_body) = &mut app.app_config.child_config_body {
+                    if index >= 1 && index < child_config_body.script_definitions.len() {
+                        child_config_body.script_definitions.swap(index, index - 1);
+                        app.edit_data.is_dirty = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(edited_script) = &app.edit_data.currently_edited_script {
+        if edited_script.idx == index && index > 0 {
+            set_selected_script(
+                &mut app.edit_data.currently_edited_script,
+                &app.execution_data,
+                &get_script_definition_list_opt(&app.app_config, &app.edit_data.window_edit_data),
+                &mut app.visual_caches,
+                index - 1,
+                EditScriptType::ScriptConfig,
+            );
+        }
+    }
+
+    update_config_cache(&mut app.app_config, &app.edit_data);
+}
+
+fn move_config_script_down(app: &mut MainWindow, index: usize) {
+    if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
+        match window_edit_data.edit_type {
+            ConfigEditType::Parent => {
+                if index + 1 < app.app_config.script_definitions.len() {
+                    app.app_config.script_definitions.swap(index, index + 1);
+                    app.edit_data.is_dirty = true;
+                }
+            }
+            ConfigEditType::Child => {
+                if let Some(child_config_body) = &mut app.app_config.child_config_body {
+                    if index + 1 < child_config_body.script_definitions.len() {
+                        child_config_body.script_definitions.swap(index, index + 1);
+                        app.edit_data.is_dirty = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(edited_script) = &app.edit_data.currently_edited_script {
+        if edited_script.idx == index
+            && index + 1 < app.app_config.displayed_configs_list_cache.len()
+        {
+            set_selected_script(
+                &mut app.edit_data.currently_edited_script,
+                &app.execution_data,
+                &get_script_definition_list_opt(&app.app_config, &app.edit_data.window_edit_data),
+                &mut app.visual_caches,
+                index + 1,
+                EditScriptType::ScriptConfig,
+            );
+        }
+    }
+
+    update_config_cache(&mut app.app_config, &app.edit_data);
 }
