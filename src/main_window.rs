@@ -9,7 +9,7 @@ use iced::widget::{
     text, text_input, tooltip, vertical_space, Button, Column,
 };
 use iced::window::{request_user_attention, resize};
-use iced::{event, executor, keyboard, ContentFit, Event};
+use iced::{event, executor, keyboard, window, ContentFit, Event};
 use iced::{time, Size};
 use iced::{Application, Command, Element, Length, Subscription};
 use iced_lazy::responsive;
@@ -53,6 +53,14 @@ const CLEAR_COMMAND_HINT: &str = "Ctrl+C to Clear";
 const EDIT_COMMAND_HINT: &str = "Command+E to Edit";
 #[cfg(not(target_os = "macos"))]
 const EDIT_COMMAND_HINT: &str = "Ctrl+E to Edit";
+#[cfg(target_os = "macos")]
+const FOCUS_COMMAND_HINT: &str = "Command+Q to Focus";
+#[cfg(not(target_os = "macos"))]
+const FOCUS_COMMAND_HINT: &str = "Ctrl+Q to Focus";
+#[cfg(target_os = "macos")]
+const UNFOCUS_COMMAND_HINT: &str = "Command+Q to Restore full window";
+#[cfg(not(target_os = "macos"))]
+const UNFOCUS_COMMAND_HINT: &str = "Ctrl+Q to Restore full window";
 
 static FILTER_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 static ARGUMENTS_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
@@ -178,15 +186,18 @@ struct WindowState {
     cursor_script: Option<EditScriptId>,
     full_window_size: Size,
     is_command_key_down: bool,
+    has_maximized_pane: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    WindowResized(Size),
     Clicked(pane_grid::Pane),
     Dragged(pane_grid::DragEvent),
     Resized(pane_grid::ResizeEvent),
     Maximize(pane_grid::Pane, Size),
     Restore,
+    MaximizeOrRestoreExecutionPane,
     AddScriptToExecution(config::Guid),
     RunScripts,
     RunOrRescheduleScripts,
@@ -372,8 +383,9 @@ impl Application for MainWindow {
             window_state: WindowState {
                 pane_focus: None,
                 cursor_script: None,
-                full_window_size: Size::new(0.0, 0.0),
+                full_window_size: Size::new(1024.0, 768.0),
                 is_command_key_down: false,
+                has_maximized_pane: false,
             },
         };
 
@@ -412,6 +424,11 @@ impl Application for MainWindow {
 
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
+            Message::WindowResized(size) => {
+                if !self.window_state.has_maximized_pane {
+                    self.window_state.full_window_size = size;
+                }
+            }
             Message::Clicked(pane) => {
                 self.window_state.pane_focus = Some(pane);
             }
@@ -423,51 +440,22 @@ impl Application for MainWindow {
             }
             Message::Dragged(_) => {}
             Message::Maximize(pane, window_size) => {
-                if self.window_state.pane_focus != Some(pane) {
-                    clean_script_selection(&mut self.window_state.cursor_script);
-                }
-                self.window_state.pane_focus = Some(pane);
-                self.panes.maximize(&pane);
-                if !get_rewritable_config_opt(&self.app_config, &self.edit_data.window_edit_data)
-                    .keep_window_size
-                {
-                    self.window_state.full_window_size = window_size.clone();
-                    let size = self
-                        .panes
-                        .layout()
-                        .pane_regions(1.0, Size::new(window_size.width, window_size.height))
-                        .get(&pane)
-                        .unwrap() // tried to get an non-existing pane, this should never happen, so panic
-                        .clone();
-
-                    let elements_count = self.execution_data.scripts_to_run.len() as u32;
-                    let title_lines =
-                        if let Some(custom_title) = self.app_config.custom_title.as_ref() {
-                            custom_title.lines().count() as u32
-                        } else {
-                            0
-                        };
-
-                    return resize(
-                        size.width as u32,
-                        std::cmp::min(
-                            size.height as u32,
-                            EMPTY_EXECUTION_LIST_HEIGHT
-                                + elements_count * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
-                                + title_lines * ONE_TITLE_LINE_HEIGHT,
-                        ),
-                    );
-                }
+                return maximize_pane(self, pane, window_size);
             }
             Message::Restore => {
-                self.panes.restore();
-                if !get_rewritable_config_opt(&self.app_config, &self.edit_data.window_edit_data)
-                    .keep_window_size
-                {
-                    return resize(
-                        self.window_state.full_window_size.width as u32,
-                        self.window_state.full_window_size.height as u32,
-                    );
+                return restore_window(self);
+            }
+            Message::MaximizeOrRestoreExecutionPane => {
+                if execution::has_started_execution(&self.execution_data) {
+                    if self.window_state.has_maximized_pane {
+                        return restore_window(self);
+                    } else {
+                        return maximize_pane(
+                            self,
+                            self.pane_by_pane_type[&PaneVariant::ExecutionList],
+                            self.window_state.full_window_size,
+                        );
+                    }
                 }
             }
             Message::AddScriptToExecution(script_uid) => {
@@ -574,9 +562,7 @@ impl Application for MainWindow {
                 }
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
-            Message::RemoveScript(script_id) => {
-                remove_script(self, &script_id)
-            }
+            Message::RemoveScript(script_id) => remove_script(self, &script_id),
             Message::AddScriptToConfig => {
                 let script = config::OriginalScriptDefinition {
                     uid: config::Guid::new(),
@@ -1325,10 +1311,10 @@ impl Application for MainWindow {
         let total_panes = self.panes.len();
 
         let pane_grid = responsive(move |size| {
-            PaneGrid::new(&self.panes, |id, _pane, is_maximized| {
+            PaneGrid::new(&self.panes, |id, pane, is_maximized| {
                 let is_focused = focus == Some(id);
 
-                let variant = &self.panes.panes[&id].variant;
+                let variant = &pane.variant;
 
                 let title = row![get_pane_name_from_variant(variant)].spacing(5);
 
@@ -1413,6 +1399,12 @@ impl Application for MainWindow {
                 };
 
                 match event {
+                    Event::Window(window::Event::Resized { width, height }) => {
+                        Some(Message::WindowResized(Size {
+                            width: width as f32,
+                            height: height as f32,
+                        }))
+                    }
                     Event::Keyboard(keyboard::Event::KeyPressed {
                         modifiers,
                         key_code,
@@ -1469,6 +1461,7 @@ fn handle_command_hotkey(
         KeyCode::E => Some(Message::TrySwitchWindowEditMode),
         KeyCode::R => Some(Message::RunOrRescheduleScripts),
         KeyCode::C => Some(Message::StopOrClearScripts),
+        KeyCode::Q => Some(Message::MaximizeOrRestoreExecutionPane),
         KeyCode::Enter => Some(Message::CursorConfirm),
         _ => None,
     }
@@ -2735,7 +2728,14 @@ fn view_controls<'a>(
     {
         let toggle = {
             let (content, message) = if is_maximized {
-                ("Back to full window", Message::Restore)
+                (
+                    if window_state.is_command_key_down {
+                        UNFOCUS_COMMAND_HINT
+                    } else {
+                        "Restore full window"
+                    },
+                    Message::Restore,
+                )
             } else {
                 // adjust for window decorations
                 let window_size = Size {
@@ -2743,7 +2743,14 @@ fn view_controls<'a>(
                     height: size.height + 3.0,
                 };
 
-                ("Focus", Message::Maximize(pane, window_size))
+                (
+                    if window_state.is_command_key_down {
+                        FOCUS_COMMAND_HINT
+                    } else {
+                        "Focus"
+                    },
+                    Message::Maximize(pane, window_size),
+                )
             };
             button(text(content).size(14))
                 .style(theme::Button::Secondary)
@@ -3706,11 +3713,64 @@ fn remove_script(app: &mut MainWindow, script_id: &EditScriptId) {
             update_config_cache(&mut app.app_config, &app.edit_data);
         }
         EditScriptType::ExecutionList => {
-            execution::remove_script_from_execution(
-                &mut app.execution_data,
-                script_id.idx,
-            );
+            execution::remove_script_from_execution(&mut app.execution_data, script_id.idx);
         }
     }
     clean_script_selection(&mut app.window_state.cursor_script);
+}
+
+fn maximize_pane(
+    app: &mut MainWindow,
+    pane: pane_grid::Pane,
+    window_size: Size,
+) -> Command<Message> {
+    if app.window_state.pane_focus != Some(pane) {
+        clean_script_selection(&mut app.window_state.cursor_script);
+    }
+    app.window_state.pane_focus = Some(pane);
+    app.panes.maximize(&pane);
+    app.window_state.has_maximized_pane = true;
+    if !get_rewritable_config_opt(&app.app_config, &app.edit_data.window_edit_data).keep_window_size
+    {
+        app.window_state.full_window_size = window_size.clone();
+        let size = app
+            .panes
+            .layout()
+            .pane_regions(1.0, Size::new(window_size.width, window_size.height))
+            .get(&pane)
+            .unwrap() // tried to get an non-existing pane, this should never happen, so panic
+            .clone();
+
+        let elements_count = app.execution_data.scripts_to_run.len() as u32;
+        let title_lines = if let Some(custom_title) = app.app_config.custom_title.as_ref() {
+            custom_title.lines().count() as u32
+        } else {
+            0
+        };
+
+        return resize(
+            size.width as u32,
+            std::cmp::min(
+                size.height as u32,
+                EMPTY_EXECUTION_LIST_HEIGHT
+                    + elements_count * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+                    + title_lines * ONE_TITLE_LINE_HEIGHT,
+            ),
+        );
+    }
+
+    return Command::none();
+}
+
+fn restore_window(app: &mut MainWindow) -> Command<Message> {
+    app.window_state.has_maximized_pane = false;
+    app.panes.restore();
+    if !get_rewritable_config_opt(&app.app_config, &app.edit_data.window_edit_data).keep_window_size
+    {
+        return resize(
+            app.window_state.full_window_size.width as u32,
+            app.window_state.full_window_size.height as u32,
+        );
+    }
+    return Command::none();
 }
