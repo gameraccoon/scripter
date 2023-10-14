@@ -464,7 +464,13 @@ impl Application for MainWindow {
                     run_scheduled_scripts(self);
                 }
             }
-            Message::RunScripts => run_scheduled_scripts(self),
+            Message::RunScripts => {
+                if !execution::has_started_execution(&self.execution_data)
+                    && !self.edit_data.window_edit_data.is_some()
+                {
+                    run_scheduled_scripts(self);
+                }
+            }
             Message::StopScripts => {
                 if execution::has_started_execution(&self.execution_data)
                     && !execution::has_finished_execution(&self.execution_data)
