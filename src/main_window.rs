@@ -474,7 +474,7 @@ impl Application for MainWindow {
                 }
             }
             Message::AddScriptToExecution(script_uid) => {
-                let is_added = add_script_to_execution(self, script_uid);
+                let is_added = add_script_to_execution(self, script_uid, true);
 
                 if is_added && self.window_state.is_command_key_down {
                     run_scheduled_scripts(self);
@@ -1410,8 +1410,11 @@ impl Application for MainWindow {
                         let scripts = &self.app_config.displayed_configs_list_cache;
 
                         if let Some(script) = scripts.get(cursor_script_id) {
-                            let is_added =
-                                add_script_to_execution(self, script.original_script_uid.clone());
+                            let is_added = add_script_to_execution(
+                                self,
+                                script.original_script_uid.clone(),
+                                false,
+                            );
 
                             if is_added && self.window_state.is_command_key_down {
                                 run_scheduled_scripts(self);
@@ -3467,7 +3470,11 @@ fn run_scheduled_scripts(app: &mut MainWindow) {
     update_config_cache(&mut app.app_config, &app.edit_data);
 }
 
-fn add_script_to_execution(app: &mut MainWindow, script_uid: config::Guid) -> bool {
+fn add_script_to_execution(
+    app: &mut MainWindow,
+    script_uid: config::Guid,
+    should_focus: bool,
+) -> bool {
     if execution::has_started_execution(&app.execution_data) {
         return false;
     }
@@ -3524,15 +3531,18 @@ fn add_script_to_execution(app: &mut MainWindow, script_uid: config::Guid) -> bo
             }
         }
     }
-    let script_idx = app.execution_data.scripts_to_run.len() - 1;
-    set_selected_script(
-        &mut app.edit_data.currently_edited_script,
-        &app.execution_data,
-        &get_script_definition_list_opt(&app.app_config, &app.edit_data.window_edit_data),
-        &mut app.visual_caches,
-        script_idx,
-        EditScriptType::ExecutionList,
-    );
+
+    if should_focus {
+        let script_idx = app.execution_data.scripts_to_run.len() - 1;
+        set_selected_script(
+            &mut app.edit_data.currently_edited_script,
+            &app.execution_data,
+            &get_script_definition_list_opt(&app.app_config, &app.edit_data.window_edit_data),
+            &mut app.visual_caches,
+            script_idx,
+            EditScriptType::ExecutionList,
+        );
+    }
 
     return true;
 }
