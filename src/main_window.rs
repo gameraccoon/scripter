@@ -251,6 +251,7 @@ pub enum Message {
     MoveScriptDown,
     MoveScriptUp,
     CursorConfirm,
+    RemoveCursorScript,
     SwitchPaneFocus(bool),
 }
 
@@ -574,34 +575,7 @@ impl Application for MainWindow {
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
             Message::RemoveScript(script_id) => {
-                match script_id.script_type {
-                    EditScriptType::ScriptConfig => {
-                        if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
-                            match window_edit_data.edit_type {
-                                ConfigEditType::Parent => {
-                                    self.app_config.script_definitions.remove(script_id.idx);
-                                    self.edit_data.is_dirty = true;
-                                }
-                                ConfigEditType::Child => {
-                                    if let Some(config) = &mut self.app_config.child_config_body {
-                                        config.script_definitions.remove(script_id.idx);
-                                        self.edit_data.is_dirty = true;
-                                    }
-                                }
-                            }
-                        }
-
-                        config::populate_parent_scripts_from_config(&mut self.app_config);
-                        update_config_cache(&mut self.app_config, &self.edit_data);
-                    }
-                    EditScriptType::ExecutionList => {
-                        execution::remove_script_from_execution(
-                            &mut self.execution_data,
-                            script_id.idx,
-                        );
-                    }
-                }
-                clean_script_selection(&mut self.window_state.cursor_script);
+                remove_script(self, &script_id)
             }
             Message::AddScriptToConfig => {
                 let script = config::OriginalScriptDefinition {
@@ -1271,6 +1245,23 @@ impl Application for MainWindow {
                     }
                 }
             }
+            Message::RemoveCursorScript => {
+                if execution::has_started_execution(&self.execution_data) {
+                    return Command::none();
+                }
+
+                if let Some(focus) = self.window_state.pane_focus {
+                    if &self.panes.panes[&focus].variant != &PaneVariant::ExecutionList {
+                        return Command::none();
+                    }
+                }
+
+                if let Some(cursor_script) = self.window_state.cursor_script.clone() {
+                    if cursor_script.script_type == EditScriptType::ExecutionList {
+                        remove_script(self, &cursor_script);
+                    }
+                }
+            }
             Message::SwitchPaneFocus(is_forward) => {
                 let new_selection = get_next_pane_selection(self, is_forward);
 
@@ -1486,6 +1477,7 @@ fn handle_key_press(
         KeyCode::Up => Some(Message::MoveCursorUp),
         KeyCode::Enter => Some(Message::CursorConfirm),
         KeyCode::Tab => Some(Message::SwitchPaneFocus(true)),
+        KeyCode::Delete => Some(Message::RemoveCursorScript),
         _ => None,
     }
 }
@@ -3666,4 +3658,35 @@ fn get_next_pane_selection(app: &MainWindow, is_forward: bool) -> PaneVariant {
         // if no panes selected, select ScriptList
         PaneVariant::ScriptList
     }
+}
+
+fn remove_script(app: &mut MainWindow, script_id: &EditScriptId) {
+    match script_id.script_type {
+        EditScriptType::ScriptConfig => {
+            if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
+                match window_edit_data.edit_type {
+                    ConfigEditType::Parent => {
+                        app.app_config.script_definitions.remove(script_id.idx);
+                        app.edit_data.is_dirty = true;
+                    }
+                    ConfigEditType::Child => {
+                        if let Some(config) = &mut app.app_config.child_config_body {
+                            config.script_definitions.remove(script_id.idx);
+                            app.edit_data.is_dirty = true;
+                        }
+                    }
+                }
+            }
+
+            config::populate_parent_scripts_from_config(&mut app.app_config);
+            update_config_cache(&mut app.app_config, &app.edit_data);
+        }
+        EditScriptType::ExecutionList => {
+            execution::remove_script_from_execution(
+                &mut app.execution_data,
+                script_id.idx,
+            );
+        }
+    }
+    clean_script_selection(&mut app.window_state.cursor_script);
 }
