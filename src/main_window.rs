@@ -826,20 +826,7 @@ impl Application for MainWindow {
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
             Message::OpenScriptConfigEditing(script_idx) => {
-                set_selected_script(
-                    &mut self.edit_data.currently_edited_script,
-                    &self.execution_data,
-                    &get_script_definition_list_opt(
-                        &self.app_config,
-                        &self.edit_data.window_edit_data,
-                    ),
-                    &mut self.visual_caches,
-                    script_idx,
-                    EditScriptType::ScriptConfig,
-                );
-                if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
-                    window_edit_data.is_editing_config = false;
-                }
+                select_edited_script(self, script_idx);
             }
             Message::MoveConfigScriptUp(index) => {
                 if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
@@ -1299,14 +1286,19 @@ impl Application for MainWindow {
                 self.window_state.is_command_key_down = is_command_key_down;
             }
             Message::MoveCursorUp => {
-                if execution::has_started_execution(&self.execution_data)
-                    || self.edit_data.window_edit_data.is_some()
-                {
+                if execution::has_started_execution(&self.execution_data) {
                     return Command::none();
                 }
 
-                if let Some(focus) = self.window_state.pane_focus {
-                    if &self.panes.panes[&focus].variant == &PaneVariant::ScriptList {
+                let focused_pane = if let Some(focus) = self.window_state.pane_focus {
+                    self.panes.panes[&focus].variant
+                } else {
+                    return Command::none();
+                };
+
+                if focused_pane == PaneVariant::ScriptList {
+                    if !self.edit_data.window_edit_data.is_some() {
+                        // normal list of scripts
                         let scripts_count = self.app_config.displayed_configs_list_cache.len();
 
                         if scripts_count > 0 {
@@ -1323,18 +1315,44 @@ impl Application for MainWindow {
                                 });
                             }
                         }
+                    } else {
+                        // edited script
+                        let scripts_count = self.app_config.displayed_configs_list_cache.len();
+
+                        let next_selection = if scripts_count == 0 {
+                            None
+                        } else {
+                            if let Some(edited_script) = &self.edit_data.currently_edited_script {
+                                if edited_script.idx > 0 {
+                                    Some(edited_script.idx - 1)
+                                } else {
+                                    Some(scripts_count - 1)
+                                }
+                            } else {
+                                Some(scripts_count - 1)
+                            }
+                        };
+
+                        if let Some(next_selection) = next_selection {
+                            select_edited_script(self, next_selection);
+                        }
                     }
                 }
             }
             Message::MoveCursorDown => {
-                if execution::has_started_execution(&self.execution_data)
-                    || self.edit_data.window_edit_data.is_some()
-                {
+                if execution::has_started_execution(&self.execution_data) {
                     return Command::none();
                 }
 
-                if let Some(focus) = self.window_state.pane_focus {
-                    if &self.panes.panes[&focus].variant == &PaneVariant::ScriptList {
+                let focused_pane = if let Some(focus) = self.window_state.pane_focus {
+                    self.panes.panes[&focus].variant
+                } else {
+                    return Command::none();
+                };
+
+                if focused_pane == PaneVariant::ScriptList {
+                    if !self.edit_data.window_edit_data.is_some() {
+                        // normal list of scripts
                         let scripts_count = self.app_config.displayed_configs_list_cache.len();
 
                         if scripts_count > 0 {
@@ -1350,6 +1368,27 @@ impl Application for MainWindow {
                                     script_type: EditScriptType::ScriptConfig,
                                 });
                             }
+                        }
+                    } else {
+                        // edited script
+                        let scripts_count = self.app_config.displayed_configs_list_cache.len();
+
+                        let next_selection = if scripts_count == 0 {
+                            None
+                        } else {
+                            if let Some(edited_script) = &self.edit_data.currently_edited_script {
+                                if edited_script.idx < scripts_count - 1 {
+                                    Some(edited_script.idx + 1)
+                                } else {
+                                    Some(0)
+                                }
+                            } else {
+                                Some(0)
+                            }
+                        };
+
+                        if let Some(next_selection) = next_selection {
+                            select_edited_script(self, next_selection);
                         }
                     }
                 }
@@ -1590,7 +1629,7 @@ fn reset_selected_script(currently_edited_script: &mut Option<EditScriptId>) {
     *currently_edited_script = None;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PaneVariant {
     ScriptList,
     ExecutionList,
@@ -3508,4 +3547,18 @@ fn clear_scripts(app: &mut MainWindow) {
     app.execution_data.has_started = false;
     reset_selected_script(&mut app.edit_data.currently_edited_script);
     app.window_state.cursor_script = None;
+}
+
+fn select_edited_script(app: &mut MainWindow, script_idx: usize) {
+    set_selected_script(
+        &mut app.edit_data.currently_edited_script,
+        &app.execution_data,
+        &get_script_definition_list_opt(&app.app_config, &app.edit_data.window_edit_data),
+        &mut app.visual_caches,
+        script_idx,
+        EditScriptType::ScriptConfig,
+    );
+    if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
+        window_edit_data.is_editing_config = false;
+    }
 }
