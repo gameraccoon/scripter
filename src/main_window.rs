@@ -22,6 +22,7 @@ use std::time::{Duration, Instant};
 
 use crate::config;
 use crate::execution;
+use crate::file_utils;
 use crate::style;
 
 const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: u32 = 30;
@@ -2061,7 +2062,7 @@ fn produce_execution_list_content<'a>(
                     row_data.push(horizontal_space(8).into());
                     if script_status.retry_count > 0 {
                         let log_dir_path =
-                            config::get_script_log_directory(&path_caches.logs_path, i as isize);
+                            file_utils::get_script_log_directory(&path_caches.logs_path, script_name, i as isize);
                         row_data.push(
                             tooltip(
                                 inline_icon_button(
@@ -2075,8 +2076,9 @@ fn produce_execution_list_content<'a>(
                             .into(),
                         );
                     } else if !execution::has_script_been_skipped(&script_status) {
-                        let output_path = config::get_script_output_path(
+                        let output_path = file_utils::get_script_output_path(
                             &path_caches.logs_path,
+                            script_name,
                             i as isize,
                             script_status.retry_count,
                         );

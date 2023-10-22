@@ -3,6 +3,7 @@
 mod config;
 mod config_updaters;
 mod execution;
+mod file_utils;
 mod json_config_updater;
 mod main_window;
 mod ring_buffer;

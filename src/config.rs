@@ -211,23 +211,6 @@ pub fn is_always_on_top() -> bool {
     GLOBAL_CONFIG.with(|config| config.rewritable.always_on_top)
 }
 
-pub fn get_script_log_directory(logs_path: &PathBuf, script_idx: isize) -> PathBuf {
-    logs_path.join(format!("script_{}", script_idx))
-}
-
-pub fn get_script_output_path(
-    logs_path: &PathBuf,
-    script_idx: isize,
-    retry_count: usize,
-) -> PathBuf {
-    let path = get_script_log_directory(logs_path, script_idx);
-    if retry_count == 0 {
-        path.join("output.log")
-    } else {
-        path.join(format!("retry{}_output.log", retry_count))
-    }
-}
-
 pub fn save_config_to_file(config: &AppConfig) {
     let data = serde_json::to_string_pretty(&config);
     let data = match data {

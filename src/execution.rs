@@ -11,6 +11,7 @@ use std::sync::{
 use std::time::{Duration, Instant};
 
 use crate::config;
+use crate::file_utils;
 use crate::ring_buffer::RingBuffer;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -193,13 +194,15 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     });
                 }
 
-                let _ = std::fs::create_dir_all(config::get_script_log_directory(
+                let _ = std::fs::create_dir_all(file_utils::get_script_log_directory(
                     &path_caches.logs_path,
+                    &script.name,
                     script_idx as isize,
                 ));
 
-                let output_file = std::fs::File::create(config::get_script_output_path(
+                let output_file = std::fs::File::create(file_utils::get_script_output_path(
                     &path_caches.logs_path,
+                    &script.name,
                     script_idx as isize,
                     script_state.retry_count,
                 ));
