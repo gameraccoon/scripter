@@ -8,12 +8,13 @@ pub fn get_script_log_directory(
     script_name: &str,
     script_idx: isize,
 ) -> PathBuf {
-    let mut log_file_name = String::from(script_name).replace(|c: char| !c.is_alphanumeric(), "-");
-    log_file_name.truncate(30);
-    let directory_name = execution_start_time.format("%Y%m%d-%H%M%S");
+    let run_directory_name = execution_start_time.format("%Y%m%d-%H%M%S");
+    let mut script_directory_name =
+        String::from(script_name).replace(|c: char| !c.is_alphanumeric(), "-");
+    script_directory_name.truncate(30);
     return logs_path
-        .join(format!("{}-{}", directory_name, process::id()))
-        .join(format!("{}_{}.log", script_idx, log_file_name));
+        .join(format!("{}-{}", run_directory_name, process::id()))
+        .join(format!("{}_{}", script_idx, script_directory_name));
 }
 
 pub fn get_script_output_path(
