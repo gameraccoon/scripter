@@ -152,8 +152,6 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
     let env_vars = app_config.env_vars.clone();
 
     execution_data.thread_join_handle = Some(std::thread::spawn(move || {
-        std::fs::remove_dir_all(&path_caches.logs_path).ok();
-
         let mut has_previous_script_failed = false;
         let mut kill_requested = false;
         for script_idx in 0..scripts_to_run.len() {
