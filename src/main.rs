@@ -1,5 +1,6 @@
 #![windows_subsystem = "windows"]
 
+mod color_utils;
 mod config;
 mod config_updaters;
 mod execution;

@@ -20,6 +20,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
+use crate::color_utils;
 use crate::config;
 use crate::execution;
 use crate::file_utils;
@@ -110,13 +111,13 @@ impl WindowEditData {
         Self {
             is_editing_config,
             edit_type,
-            theme_color_background: rgb_to_hex(&theme.background),
-            theme_color_text: rgb_to_hex(&theme.text),
-            theme_color_primary: rgb_to_hex(&theme.primary),
-            theme_color_success: rgb_to_hex(&theme.success),
-            theme_color_danger: rgb_to_hex(&theme.danger),
-            theme_color_caption_text: rgb_to_hex(&theme.caption_text),
-            theme_color_error_text: rgb_to_hex(&theme.error_text),
+            theme_color_background: color_utils::rgb_to_hex(&theme.background),
+            theme_color_text: color_utils::rgb_to_hex(&theme.text),
+            theme_color_primary: color_utils::rgb_to_hex(&theme.primary),
+            theme_color_success: color_utils::rgb_to_hex(&theme.success),
+            theme_color_danger: color_utils::rgb_to_hex(&theme.danger),
+            theme_color_caption_text: color_utils::rgb_to_hex(&theme.caption_text),
+            theme_color_error_text: color_utils::rgb_to_hex(&theme.error_text),
         }
     }
 }
@@ -686,22 +687,32 @@ impl Application for MainWindow {
                     Some(
                         if let Some(window_edit_data) = &self.edit_data.window_edit_data {
                             config::CustomTheme {
-                                background: hex_to_rgb(&window_edit_data.theme_color_background)
+                                background: color_utils::hex_to_rgb(
+                                    &window_edit_data.theme_color_background,
+                                )
+                                .unwrap_or_default(),
+                                text: color_utils::hex_to_rgb(&window_edit_data.theme_color_text)
                                     .unwrap_or_default(),
-                                text: hex_to_rgb(&window_edit_data.theme_color_text)
-                                    .unwrap_or_default(),
-                                primary: hex_to_rgb(&window_edit_data.theme_color_primary)
-                                    .unwrap_or_default(),
-                                success: hex_to_rgb(&window_edit_data.theme_color_success)
-                                    .unwrap_or_default(),
-                                danger: hex_to_rgb(&window_edit_data.theme_color_danger)
-                                    .unwrap_or_default(),
-                                caption_text: hex_to_rgb(
+                                primary: color_utils::hex_to_rgb(
+                                    &window_edit_data.theme_color_primary,
+                                )
+                                .unwrap_or_default(),
+                                success: color_utils::hex_to_rgb(
+                                    &window_edit_data.theme_color_success,
+                                )
+                                .unwrap_or_default(),
+                                danger: color_utils::hex_to_rgb(
+                                    &window_edit_data.theme_color_danger,
+                                )
+                                .unwrap_or_default(),
+                                caption_text: color_utils::hex_to_rgb(
                                     &window_edit_data.theme_color_caption_text,
                                 )
                                 .unwrap_or_default(),
-                                error_text: hex_to_rgb(&window_edit_data.theme_color_error_text)
-                                    .unwrap_or_default(),
+                                error_text: color_utils::hex_to_rgb(
+                                    &window_edit_data.theme_color_error_text,
+                                )
+                                .unwrap_or_default(),
                             }
                         } else {
                             config::CustomTheme::default()
@@ -2730,27 +2741,6 @@ fn get_theme(config: &config::AppConfig, window_edit_data: &Option<WindowEditDat
     }
 }
 
-fn hex_to_rgb(hex: &str) -> Option<[f32; 3]> {
-    if hex.len() != 7 {
-        return None;
-    }
-
-    let hex = hex.trim_start_matches('#');
-    let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
-    let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
-    let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
-    return Some([r as f32 / 256.0, g as f32 / 256.0, b as f32 / 256.0]);
-}
-
-fn rgb_to_hex(rgb: &[f32; 3]) -> String {
-    let rgb = rgb.map(|x| x.max(0.0).min(1.0));
-    let r = (256.0 * rgb[0]) as u8;
-    let g = (256.0 * rgb[1]) as u8;
-    let b = (256.0 * rgb[2]) as u8;
-    let hex = format!("{:02x}{:02x}{:02x}", r, g, b);
-    return format!("#{}", hex);
-}
-
 fn apply_theme_color_from_string(
     app: &mut MainWindow,
     color: String,
@@ -2762,7 +2752,7 @@ fn apply_theme_color_from_string(
         if let Some(custom_theme) =
             &mut get_rewritable_config_mut_non_opt(&mut app.app_config, edit_data).custom_theme
         {
-            if let Some(new_color) = hex_to_rgb(&color_string) {
+            if let Some(new_color) = color_utils::hex_to_rgb(&color_string) {
                 set_theme_fn(custom_theme, new_color);
                 apply_theme(app);
                 app.edit_data.is_dirty = true;
