@@ -404,7 +404,7 @@ impl Application for MainWindow {
                 }
                 _ => "scripter [Editing]".to_string(),
             }
-        } else if self.execution_data.has_started {
+        } else if execution::has_started_execution(&self.execution_data) {
             if execution::has_finished_execution(&self.execution_data) {
                 if self.execution_data.has_failed_scripts {
                     "scripter [Finished with errors]".to_string()
@@ -724,7 +724,7 @@ impl Application for MainWindow {
             Message::EnterWindowEditMode => enter_window_edit_mode(self),
             Message::ExitWindowEditMode => exit_window_edit_mode(self),
             Message::TrySwitchWindowEditMode => {
-                if !self.execution_data.has_started {
+                if !execution::has_started_execution(&self.execution_data) {
                     if !self.edit_data.window_edit_data.is_some() {
                         enter_window_edit_mode(self);
                     } else {
@@ -1985,7 +1985,7 @@ fn produce_execution_list_content<'a>(
 
                 let mut row_data: Vec<Element<'_, Message, iced::Renderer>> = Vec::new();
 
-                if execution_data.has_started {
+                if execution::has_started_execution(&execution_data) {
                     row_data.push(
                         tooltip(
                             status.width(22).height(22).content_fit(ContentFit::None),
@@ -2009,7 +2009,7 @@ fn produce_execution_list_content<'a>(
                 row_data.push(text(script_name).style(style).into());
                 row_data.push(progress.into());
 
-                let is_enabled = !execution_data.has_started;
+                let is_enabled = !execution::has_started_execution(&execution_data);
 
                 if is_enabled && is_selected {
                     row_data.push(horizontal_space(Length::Fill).into());
@@ -2061,8 +2061,12 @@ fn produce_execution_list_content<'a>(
                 } else if execution::has_script_started(&script_status) {
                     row_data.push(horizontal_space(8).into());
                     if script_status.retry_count > 0 {
-                        let log_dir_path =
-                            file_utils::get_script_log_directory(&path_caches.logs_path, script_name, i as isize);
+                        let log_dir_path = file_utils::get_script_log_directory(
+                            &path_caches.logs_path,
+                            &execution_data.execution_start_time.unwrap_or_default(),
+                            script_name,
+                            i as isize,
+                        );
                         row_data.push(
                             tooltip(
                                 inline_icon_button(
@@ -2078,6 +2082,7 @@ fn produce_execution_list_content<'a>(
                     } else if !execution::has_script_been_skipped(&script_status) {
                         let output_path = file_utils::get_script_output_path(
                             &path_caches.logs_path,
+                            &execution_data.execution_start_time.unwrap_or_default(),
                             script_name,
                             i as isize,
                             script_status.retry_count,
@@ -2718,7 +2723,7 @@ fn view_controls<'a>(
 
     if *variant == PaneVariant::ScriptList
         && !edit_data.window_edit_data.is_some()
-        && !execution_data.has_started
+        && !execution::has_started_execution(&execution_data)
     {
         row = row.push(
             tooltip(
@@ -2736,7 +2741,9 @@ fn view_controls<'a>(
     }
 
     if total_panes > 1
-        && (is_maximized || (*variant == PaneVariant::ExecutionList && execution_data.has_started))
+        && (is_maximized
+            || (*variant == PaneVariant::ExecutionList
+                && execution::has_started_execution(&execution_data)))
     {
         let toggle = {
             let (content, message) = if is_maximized {
@@ -3477,8 +3484,7 @@ fn reschedule_scripts(app: &mut MainWindow) {
 
 fn clear_scripts(app: &mut MainWindow) {
     join_execution_thread(&mut app.execution_data);
-    app.execution_data = execution::new_execution_data();
-    app.execution_data.has_started = false;
+    execution::reset_execution_progress(&mut app.execution_data);
     clean_script_selection(&mut app.window_state.cursor_script);
 }
 

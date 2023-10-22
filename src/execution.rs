@@ -1,7 +1,7 @@
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-use chrono::{DateTime, Local};
+use chrono;
 use crossbeam_channel::{unbounded, Receiver, RecvError, Sender};
 use std::io::{BufRead, Write};
 use std::sync::{
@@ -42,7 +42,7 @@ pub enum OutputType {
 pub struct OutputLine {
     pub text: String,
     pub output_type: OutputType,
-    pub timestamp: DateTime<Local>,
+    pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
 type LogBuffer = RingBuffer<OutputLine, 30>;
@@ -50,7 +50,7 @@ type LogBuffer = RingBuffer<OutputLine, 30>;
 pub struct ScriptExecutionData {
     pub scripts_to_run: Vec<config::ScriptDefinition>,
     pub scripts_status: Vec<ScriptExecutionStatus>,
-    pub has_started: bool,
+    pub execution_start_time: Option<chrono::DateTime<chrono::Local>>,
     pub recent_logs: Arc<Mutex<LogBuffer>>,
     pub progress_receiver: Option<Receiver<(usize, ScriptExecutionStatus)>>,
     pub is_termination_requested: Arc<AtomicBool>,
@@ -63,7 +63,7 @@ pub fn new_execution_data() -> ScriptExecutionData {
     ScriptExecutionData {
         scripts_to_run: Vec::new(),
         scripts_status: Vec::new(),
-        has_started: false,
+        execution_start_time: None,
         progress_receiver: None,
         recent_logs: Arc::new(Mutex::new(RingBuffer::new(Default::default()))),
         is_termination_requested: Arc::new(AtomicBool::new(false)),
@@ -93,7 +93,7 @@ pub fn has_script_been_skipped(status: &ScriptExecutionStatus) -> bool {
 }
 
 pub fn has_started_execution(execution_data: &ScriptExecutionData) -> bool {
-    return execution_data.has_started;
+    return execution_data.execution_start_time.is_some();
 }
 
 pub fn has_finished_execution(execution_data: &ScriptExecutionData) -> bool {
@@ -140,7 +140,8 @@ pub fn remove_script_from_execution(execution_data: &mut ScriptExecutionData, in
 }
 
 pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config::AppConfig) {
-    execution_data.has_started = true;
+    let execution_start_time = chrono::Local::now();
+    execution_data.execution_start_time = Some(execution_start_time);
     let (progress_sender, process_receiver) = unbounded();
     execution_data.progress_receiver = Some(process_receiver);
     let recent_logs = execution_data.recent_logs.clone();
@@ -190,18 +191,20 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                             script.arguments
                         ),
                         output_type: OutputType::Event,
-                        timestamp: Local::now(),
+                        timestamp: chrono::Local::now(),
                     });
                 }
 
                 let _ = std::fs::create_dir_all(file_utils::get_script_log_directory(
                     &path_caches.logs_path,
+                    &execution_start_time,
                     &script.name,
                     script_idx as isize,
                 ));
 
                 let output_file = std::fs::File::create(file_utils::get_script_output_path(
                     &path_caches.logs_path,
+                    &execution_start_time,
                     &script.name,
                     script_idx as isize,
                     script_state.retry_count,
@@ -254,7 +257,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                                 OutputLine {
                                     text: error_text,
                                     output_type: OutputType::Error,
-                                    timestamp: Local::now(),
+                                    timestamp: chrono::Local::now(),
                                 },
                                 &recent_logs,
                                 &mut output_writer,
@@ -351,7 +354,7 @@ pub fn reset_execution_progress(execution_data: &mut ScriptExecutionData) {
     execution_data
         .scripts_status
         .fill(get_default_script_execution_status());
-    execution_data.has_started = false;
+    execution_data.execution_start_time = None;
     execution_data.has_failed_scripts = false;
     execution_data.currently_outputting_script = -1;
     execution_data.is_termination_requested = Arc::new(AtomicBool::new(false));
@@ -503,7 +506,7 @@ fn try_split_log(
                 OutputLine {
                     text,
                     output_type,
-                    timestamp: Local::now(),
+                    timestamp: chrono::Local::now(),
                 },
                 recent_logs,
                 output_writer,

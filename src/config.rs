@@ -673,10 +673,7 @@ fn get_exe_folder_path() -> PathBuf {
 }
 
 fn get_default_logs_path() -> PathBuf {
-    let pid = std::process::id();
-    return get_exe_folder_path()
-        .join("scripter_logs")
-        .join(format!("exec_logs_{}", pid));
+    return get_exe_folder_path().join("scripter_logs");
 }
 
 fn get_default_work_path() -> PathBuf {
