@@ -25,6 +25,7 @@ use crate::execution;
 use crate::file_utils;
 use crate::string_constants;
 use crate::style;
+use crate::ui_icons;
 
 const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: u32 = 30;
 const ONE_TITLE_LINE_HEIGHT: u32 = 16;
@@ -33,40 +34,11 @@ const EMPTY_EXECUTION_LIST_HEIGHT: u32 = 150;
 const FILTER_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 const ARGUMENTS_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 
-#[derive(Clone)]
-struct ThemedIcons {
-    play: Handle,
-    stop: Handle,
-    retry: Handle,
-    remove: Handle,
-    plus: Handle,
-    settings: Handle,
-    up: Handle,
-    down: Handle,
-    back: Handle,
-    log: Handle,
-    edit: Handle,
-    quick_launch: Handle,
-}
-
-struct IconCaches {
-    idle: Handle,
-    in_progress: Handle,
-    succeeded: Handle,
-    failed: Handle,
-    skipped: Handle,
-
-    bright: ThemedIcons,
-    dark: ThemedIcons,
-
-    themed: ThemedIcons,
-}
-
 // caches for visual elements content
 pub struct VisualCaches {
     autorerun_count: String,
     recent_logs: Vec<String>,
-    icons: IconCaches,
+    icons: ui_icons::IconCaches,
 }
 
 pub struct MainWindow {
@@ -277,71 +249,7 @@ impl Application for MainWindow {
             visual_caches: VisualCaches {
                 autorerun_count: String::new(),
                 recent_logs: Vec::new(),
-                icons: IconCaches {
-                    idle: Handle::from_memory(include_bytes!("../res/icons/idle.png")),
-                    in_progress: Handle::from_memory(include_bytes!(
-                        "../res/icons/in-progress.png"
-                    )),
-                    succeeded: Handle::from_memory(include_bytes!("../res/icons/positive.png")),
-                    failed: Handle::from_memory(include_bytes!("../res/icons/negative.png")),
-                    skipped: Handle::from_memory(include_bytes!("../res/icons/skip.png")),
-
-                    bright: ThemedIcons {
-                        play: Handle::from_memory(include_bytes!("../res/icons/play-w.png")),
-                        stop: Handle::from_memory(include_bytes!("../res/icons/stop-w.png")),
-                        retry: Handle::from_memory(include_bytes!("../res/icons/retry-w.png")),
-                        remove: Handle::from_memory(include_bytes!("../res/icons/remove-w.png")),
-                        plus: Handle::from_memory(include_bytes!("../res/icons/plus-w.png")),
-                        settings: Handle::from_memory(include_bytes!(
-                            "../res/icons/settings-w.png"
-                        )),
-                        up: Handle::from_memory(include_bytes!("../res/icons/up-w.png")),
-                        down: Handle::from_memory(include_bytes!("../res/icons/down-w.png")),
-                        back: Handle::from_memory(include_bytes!("../res/icons/back-w.png")),
-                        log: Handle::from_memory(include_bytes!("../res/icons/log-w.png")),
-                        edit: Handle::from_memory(include_bytes!("../res/icons/edit-w.png")),
-                        quick_launch: Handle::from_memory(include_bytes!(
-                            "../res/icons/quick_launch-w.png"
-                        )),
-                    },
-                    dark: ThemedIcons {
-                        play: Handle::from_memory(include_bytes!("../res/icons/play-b.png")),
-                        stop: Handle::from_memory(include_bytes!("../res/icons/stop-b.png")),
-                        retry: Handle::from_memory(include_bytes!("../res/icons/retry-b.png")),
-                        remove: Handle::from_memory(include_bytes!("../res/icons/remove-b.png")),
-                        plus: Handle::from_memory(include_bytes!("../res/icons/plus-b.png")),
-                        settings: Handle::from_memory(include_bytes!(
-                            "../res/icons/settings-b.png"
-                        )),
-                        up: Handle::from_memory(include_bytes!("../res/icons/up-b.png")),
-                        down: Handle::from_memory(include_bytes!("../res/icons/down-b.png")),
-                        back: Handle::from_memory(include_bytes!("../res/icons/back-b.png")),
-                        log: Handle::from_memory(include_bytes!("../res/icons/log-b.png")),
-                        edit: Handle::from_memory(include_bytes!("../res/icons/edit-b.png")),
-                        quick_launch: Handle::from_memory(include_bytes!(
-                            "../res/icons/quick_launch-b.png"
-                        )),
-                    },
-
-                    themed: ThemedIcons {
-                        play: Handle::from_memory(include_bytes!("../res/icons/play-b.png")),
-                        stop: Handle::from_memory(include_bytes!("../res/icons/stop-b.png")),
-                        retry: Handle::from_memory(include_bytes!("../res/icons/retry-b.png")),
-                        remove: Handle::from_memory(include_bytes!("../res/icons/remove-b.png")),
-                        plus: Handle::from_memory(include_bytes!("../res/icons/plus-b.png")),
-                        settings: Handle::from_memory(include_bytes!(
-                            "../res/icons/settings-b.png"
-                        )),
-                        up: Handle::from_memory(include_bytes!("../res/icons/up-b.png")),
-                        down: Handle::from_memory(include_bytes!("../res/icons/down-b.png")),
-                        back: Handle::from_memory(include_bytes!("../res/icons/back-b.png")),
-                        log: Handle::from_memory(include_bytes!("../res/icons/log-b.png")),
-                        edit: Handle::from_memory(include_bytes!("../res/icons/edit-b.png")),
-                        quick_launch: Handle::from_memory(include_bytes!(
-                            "../res/icons/quick_launch-b.png"
-                        )),
-                    },
-                },
+                icons: ui_icons::IconCaches::new(),
             },
             edit_data: EditData {
                 script_filter: String::new(),
@@ -1593,7 +1501,7 @@ fn produce_script_list_content<'a>(
     config: &config::AppConfig,
     rewritable_config: &config::RewritableConfig,
     edit_data: &EditData,
-    icons: &IconCaches,
+    icons: &ui_icons::IconCaches,
     window_state: &WindowState,
     theme: &Theme,
 ) -> Column<'a, Message> {
@@ -1834,7 +1742,7 @@ fn produce_execution_list_content<'a>(
     path_caches: &config::PathCaches,
     theme: &Theme,
     custom_title: &Option<String>,
-    icons: &IconCaches,
+    icons: &ui_icons::IconCaches,
     edit_data: &EditData,
     rewritable_config: &config::RewritableConfig,
     window_state: &WindowState,
@@ -2683,7 +2591,7 @@ fn view_controls<'a>(
     pane: pane_grid::Pane,
     variant: &PaneVariant,
     total_panes: usize,
-    icons: &IconCaches,
+    icons: &ui_icons::IconCaches,
     edit_data: &EditData,
     execution_data: &execution::ScriptExecutionData,
     is_maximized: bool,
