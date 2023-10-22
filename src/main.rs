@@ -7,7 +7,9 @@ mod file_utils;
 mod json_config_updater;
 mod main_window;
 mod ring_buffer;
+mod string_constants;
 mod style;
+mod ui_icons;
 
 use iced::window::icon;
 use iced::{Application, Settings};

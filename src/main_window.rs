@@ -23,48 +23,15 @@ use std::time::{Duration, Instant};
 use crate::config;
 use crate::execution;
 use crate::file_utils;
+use crate::string_constants;
 use crate::style;
 
 const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: u32 = 30;
 const ONE_TITLE_LINE_HEIGHT: u32 = 16;
 const EMPTY_EXECUTION_LIST_HEIGHT: u32 = 150;
 
-// depending on whether it's macOS or not we need to name the key Ctrl or Command
-#[cfg(target_os = "macos")]
-const FILTER_COMMAND_HINT: &str = "Command+F to focus Filter";
-#[cfg(not(target_os = "macos"))]
-const FILTER_COMMAND_HINT: &str = "Ctrl+F to focus Filter";
-#[cfg(target_os = "macos")]
-const RUN_COMMAND_HINT: &str = "Command+R to Run";
-#[cfg(not(target_os = "macos"))]
-const RUN_COMMAND_HINT: &str = "Ctrl+R to Run";
-#[cfg(target_os = "macos")]
-const RESCHEDULE_COMMAND_HINT: &str = "Command+R to Reschedule";
-#[cfg(not(target_os = "macos"))]
-const RESCHEDULE_COMMAND_HINT: &str = "Ctrl+R to Reschedule";
-#[cfg(target_os = "macos")]
-const STOP_COMMAND_HINT: &str = "Command+C to Stop";
-#[cfg(not(target_os = "macos"))]
-const STOP_COMMAND_HINT: &str = "Ctrl+C to Stop";
-#[cfg(target_os = "macos")]
-const CLEAR_COMMAND_HINT: &str = "Command+C to Clear";
-#[cfg(not(target_os = "macos"))]
-const CLEAR_COMMAND_HINT: &str = "Ctrl+C to Clear";
-#[cfg(target_os = "macos")]
-const EDIT_COMMAND_HINT: &str = "Command+E to Edit";
-#[cfg(not(target_os = "macos"))]
-const EDIT_COMMAND_HINT: &str = "Ctrl+E to Edit";
-#[cfg(target_os = "macos")]
-const FOCUS_COMMAND_HINT: &str = "Command+Q to Focus";
-#[cfg(not(target_os = "macos"))]
-const FOCUS_COMMAND_HINT: &str = "Ctrl+Q to Focus";
-#[cfg(target_os = "macos")]
-const UNFOCUS_COMMAND_HINT: &str = "Command+Q to Restore full window";
-#[cfg(not(target_os = "macos"))]
-const UNFOCUS_COMMAND_HINT: &str = "Ctrl+Q to Restore full window";
-
-static FILTER_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
-static ARGUMENTS_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
+const FILTER_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
+const ARGUMENTS_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 
 #[derive(Clone)]
 struct ThemedIcons {
@@ -1603,7 +1570,11 @@ fn edit_mode_button<'a>(
         .height(Length::Fixed(12.0));
 
     button(if window_state.is_command_key_down {
-        row![text(EDIT_COMMAND_HINT).size(12), horizontal_space(4), icon]
+        row![
+            text(string_constants::EDIT_COMMAND_HINT).size(12),
+            horizontal_space(4),
+            icon
+        ]
     } else {
         row![icon]
     })
@@ -1816,7 +1787,7 @@ fn produce_script_list_content<'a>(
                 horizontal_space(5),
                 text_input(
                     if window_state.is_command_key_down {
-                        FILTER_COMMAND_HINT
+                        string_constants::FILTER_COMMAND_HINT
                     } else {
                         "filter"
                     },
@@ -2132,7 +2103,7 @@ fn produce_execution_list_content<'a>(
     .into();
 
     let clear_name = if window_state.is_command_key_down {
-        CLEAR_COMMAND_HINT
+        string_constants::CLEAR_COMMAND_HINT
     } else {
         "Clear"
     };
@@ -2151,7 +2122,7 @@ fn produce_execution_list_content<'a>(
                 main_icon_button(
                     icons.themed.retry.clone(),
                     if window_state.is_command_key_down {
-                        RESCHEDULE_COMMAND_HINT
+                        string_constants::RESCHEDULE_COMMAND_HINT
                     } else {
                         "Reschedule"
                     },
@@ -2178,7 +2149,7 @@ fn produce_execution_list_content<'a>(
             row![main_icon_button(
                 icons.themed.stop.clone(),
                 if window_state.is_command_key_down {
-                    STOP_COMMAND_HINT
+                    string_constants::STOP_COMMAND_HINT
                 } else {
                     "Stop"
                 },
@@ -2193,7 +2164,7 @@ fn produce_execution_list_content<'a>(
             .any(|script| is_script_missing_arguments(script));
 
         let run_name = if window_state.is_command_key_down {
-            RUN_COMMAND_HINT
+            string_constants::RUN_COMMAND_HINT
         } else {
             "Run"
         };
@@ -2749,7 +2720,7 @@ fn view_controls<'a>(
             let (content, message) = if is_maximized {
                 (
                     if window_state.is_command_key_down {
-                        UNFOCUS_COMMAND_HINT
+                        string_constants::UNFOCUS_COMMAND_HINT
                     } else {
                         "Restore full window"
                     },
@@ -2764,7 +2735,7 @@ fn view_controls<'a>(
 
                 (
                     if window_state.is_command_key_down {
-                        FOCUS_COMMAND_HINT
+                        string_constants::FOCUS_COMMAND_HINT
                     } else {
                         "Focus"
                     },
