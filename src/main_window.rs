@@ -1164,6 +1164,11 @@ impl Application for MainWindow {
                 let new_selection = get_next_pane_selection(self, is_forward);
 
                 let mut should_select_arguments = false;
+                let has_pane_changed = Some(new_selection) != if let Some(focus) = self.window_state.pane_focus {
+                    Some(self.panes.panes[&focus].variant)
+                } else {
+                    None
+                };
 
                 if new_selection == PaneVariant::Parameters {
                     if let Some(focus) = self.window_state.pane_focus {
@@ -1187,6 +1192,8 @@ impl Application for MainWindow {
 
                 if should_select_arguments {
                     return text_input::focus(ARGUMENTS_INPUT_ID.clone());
+                } else if has_pane_changed {
+                    return text_input::focus(text_input::Id::new("dummy"));
                 }
             }
         }
