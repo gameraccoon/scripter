@@ -1338,7 +1338,7 @@ impl Application for MainWindow {
 fn handle_command_hotkey(
     key_code: keyboard::KeyCode,
     _status: &event::Status,
-    _is_input_captured_by_a_widget: bool,
+    is_input_captured_by_a_widget: bool,
 ) -> Option<Message> {
     use keyboard::KeyCode;
 
@@ -1347,7 +1347,13 @@ fn handle_command_hotkey(
         KeyCode::F => Some(Message::FocusFilter),
         KeyCode::E => Some(Message::TrySwitchWindowEditMode),
         KeyCode::R => Some(Message::RunOrRescheduleScripts),
-        KeyCode::C => Some(Message::StopOrClearScripts),
+        KeyCode::C => {
+            if !is_input_captured_by_a_widget {
+                Some(Message::StopOrClearScripts)
+            } else {
+                None
+            }
+        },
         KeyCode::Q => Some(Message::MaximizeOrRestoreExecutionPane),
         KeyCode::Enter => Some(Message::CursorConfirm),
         _ => None,
