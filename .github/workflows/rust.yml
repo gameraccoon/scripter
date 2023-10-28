@@ -15,7 +15,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build_ubuntu:
+  build_linux_x64:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -31,10 +31,10 @@ jobs:
     - name: Upload linux artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: scripter-Linux
+        name: scripter-Linux-x64
         path: data/linux/*
 
-  build_windows:
+  build_windows_x64:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v3
@@ -52,10 +52,10 @@ jobs:
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: scripter-Windows
+        name: scripter-Windows-x64
         path: data/windows/*
 
-  build_macos:
+  build_macos_arm:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v3
@@ -76,5 +76,5 @@ jobs:
     - name: Upload macOS artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: scripter-MacOS
+        name: scripter-MacOS-arm
         path: data/linux/*
