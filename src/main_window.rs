@@ -1164,11 +1164,12 @@ impl Application for MainWindow {
                 let new_selection = get_next_pane_selection(self, is_forward);
 
                 let mut should_select_arguments = false;
-                let has_pane_changed = Some(new_selection) != if let Some(focus) = self.window_state.pane_focus {
-                    Some(self.panes.panes[&focus].variant)
-                } else {
-                    None
-                };
+                let has_pane_changed = Some(new_selection)
+                    != if let Some(focus) = self.window_state.pane_focus {
+                        Some(self.panes.panes[&focus].variant)
+                    } else {
+                        None
+                    };
 
                 if new_selection == PaneVariant::Parameters {
                     if let Some(focus) = self.window_state.pane_focus {
@@ -1361,7 +1362,7 @@ fn handle_command_hotkey(
             } else {
                 None
             }
-        },
+        }
         KeyCode::Q => Some(Message::MaximizeOrRestoreExecutionPane),
         KeyCode::Enter => Some(Message::CursorConfirm),
         _ => None,
