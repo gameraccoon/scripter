@@ -1969,8 +1969,6 @@ fn produce_execution_list_content<'a>(
                         let log_dir_path = file_utils::get_script_log_directory(
                             &path_caches.logs_path,
                             &execution_data.execution_start_time.unwrap_or_default(),
-                            script_name,
-                            i as isize,
                         );
                         row_data.push(
                             tooltip(

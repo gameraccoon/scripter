@@ -196,8 +196,6 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                 let _ = std::fs::create_dir_all(file_utils::get_script_log_directory(
                     &path_caches.logs_path,
                     &execution_start_time,
-                    &script.name,
-                    script_idx as isize,
                 ));
 
                 let output_file = std::fs::File::create(file_utils::get_script_output_path(
