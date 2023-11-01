@@ -53,6 +53,7 @@ impl<T, const SIZE: usize> RingBuffer<T, SIZE> {
         self.empty
     }
 
+    #[allow(dead_code)]
     pub fn set_empty(&mut self) {
         self.empty = true;
         self.head = 0;

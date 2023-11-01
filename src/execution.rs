@@ -348,15 +348,16 @@ pub fn request_stop_execution(execution_data: &mut ScriptExecutionData) {
         .store(true, Ordering::Relaxed);
 }
 
-pub fn reset_execution_progress(execution_data: &mut ScriptExecutionData) {
-    execution_data
-        .scripts_status
-        .fill(get_default_script_execution_status());
-    execution_data.execution_start_time = None;
-    execution_data.has_failed_scripts = false;
-    execution_data.currently_outputting_script = -1;
-    execution_data.is_termination_requested = Arc::new(AtomicBool::new(false));
-    execution_data.recent_logs.lock().unwrap().set_empty(); // it is fine to panic on a poisoned mutex
+pub fn get_reset_execution_progress(execution_data: &ScriptExecutionData) -> ScriptExecutionData {
+    ScriptExecutionData {
+        scripts_to_run: execution_data.scripts_to_run.clone(),
+        scripts_status: execution_data
+            .scripts_status
+            .iter()
+            .map(|_| get_default_script_execution_status())
+            .collect(),
+        ..new_execution_data()
+    }
 }
 
 fn send_script_execution_status(

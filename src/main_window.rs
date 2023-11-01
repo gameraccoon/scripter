@@ -3362,13 +3362,12 @@ fn reschedule_scripts(app: &mut MainWindow) {
     }
     join_execution_thread(&mut app.execution_data);
 
-    execution::reset_execution_progress(&mut app.execution_data);
+    app.execution_data = execution::get_reset_execution_progress(&app.execution_data);
 }
 
 fn clear_scripts(app: &mut MainWindow) {
     join_execution_thread(&mut app.execution_data);
-    execution::reset_execution_progress(&mut app.execution_data);
-    app.execution_data.scripts_to_run.clear();
+    app.execution_data = execution::new_execution_data();
     clean_script_selection(&mut app.window_state.cursor_script);
 }
 
