@@ -8,8 +8,8 @@ use iced::widget::{
     button, checkbox, column, container, horizontal_space, image, image::Handle, row, scrollable,
     text, text_input, tooltip, vertical_space, Button, Column,
 };
-use iced::window::{request_user_attention, resize};
-use iced::{event, executor, keyboard, window, ContentFit, Event};
+use iced::window::{self, request_user_attention, resize};
+use iced::{event, executor, keyboard, ContentFit, Event};
 use iced::{time, Size};
 use iced::{Application, Command, Element, Length, Subscription};
 use iced_lazy::responsive;
@@ -23,6 +23,7 @@ use std::time::{Duration, Instant};
 use crate::color_utils;
 use crate::config;
 use crate::execution;
+use crate::execution_lists;
 use crate::file_utils;
 use crate::string_constants;
 use crate::style;
@@ -46,7 +47,7 @@ pub struct VisualCaches {
 pub struct MainWindow {
     panes: pane_grid::State<AppPane>,
     pane_by_pane_type: HashMap<PaneVariant, pane_grid::Pane>,
-    execution_data: execution::ScriptExecutionData,
+    execution_data: execution_lists::ExecutionLists,
     app_config: config::AppConfig,
     theme: Theme,
     visual_caches: VisualCaches,
@@ -245,7 +246,7 @@ impl Application for MainWindow {
         let mut main_window = MainWindow {
             panes,
             pane_by_pane_type,
-            execution_data: execution::new_execution_data(),
+            execution_data: execution_lists::ExecutionLists::new(),
             theme: get_theme(&app_config, &None),
             app_config,
             visual_caches: VisualCaches {
@@ -281,9 +282,9 @@ impl Application for MainWindow {
                 }
                 _ => "scripter [Editing]".to_string(),
             }
-        } else if execution::has_started_execution(&self.execution_data) {
-            if execution::has_finished_execution(&self.execution_data) {
-                if self.execution_data.has_failed_scripts {
+        } else if self.execution_data.has_started_execution() {
+            if self.execution_data.has_finished_execution() {
+                if self.execution_data.has_failed_scripts() {
                     "scripter [Finished with errors]".to_string()
                 } else {
                     "scripter [Finished]".to_string()
@@ -324,7 +325,7 @@ impl Application for MainWindow {
                 return restore_window(self);
             }
             Message::MaximizeOrRestoreExecutionPane => {
-                if execution::has_started_execution(&self.execution_data) {
+                if self.execution_data.has_started_execution() {
                     if self.window_state.has_maximized_pane {
                         return restore_window(self);
                     } else {
@@ -344,60 +345,51 @@ impl Application for MainWindow {
                 }
             }
             Message::RunScripts => {
-                if !execution::has_started_execution(&self.execution_data)
+                if !self.execution_data.has_started_execution()
                     && !self.edit_data.window_edit_data.is_some()
                 {
                     run_scheduled_scripts(self);
                 }
             }
             Message::RunOrRescheduleScripts => {
-                if !execution::has_started_execution(&self.execution_data) {
+                if !self.execution_data.has_started_execution() {
                     if self.edit_data.window_edit_data.is_none() {
                         run_scheduled_scripts(self);
                     }
                 } else {
-                    reschedule_scripts(self);
+                    self.execution_data.reschedule_scripts();
                 }
             }
             Message::StopScripts => {
-                if execution::has_started_execution(&self.execution_data)
-                    && !execution::has_finished_execution(&self.execution_data)
+                if self.execution_data.has_started_execution()
+                    && !self.execution_data.has_finished_execution()
                 {
-                    execution::request_stop_execution(&mut self.execution_data);
+                    self.execution_data.request_stop_execution();
                 }
             }
             Message::StopOrClearScripts => {
-                if execution::has_started_execution(&self.execution_data)
-                    && !execution::has_finished_execution(&self.execution_data)
+                if self.execution_data.has_started_execution()
+                    && !self.execution_data.has_finished_execution()
                 {
-                    execution::request_stop_execution(&mut self.execution_data);
-                } else if !execution::is_waiting_execution_thread_to_finish(&self.execution_data) {
+                    self.execution_data.request_stop_execution();
+                } else if !self.execution_data.is_waiting_execution_to_finish() {
                     clear_scripts(self);
                 }
             }
             Message::ClearScripts => clear_scripts(self),
-            Message::RescheduleScripts => reschedule_scripts(self),
+            Message::RescheduleScripts => self.execution_data.reschedule_scripts(),
             Message::Tick(_now) => {
-                if let Some(rx) = &self.execution_data.progress_receiver {
-                    if let Ok(progress) = rx.try_recv() {
-                        if execution::has_script_failed(&progress.1) {
-                            self.execution_data.has_failed_scripts = true;
-                        }
-                        self.execution_data.scripts_status[progress.0] = progress.1;
-                        self.execution_data.currently_outputting_script = progress.0 as isize;
-
-                        if execution::has_finished_execution(&self.execution_data) {
-                            if get_rewritable_config_opt(
-                                &self.app_config,
-                                &self.edit_data.window_edit_data,
-                            )
-                            .window_status_reactions
-                            {
-                                return request_user_attention(Some(
-                                    iced::window::UserAttention::Informational,
-                                ));
-                            }
-                        }
+                let has_finished = self.execution_data.tick();
+                if has_finished {
+                    if get_rewritable_config_opt(
+                        &self.app_config,
+                        &self.edit_data.window_edit_data,
+                    )
+                        .window_status_reactions
+                    {
+                        return request_user_attention(Some(
+                            iced::window::UserAttention::Informational,
+                        ));
                     }
                 }
             }
@@ -458,13 +450,13 @@ impl Application for MainWindow {
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
             Message::MoveExecutionScriptUp(script_idx) => {
-                self.execution_data
+                self.execution_data.get_edited_execution_list_mut()
                     .scripts_to_run
                     .swap(script_idx, script_idx - 1);
                 select_execution_script(self, script_idx - 1);
             }
             Message::MoveExecutionScriptDown(script_idx) => {
-                self.execution_data
+                self.execution_data.get_edited_execution_list_mut()
                     .scripts_to_run
                     .swap(script_idx, script_idx + 1);
                 select_execution_script(self, script_idx + 1);
@@ -601,7 +593,7 @@ impl Application for MainWindow {
             Message::EnterWindowEditMode => enter_window_edit_mode(self),
             Message::ExitWindowEditMode => exit_window_edit_mode(self),
             Message::TrySwitchWindowEditMode => {
-                if !execution::has_started_execution(&self.execution_data) {
+                if !self.execution_data.has_started_execution() {
                     if !self.edit_data.window_edit_data.is_some() {
                         enter_window_edit_mode(self);
                     } else {
@@ -926,7 +918,7 @@ impl Application for MainWindow {
                     items: vec![],
                 };
 
-                for script in &self.execution_data.scripts_to_run {
+                for script in &self.execution_data.get_edited_execution_list().scripts_to_run {
                     match script {
                         config::ScriptDefinition::Original(script) => {
                             let original_script = config::get_original_script_definition_by_uid(
@@ -1026,9 +1018,9 @@ impl Application for MainWindow {
                     })
                 };
 
-                if execution::has_started_execution(&self.execution_data) {
-                    if execution::has_finished_execution(&self.execution_data) {
-                        if !execution::is_waiting_execution_thread_to_finish(&self.execution_data) {
+                if self.execution_data.has_started_execution() {
+                    if self.execution_data.has_finished_execution() {
+                        if !self.execution_data.is_waiting_execution_to_finish() {
                             return exit_thread_command();
                         }
                     }
@@ -1049,7 +1041,7 @@ impl Application for MainWindow {
                 move_cursor(self, false);
             }
             Message::MoveScriptDown => {
-                if execution::has_started_execution(&self.execution_data) {
+                if self.execution_data.has_started_execution() {
                     return Command::none();
                 }
 
@@ -1068,10 +1060,10 @@ impl Application for MainWindow {
                 } else if focused_pane == PaneVariant::ExecutionList {
                     if let Some(cursor_script) = &self.window_state.cursor_script {
                         if cursor_script.script_type == EditScriptType::ExecutionList {
-                            if cursor_script.idx + 1 >= self.execution_data.scripts_to_run.len() {
+                            if cursor_script.idx + 1 >= self.execution_data.get_edited_execution_list().scripts_to_run.len() {
                                 return Command::none();
                             }
-                            self.execution_data
+                            self.execution_data.get_edited_execution_list_mut()
                                 .scripts_to_run
                                 .swap(cursor_script.idx, cursor_script.idx + 1);
                             select_execution_script(self, cursor_script.idx + 1);
@@ -1080,7 +1072,7 @@ impl Application for MainWindow {
                 }
             }
             Message::MoveScriptUp => {
-                if execution::has_started_execution(&self.execution_data) {
+                if self.execution_data.has_started_execution() {
                     return Command::none();
                 }
 
@@ -1102,7 +1094,7 @@ impl Application for MainWindow {
                             if cursor_script.idx == 0 {
                                 return Command::none();
                             }
-                            self.execution_data
+                            self.execution_data.get_edited_execution_list_mut()
                                 .scripts_to_run
                                 .swap(cursor_script.idx, cursor_script.idx - 1);
                             select_execution_script(self, cursor_script.idx - 1);
@@ -1111,7 +1103,7 @@ impl Application for MainWindow {
                 }
             }
             Message::CursorConfirm => {
-                if execution::has_started_execution(&self.execution_data) {
+                if self.execution_data.has_started_execution() {
                     return Command::none();
                 }
 
@@ -1144,7 +1136,7 @@ impl Application for MainWindow {
                 }
             }
             Message::RemoveCursorScript => {
-                if execution::has_started_execution(&self.execution_data) {
+                if self.execution_data.has_started_execution() {
                     return Command::none();
                 }
 
@@ -1221,16 +1213,16 @@ impl Application for MainWindow {
                         total_panes,
                         &self.visual_caches.icons,
                         &self.edit_data,
-                        &self.execution_data,
+                        &self.execution_data.get_edited_execution_list(),
                         is_maximized,
                         size,
                         &self.window_state,
                     ))
                     .padding(10)
                     .style(if is_focused {
-                        if self.execution_data.has_failed_scripts {
+                        if self.execution_data.has_failed_scripts() {
                             style::title_bar_focused_failed
-                        } else if execution::has_finished_execution(&self.execution_data) {
+                        } else if self.execution_data.has_finished_execution() {
                             style::title_bar_focused_completed
                         } else {
                             style::title_bar_focused
@@ -1241,7 +1233,7 @@ impl Application for MainWindow {
 
                 pane_grid::Content::new(responsive(move |_size| {
                     view_content(
-                        &self.execution_data,
+                        &self.execution_data.get_edited_execution_list(),
                         variant,
                         &self.theme,
                         &self.app_config.paths,
@@ -2686,14 +2678,6 @@ fn view_controls<'a>(
     row.into()
 }
 
-fn join_execution_thread(execution_data: &mut execution::ScriptExecutionData) {
-    // this should never block, since the thread should be finished by now
-    // but we do it anyway not to miss bugs that create zombie threads
-    if let Some(join_handle) = execution_data.thread_join_handle.take() {
-        join_handle.join().unwrap(); // have no idea what to do if this fails, crashing is probably fine
-    };
-}
-
 fn get_pane_name_from_variant(variant: &PaneVariant) -> &str {
     match variant {
         PaneVariant::ScriptList => "Scripts",
@@ -2732,7 +2716,7 @@ fn apply_script_edit(
                 },
             },
             EditScriptType::ExecutionList => {
-                match &mut app.execution_data.scripts_to_run[script_id.idx] {
+                match &mut app.execution_data.get_edited_execution_list_mut().scripts_to_run[script_id.idx] {
                     config::ScriptDefinition::Original(script) => {
                         edit_fn(script);
                     }
@@ -3248,12 +3232,12 @@ fn exit_window_edit_mode(app: &mut MainWindow) {
 }
 
 fn run_scheduled_scripts(app: &mut MainWindow) {
-    if app.execution_data.scripts_to_run.is_empty() {
+    if app.execution_data.get_edited_execution_list().scripts_to_run.is_empty() {
         return;
     }
 
     if app
-        .execution_data
+        .execution_data.get_edited_execution_list()
         .scripts_to_run
         .iter()
         .any(|script| is_script_missing_arguments(script))
@@ -3261,10 +3245,10 @@ fn run_scheduled_scripts(app: &mut MainWindow) {
         return;
     }
 
-    if !execution::has_started_execution(&app.execution_data) {
+    if !app.execution_data.has_started_execution() {
         app.visual_caches.recent_logs.clear();
         clean_script_selection(&mut app.window_state.cursor_script);
-        execution::run_scripts(&mut app.execution_data, &app.app_config);
+        execution::run_scripts(&mut app.execution_data.get_edited_execution_list_mut(), &app.app_config);
     }
 
     app.edit_data.script_filter = String::new();
@@ -3276,7 +3260,7 @@ fn add_script_to_execution(
     script_uid: config::Guid,
     should_focus: bool,
 ) -> bool {
-    if execution::has_started_execution(&app.execution_data) {
+    if app.execution_data.has_started_execution() {
         return false;
     }
 
@@ -3294,7 +3278,7 @@ fn add_script_to_execution(
             return false;
         }
         config::ScriptDefinition::Original(_) => {
-            execution::add_script_to_execution(&mut app.execution_data, original_script.clone());
+            app.execution_data.add_script_to_execution(original_script.clone());
         }
         config::ScriptDefinition::Preset(preset) => {
             for preset_item in &preset.items {
@@ -3327,14 +3311,14 @@ fn add_script_to_execution(
                         _ => {}
                     };
 
-                    execution::add_script_to_execution(&mut app.execution_data, new_script);
+                    app.execution_data.add_script_to_execution(new_script);
                 }
             }
         }
     }
 
     if should_focus {
-        let script_idx = app.execution_data.scripts_to_run.len() - 1;
+        let script_idx = app.execution_data.get_edited_execution_list().scripts_to_run.len() - 1;
         select_execution_script(app, script_idx);
         app.window_state.pane_focus = Some(app.pane_by_pane_type[&PaneVariant::ExecutionList]);
     }
@@ -3355,25 +3339,15 @@ fn focus_filter(app: &mut MainWindow) -> Command<Message> {
     return text_input::focus(FILTER_INPUT_ID.clone());
 }
 
-fn reschedule_scripts(app: &mut MainWindow) {
-    if !execution::has_started_execution(&app.execution_data) {
-        return;
-    }
-    join_execution_thread(&mut app.execution_data);
-
-    app.execution_data = execution::get_reset_execution_progress(&app.execution_data);
-}
-
 fn clear_scripts(app: &mut MainWindow) {
-    join_execution_thread(&mut app.execution_data);
-    app.execution_data = execution::new_execution_data();
+    app.execution_data.clear_scripts();
     clean_script_selection(&mut app.window_state.cursor_script);
 }
 
 fn select_edited_script(app: &mut MainWindow, script_idx: usize) {
     set_selected_script(
         &mut app.window_state.cursor_script,
-        &app.execution_data,
+        &app.execution_data.get_edited_execution_list(),
         &get_script_definition_list_opt(&app.app_config, &app.edit_data.window_edit_data),
         &mut app.visual_caches,
         script_idx,
@@ -3387,8 +3361,8 @@ fn select_edited_script(app: &mut MainWindow, script_idx: usize) {
 fn select_execution_script(app: &mut MainWindow, script_idx: usize) {
     set_selected_script(
         &mut app.window_state.cursor_script,
-        &app.execution_data,
-        &app.execution_data.scripts_to_run,
+        &app.execution_data.get_edited_execution_list(),
+        &app.execution_data.get_edited_execution_list().scripts_to_run,
         &mut app.visual_caches,
         script_idx,
         EditScriptType::ExecutionList,
@@ -3463,7 +3437,7 @@ fn move_config_script_down(app: &mut MainWindow, index: usize) {
 }
 
 fn move_cursor(app: &mut MainWindow, is_up: bool) {
-    if execution::has_started_execution(&app.execution_data) {
+    if app.execution_data.has_started_execution() {
         return;
     }
 
@@ -3482,7 +3456,7 @@ fn move_cursor(app: &mut MainWindow, is_up: bool) {
 
         let scripts_count = match focused_pane {
             PaneVariant::ScriptList => app.app_config.displayed_configs_list_cache.len(),
-            PaneVariant::ExecutionList => app.execution_data.scripts_to_run.len(),
+            PaneVariant::ExecutionList => app.execution_data.get_edited_execution_list().scripts_to_run.len(),
             _ => unreachable!(),
         };
 
@@ -3537,7 +3511,7 @@ fn get_next_pane_selection(app: &MainWindow, is_forward: bool) -> PaneVariant {
             .as_ref()
             .map(|s| &s.script_type);
 
-        let have_scripts_in_execution = !app.execution_data.scripts_to_run.is_empty();
+        let have_scripts_in_execution = !app.execution_data.get_edited_execution_list().scripts_to_run.is_empty();
         let have_parameters_open = if let Some(selected_script_type) = selected_script_type {
             selected_script_type == &EditScriptType::ExecutionList || is_editing
         } else {
@@ -3613,7 +3587,7 @@ fn remove_script(app: &mut MainWindow, script_id: &EditScriptId) {
             update_config_cache(&mut app.app_config, &app.edit_data);
         }
         EditScriptType::ExecutionList => {
-            execution::remove_script_from_execution(&mut app.execution_data, script_id.idx);
+            app.execution_data.remove_script(script_id.idx);
         }
     }
     clean_script_selection(&mut app.window_state.cursor_script);
@@ -3641,7 +3615,7 @@ fn maximize_pane(
             .unwrap() // tried to get an non-existing pane, this should never happen, so panic
             .clone();
 
-        let elements_count = app.execution_data.scripts_to_run.len() as u32;
+        let elements_count = app.execution_data.get_edited_execution_list().scripts_to_run.len() as u32;
         let title_lines = if let Some(custom_title) = app.app_config.custom_title.as_ref() {
             custom_title.lines().count() as u32
         } else {

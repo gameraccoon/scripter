@@ -4,6 +4,7 @@ mod color_utils;
 mod config;
 mod config_updaters;
 mod execution;
+mod execution_lists;
 mod file_utils;
 mod json_config_updater;
 mod main_window;
