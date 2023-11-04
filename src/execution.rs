@@ -45,30 +45,20 @@ pub struct OutputLine {
     pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
-type LogBuffer = RingBuffer<OutputLine, 30>;
+pub(crate) type LogBuffer = RingBuffer<OutputLine, 30>;
 
 pub struct ScriptExecutionData {
     pub scripts_to_run: Vec<config::ScriptDefinition>,
-    pub scripts_status: Vec<ScriptExecutionStatus>,
-    pub execution_start_time: Option<chrono::DateTime<chrono::Local>>,
-    pub recent_logs: Arc<Mutex<LogBuffer>>,
     pub progress_receiver: Option<Receiver<(usize, ScriptExecutionStatus)>>,
     pub is_termination_requested: Arc<AtomicBool>,
-    pub currently_outputting_script: isize,
-    pub has_failed_scripts: bool,
     pub thread_join_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 pub fn new_execution_data() -> ScriptExecutionData {
     ScriptExecutionData {
         scripts_to_run: Vec::new(),
-        scripts_status: Vec::new(),
-        execution_start_time: None,
         progress_receiver: None,
-        recent_logs: Arc::new(Mutex::new(RingBuffer::new(Default::default()))),
         is_termination_requested: Arc::new(AtomicBool::new(false)),
-        currently_outputting_script: -1,
-        has_failed_scripts: false,
         thread_join_handle: None,
     }
 }
@@ -92,21 +82,6 @@ pub fn has_script_been_skipped(status: &ScriptExecutionStatus) -> bool {
     return has_script_finished(status) && status.result == ScriptResultStatus::Skipped;
 }
 
-pub fn has_started_execution(execution_data: &ScriptExecutionData) -> bool {
-    return execution_data.execution_start_time.is_some();
-}
-
-pub fn has_finished_execution(execution_data: &ScriptExecutionData) -> bool {
-    if !has_started_execution(&execution_data) {
-        return false;
-    }
-
-    if let Some(last) = execution_data.scripts_status.last() {
-        return has_script_finished(&last);
-    }
-    return false;
-}
-
 pub fn is_waiting_execution_thread_to_finish(execution_data: &ScriptExecutionData) -> bool {
     // wait for the thread to finish, otherwise we can let the user to break their state
     if let Some(join_handle) = &execution_data.thread_join_handle {
@@ -118,7 +93,7 @@ pub fn is_waiting_execution_thread_to_finish(execution_data: &ScriptExecutionDat
 }
 
 pub fn add_script_to_execution(
-    execution_data: &mut ScriptExecutionData,
+    scripts_to_run: &mut Vec<config::ScriptDefinition>,
     script: config::ScriptDefinition,
 ) {
     match script {
@@ -128,23 +103,26 @@ pub fn add_script_to_execution(
         }
     }
 
-    execution_data.scripts_to_run.push(script.clone());
-    execution_data
-        .scripts_status
-        .push(get_default_script_execution_status());
+    scripts_to_run.push(script.clone());
 }
 
-pub fn remove_script_from_execution(execution_data: &mut ScriptExecutionData, index: usize) {
-    execution_data.scripts_to_run.remove(index);
-    execution_data.scripts_status.remove(index);
+pub fn remove_script_from_execution(
+    scripts_to_run: &mut Vec<config::ScriptDefinition>,
+    index: usize,
+) {
+    scripts_to_run.remove(index);
 }
 
-pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config::AppConfig) {
-    let execution_start_time = chrono::Local::now();
-    execution_data.execution_start_time = Some(execution_start_time);
+pub fn run_scripts(
+    execution_data: &mut ScriptExecutionData,
+    log_directory: &std::path::PathBuf,
+    had_failures_before: bool,
+    app_config: &config::AppConfig,
+    recent_logs: Arc<Mutex<LogBuffer>>,
+) {
     let (progress_sender, process_receiver) = unbounded();
     execution_data.progress_receiver = Some(process_receiver);
-    let recent_logs = execution_data.recent_logs.clone();
+    let log_directory = log_directory.clone();
 
     let scripts_to_run = execution_data.scripts_to_run.clone();
     let is_termination_requested = execution_data.is_termination_requested.clone();
@@ -152,7 +130,7 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
     let env_vars = app_config.env_vars.clone();
 
     execution_data.thread_join_handle = Some(std::thread::spawn(move || {
-        let mut has_previous_script_failed = false;
+        let mut has_previous_script_failed = had_failures_before;
         let mut kill_requested = false;
         for script_idx in 0..scripts_to_run.len() {
             let config::ScriptDefinition::Original(script) = &scripts_to_run[script_idx] else {
@@ -193,14 +171,10 @@ pub fn run_scripts(execution_data: &mut ScriptExecutionData, app_config: &config
                     });
                 }
 
-                let _ = std::fs::create_dir_all(file_utils::get_script_log_directory(
-                    &path_caches.logs_path,
-                    &execution_start_time,
-                ));
+                let _ = std::fs::create_dir_all(&log_directory);
 
                 let output_file = std::fs::File::create(file_utils::get_script_output_path(
-                    &path_caches.logs_path,
-                    &execution_start_time,
+                    log_directory.clone(),
                     &script.name,
                     script_idx as isize,
                     script_state.retry_count,
@@ -344,18 +318,6 @@ pub fn request_stop_execution(execution_data: &mut ScriptExecutionData) {
     execution_data
         .is_termination_requested
         .store(true, Ordering::Relaxed);
-}
-
-pub fn get_reset_execution_progress(execution_data: &ScriptExecutionData) -> ScriptExecutionData {
-    ScriptExecutionData {
-        scripts_to_run: execution_data.scripts_to_run.clone(),
-        scripts_status: execution_data
-            .scripts_status
-            .iter()
-            .map(|_| get_default_script_execution_status())
-            .collect(),
-        ..new_execution_data()
-    }
 }
 
 fn send_script_execution_status(
