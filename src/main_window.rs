@@ -32,6 +32,7 @@ use crate::ui_icons;
 const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: u32 = 30;
 const ONE_TITLE_LINE_HEIGHT: u32 = 16;
 const EMPTY_EXECUTION_LIST_HEIGHT: u32 = 150;
+const EXTRA_EDIT_CONTENT_HEIGHT: u32 = 40;
 
 // these should be static not just const
 static FILTER_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
@@ -3612,7 +3613,8 @@ fn maximize_pane(
             .unwrap() // tried to get an non-existing pane, this should never happen, so panic
             .clone();
 
-        let elements_count = app.execution_data.get_edited_execution_list().len() as u32;
+        let scheduled_elements_count = app.execution_data.get_scheduled_execution_list().len() as u32;
+        let edited_elements_count = app.execution_data.get_edited_execution_list().len() as u32;
         let title_lines = if let Some(custom_title) = app.app_config.custom_title.as_ref() {
             custom_title.lines().count() as u32
         } else {
@@ -3624,8 +3626,10 @@ fn maximize_pane(
             std::cmp::min(
                 size.height as u32,
                 EMPTY_EXECUTION_LIST_HEIGHT
-                    + elements_count * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
-                    + title_lines * ONE_TITLE_LINE_HEIGHT,
+                    + edited_elements_count * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+                    + scheduled_elements_count * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+                    + title_lines * ONE_TITLE_LINE_HEIGHT
+                    + if edited_elements_count > 0 { EXTRA_EDIT_CONTENT_HEIGHT } else { 0 },
             ),
         );
     }
