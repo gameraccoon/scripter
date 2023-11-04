@@ -21,11 +21,11 @@ pub fn get_script_output_path(
     script_file_name.truncate(30);
 
     if retry_count == 0 {
-        script_log_directory.join(format!("{}_{}_output.log", script_idx, script_file_name))
+        script_log_directory.join(format!("{}_{}_output.log", script_idx + 1, script_file_name))
     } else {
         script_log_directory.join(format!(
             "{}_{}_output_retry{}.log",
-            script_idx, script_file_name, retry_count
+            script_idx + 1, script_file_name, retry_count
         ))
     }
 }
