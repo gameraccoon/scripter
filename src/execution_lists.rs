@@ -1,6 +1,7 @@
 use chrono;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::AtomicBool;
 
 use crate::config;
 use crate::execution;
@@ -166,13 +167,13 @@ impl ExecutionLists {
                 self.scheduled_scripts_statuses[script_idx] = script_status;
                 self.currently_outputting_script = progress.0 as isize;
 
-                if self.scheduled_scripts_statuses[script_idx]
-                    .finish_time
-                    .is_some()
+                if execution::has_script_finished(&self.scheduled_scripts_statuses[script_idx])
                     && execution_list.execution_data.scripts_to_run.len() == script_local_idx + 1
                 {
                     self.current_execution_list += 1;
-                    self.run_execution_list(app_config);
+                    if self.try_join_execution_thread(self.current_execution_list - 1) {
+                        self.run_execution_list(app_config);
+                    }
                 }
 
                 if self.has_finished_execution() {
@@ -190,13 +191,13 @@ impl ExecutionLists {
     }
 
     fn run_execution_list(&mut self, app_config: &config::AppConfig) {
-        if self.current_execution_list >= self.execution_lists.len() {
+        if self.current_execution_list + 1 >= self.execution_lists.len() {
             return;
         }
 
         let had_failures_before =
             if let Some(last_script) = self.get_previous_execution_list_status() {
-                execution::has_script_failed(last_script)
+                execution::has_script_failed(last_script) || execution::has_script_been_skipped(last_script)
             } else {
                 false
             };
@@ -213,6 +214,7 @@ impl ExecutionLists {
             had_failures_before,
             &app_config,
             self.recent_logs.clone(),
+            execution_list.first_cache_index,
         );
 
         self.has_started_execution = true;
@@ -284,14 +286,23 @@ impl ExecutionLists {
         self.reset_execution_progress();
     }
 
-    pub fn clear_scripts(&mut self) {
+    pub fn clear_edited_scripts(&mut self) {
+        self.get_edited_execution_list_mut().clear();
+    }
+
+    pub fn clear_execution_scripts(&mut self) {
         if self.current_execution_list > 0 {
             self.try_join_execution_thread(self.current_execution_list - 1);
         }
         self.try_join_execution_thread(self.current_execution_list);
 
         self.execution_lists = vec![ExecutionList {
-            execution_data: execution::new_execution_data(),
+            execution_data: execution::ScriptExecutionData {
+                scripts_to_run: self.get_edited_execution_list().clone(),
+                progress_receiver: None,
+                is_termination_requested: Arc::new(AtomicBool::new(false)),
+                thread_join_handle: None,
+            },
             first_cache_index: 0,
         }];
         self.scheduled_scripts_cache.clear();

@@ -119,6 +119,7 @@ pub fn run_scripts(
     had_failures_before: bool,
     app_config: &config::AppConfig,
     recent_logs: Arc<Mutex<LogBuffer>>,
+    first_script_idx: usize,
 ) {
     let (progress_sender, process_receiver) = unbounded();
     execution_data.progress_receiver = Some(process_receiver);
@@ -176,7 +177,7 @@ pub fn run_scripts(
                 let output_file = std::fs::File::create(file_utils::get_script_output_path(
                     log_directory.clone(),
                     &script.name,
-                    script_idx as isize,
+                    (first_script_idx + script_idx) as isize,
                     script_state.retry_count,
                 ));
 
