@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - run: rustup toolchain install stable --profile minimal
+    - uses: Swatinem/rust-cache@v2
     - name: Build
       run: cargo build --release
     - name: Run tests
@@ -38,6 +40,8 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v3
+    - run: rustup toolchain install stable --profile minimal
+    - uses: Swatinem/rust-cache@v2
     - name: Build
       run: cargo build --release
     - name: Run tests
@@ -59,6 +63,8 @@ jobs:
     runs-on: macos-latest
     steps:
     - uses: actions/checkout@v3
+    - run: rustup toolchain install stable --profile minimal
+    - uses: Swatinem/rust-cache@v2
     - name: Set up arm target
       run: rustup target add aarch64-apple-darwin
     - name: Build
