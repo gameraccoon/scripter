@@ -334,7 +334,7 @@ impl Application for MainWindow {
                             self.pane_by_pane_type[&PaneVariant::ExecutionList],
                             self.window_state.full_window_size,
                         )
-                    }
+                    };
                 }
             }
             Message::AddScriptToExecution(script_uid) => {
@@ -345,8 +345,7 @@ impl Application for MainWindow {
                 }
             }
             Message::RunScripts => {
-                if !self.edit_data.window_edit_data.is_some()
-                {
+                if !self.edit_data.window_edit_data.is_some() {
                     run_scheduled_scripts(self);
                 }
             }
@@ -366,9 +365,7 @@ impl Application for MainWindow {
                     if get_rewritable_config_opt(&self.app_config, &self.edit_data.window_edit_data)
                         .window_status_reactions
                     {
-                        return request_user_attention(Some(
-                            window::UserAttention::Informational,
-                        ));
+                        return request_user_attention(Some(window::UserAttention::Informational));
                     }
                 }
             }
@@ -1519,10 +1516,7 @@ fn produce_script_list_content<'a>(
 
                 let edit_buttons = if edit_data.window_edit_data.is_some() {
                     row![
-                        inline_icon_button(
-                            icons.themed.up.clone(),
-                            Message::MoveConfigScriptUp(i)
-                        ),
+                        inline_icon_button(icons.themed.up.clone(), Message::MoveConfigScriptUp(i)),
                         horizontal_space(5),
                         inline_icon_button(
                             icons.themed.down.clone(),
@@ -1656,47 +1650,46 @@ fn produce_script_list_content<'a>(
         column![data]
     };
 
-    let filter_field = if rewritable_config.enable_script_filtering
-        && edit_data.window_edit_data.is_none()
-    {
-        row![
-            horizontal_space(5),
-            text_input(
-                if window_state.is_command_key_down {
-                    string_constants::FILTER_COMMAND_HINT
+    let filter_field =
+        if rewritable_config.enable_script_filtering && edit_data.window_edit_data.is_none() {
+            row![
+                horizontal_space(5),
+                text_input(
+                    if window_state.is_command_key_down {
+                        string_constants::FILTER_COMMAND_HINT
+                    } else {
+                        "filter"
+                    },
+                    &edit_data.script_filter
+                )
+                .id(FILTER_INPUT_ID.clone())
+                .on_input(Message::ScriptFilterChanged)
+                .width(Length::Fill),
+                horizontal_space(4),
+                if !edit_data.script_filter.is_empty() {
+                    column![
+                        vertical_space(Length::Fixed(4.0)),
+                        button(image(
+                            (if theme.extended_palette().danger.base.text.r > 0.5 {
+                                &icons.bright
+                            } else {
+                                &icons.dark
+                            })
+                            .remove
+                            .clone()
+                        ))
+                        .style(theme::Button::Destructive)
+                        .height(Length::Fixed(22.0))
+                        .on_press(Message::ScriptFilterChanged("".to_string())),
+                    ]
                 } else {
-                    "filter"
+                    column![]
                 },
-                &edit_data.script_filter
-            )
-            .id(FILTER_INPUT_ID.clone())
-            .on_input(Message::ScriptFilterChanged)
-            .width(Length::Fill),
-            horizontal_space(4),
-            if !edit_data.script_filter.is_empty() {
-                column![
-                    vertical_space(Length::Fixed(4.0)),
-                    button(image(
-                        (if theme.extended_palette().danger.base.text.r > 0.5 {
-                            &icons.bright
-                        } else {
-                            &icons.dark
-                        })
-                        .remove
-                        .clone()
-                    ))
-                    .style(theme::Button::Destructive)
-                    .height(Length::Fixed(22.0))
-                    .on_press(Message::ScriptFilterChanged("".to_string())),
-                ]
-            } else {
-                column![]
-            },
-            horizontal_space(1),
-        ]
-    } else {
-        row![]
-    };
+                horizontal_space(1),
+            ]
+        } else {
+            row![]
+        };
 
     column![filter_field, scrollable(data_column),]
         .width(Length::Fill)
@@ -2003,8 +1996,7 @@ fn produce_execution_list_content<'a>(
         "Clear"
     };
 
-    let execution_controls = column![
-        if execution_lists.has_finished_execution() {
+    let execution_controls = column![if execution_lists.has_finished_execution() {
         if !execution_lists.is_waiting_execution_to_finish() {
             row![
                 main_icon_button(
@@ -2050,9 +2042,9 @@ fn produce_execution_list_content<'a>(
     } else {
         row![].into()
     }]
-        .spacing(5)
-        .width(Length::Fill)
-        .align_items(Alignment::Center);
+    .spacing(5)
+    .width(Length::Fill)
+    .align_items(Alignment::Center);
 
     let edit_controls = column![if edit_data.window_edit_data.is_some() {
         if !execution_lists.get_edited_execution_list().is_empty() {
@@ -2106,17 +2098,17 @@ fn produce_execution_list_content<'a>(
     .align_items(Alignment::Center);
 
     let scheduled_block = column![
-            scheduled_data,
-            vertical_space(8),
-            execution_controls,
-            vertical_space(8),
+        scheduled_data,
+        vertical_space(8),
+        execution_controls,
+        vertical_space(8),
     ];
 
     let edited_block = column![
-            edited_data,
-            vertical_space(8),
-            edit_controls,
-            vertical_space(8),
+        edited_data,
+        vertical_space(8),
+        edit_controls,
+        vertical_space(8),
     ];
 
     return column![
@@ -3613,7 +3605,8 @@ fn maximize_pane(
             .unwrap() // tried to get an non-existing pane, this should never happen, so panic
             .clone();
 
-        let scheduled_elements_count = app.execution_data.get_scheduled_execution_list().len() as u32;
+        let scheduled_elements_count =
+            app.execution_data.get_scheduled_execution_list().len() as u32;
         let edited_elements_count = app.execution_data.get_edited_execution_list().len() as u32;
         let title_lines = if let Some(custom_title) = app.app_config.custom_title.as_ref() {
             custom_title.lines().count() as u32
@@ -3629,7 +3622,11 @@ fn maximize_pane(
                     + edited_elements_count * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
                     + scheduled_elements_count * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
                     + title_lines * ONE_TITLE_LINE_HEIGHT
-                    + if edited_elements_count > 0 { EXTRA_EDIT_CONTENT_HEIGHT } else { 0 },
+                    + if edited_elements_count > 0 {
+                        EXTRA_EDIT_CONTENT_HEIGHT
+                    } else {
+                        0
+                    },
             ),
         );
     }

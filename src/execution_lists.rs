@@ -1,7 +1,7 @@
 use chrono;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 
 use crate::config;
 use crate::execution;
@@ -197,7 +197,8 @@ impl ExecutionLists {
 
         let had_failures_before =
             if let Some(last_script) = self.get_previous_execution_list_status() {
-                execution::has_script_failed(last_script) || execution::has_script_been_skipped(last_script)
+                execution::has_script_failed(last_script)
+                    || execution::has_script_been_skipped(last_script)
             } else {
                 false
             };
