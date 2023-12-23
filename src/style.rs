@@ -108,7 +108,7 @@ impl iced::widget::text_input::StyleSheet for InvalidInputStyleSheet {
             background: iced::Background::Color(style.extended_palette().background.base.color),
             border_width: 1.0,
             border_color: style.extended_palette().danger.base.color,
-            border_radius: 1.0,
+            border_radius: iced::BorderRadius::from(1.0),
             icon_color: iced::Color::WHITE,
         }
     }
