@@ -8,14 +8,13 @@ use iced::alignment::{self, Alignment};
 use iced::theme::{self, Theme};
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{
-    button, checkbox, column, container, horizontal_space, image, image::Handle, row, scrollable,
-    text, text_input, tooltip, vertical_space, Button, Column,
+    button, checkbox, column, container, horizontal_space, image, image::Handle, responsive, row,
+    scrollable, text, text_input, tooltip, vertical_space, Button, Column,
 };
 use iced::window::{self, request_user_attention, resize};
 use iced::{event, executor, keyboard, ContentFit, Event};
 use iced::{time, Size};
 use iced::{Application, Command, Element, Length, Subscription};
-use iced_lazy::responsive;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::mem::swap;
@@ -47,6 +46,7 @@ pub struct VisualCaches {
     is_custom_title_editing: bool,
     recent_logs: Vec<String>,
     icons: ui_icons::IconCaches,
+    pane_drag_start_time: Instant,
 }
 
 pub struct MainWindow {
@@ -262,6 +262,7 @@ impl Application for MainWindow {
                 is_custom_title_editing: false,
                 recent_logs: Vec::new(),
                 icons: ui_icons::IconCaches::new(),
+                pane_drag_start_time: Instant::now(),
             },
             edit_data: EditData {
                 script_filter: String::new(),
@@ -323,10 +324,22 @@ impl Application for MainWindow {
             WindowMessage::Resized(pane_grid::ResizeEvent { split, ratio }) => {
                 self.panes.resize(&split, ratio);
             }
-            WindowMessage::Dragged(pane_grid::DragEvent::Dropped { pane, target }) => {
-                self.panes.swap(&pane, &target);
+            WindowMessage::Dragged(pane_grid::DragEvent::Picked { pane: _pane }) => {
+                self.visual_caches.pane_drag_start_time = Instant::now();
             }
-            WindowMessage::Dragged(_) => {}
+            WindowMessage::Dragged(pane_grid::DragEvent::Dropped { pane, target }) => {
+                // avoid rearranging panes when trying to focus a pane by clicking on the title
+                if self
+                    .visual_caches
+                    .pane_drag_start_time
+                    .elapsed()
+                    .as_millis()
+                    > 200
+                {
+                    self.panes.drop(&pane, target);
+                }
+            }
+            WindowMessage::Dragged(pane_grid::DragEvent::Canceled { pane: _ }) => {}
             WindowMessage::Maximize(pane, window_size) => {
                 return maximize_pane(self, pane, window_size);
             }
@@ -3770,9 +3783,9 @@ fn maximize_pane(
             0
         };
 
-        return resize(
-            size.width as u32,
-            std::cmp::min(
+        return resize(iced::Size {
+            width: size.width as u32,
+            height: std::cmp::min(
                 size.height as u32,
                 EMPTY_EXECUTION_LIST_HEIGHT
                     + edited_elements_count * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
@@ -3784,7 +3797,7 @@ fn maximize_pane(
                         0
                     },
             ),
-        );
+        });
     }
 
     return Command::none();
@@ -3795,10 +3808,10 @@ fn restore_window(app: &mut MainWindow) -> Command<WindowMessage> {
     app.panes.restore();
     if !get_rewritable_config_opt(&app.app_config, &app.edit_data.window_edit_data).keep_window_size
     {
-        return resize(
-            app.window_state.full_window_size.width as u32,
-            app.window_state.full_window_size.height as u32,
-        );
+        return resize(iced::Size {
+            width: app.window_state.full_window_size.width as u32,
+            height: app.window_state.full_window_size.height as u32,
+        });
     }
     return Command::none();
 }
