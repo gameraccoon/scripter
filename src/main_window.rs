@@ -335,6 +335,10 @@ impl Application for MainWindow {
                             self.window_state.full_window_size,
                         )
                     };
+                } else {
+                    if self.window_state.has_maximized_pane {
+                        return restore_window(self);
+                    }
                 }
             }
             Message::AddScriptToExecution(script_uid) => {
