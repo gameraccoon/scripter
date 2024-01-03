@@ -41,6 +41,7 @@ pub struct RewritableConfig {
     pub window_status_reactions: bool,
     pub keep_window_size: bool,
     pub enable_script_filtering: bool,
+    pub enable_title_editing: bool,
     pub custom_theme: Option<CustomTheme>,
 }
 
@@ -278,6 +279,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             window_status_reactions: true,
             keep_window_size: false,
             enable_script_filtering: true,
+            enable_title_editing: true,
             custom_theme: Some(CustomTheme::default()),
         },
         script_definitions: Vec::new(),

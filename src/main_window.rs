@@ -41,6 +41,7 @@ static ARGUMENTS_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::uniq
 // caches for visual elements content
 pub struct VisualCaches {
     autorerun_count: String,
+    is_custom_title_editing: bool,
     recent_logs: Vec<String>,
     icons: ui_icons::IconCaches,
 }
@@ -179,6 +180,7 @@ pub enum Message {
     ConfigToggleWindowStatusReactions(bool),
     ConfigToggleKeepWindowSize(bool),
     ConfigToggleScriptFiltering(bool),
+    ConfigToggleTitleEditing(bool),
     ConfigToggleUseCustomTheme(bool),
     ConfigEditThemeBackground(String),
     ConfigEditThemeText(String),
@@ -206,6 +208,8 @@ pub enum Message {
     CursorConfirm,
     RemoveCursorScript,
     SwitchPaneFocus(bool),
+    SetExecutionListTitleEditing(bool),
+    EditExecutionListTitle(String),
 }
 
 impl Application for MainWindow {
@@ -250,6 +254,7 @@ impl Application for MainWindow {
             app_config,
             visual_caches: VisualCaches {
                 autorerun_count: String::new(),
+                is_custom_title_editing: false,
                 recent_logs: Vec::new(),
                 icons: ui_icons::IconCaches::new(),
             },
@@ -663,6 +668,11 @@ impl Application for MainWindow {
             Message::ConfigToggleScriptFiltering(is_checked) => {
                 get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
                     .enable_script_filtering = is_checked;
+                self.edit_data.is_dirty = true;
+            }
+            Message::ConfigToggleTitleEditing(is_checked) => {
+                get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
+                    .enable_title_editing = is_checked;
                 self.edit_data.is_dirty = true;
             }
             Message::ConfigToggleUseCustomTheme(is_checked) => {
@@ -1173,6 +1183,12 @@ impl Application for MainWindow {
                 } else if has_pane_changed {
                     return text_input::focus(text_input::Id::new("dummy"));
                 }
+            }
+            Message::SetExecutionListTitleEditing(is_editing) => {
+                self.visual_caches.is_custom_title_editing = is_editing;
+            }
+            Message::EditExecutionListTitle(new_title) => {
+                self.app_config.custom_title = Some(new_title);
             }
         }
 
@@ -1733,27 +1749,63 @@ fn produce_execution_list_content<'a>(
     path_caches: &config::PathCaches,
     theme: &Theme,
     custom_title: &Option<String>,
-    icons: &ui_icons::IconCaches,
+    visual_caches: &VisualCaches,
     edit_data: &EditData,
     rewritable_config: &config::RewritableConfig,
     window_state: &WindowState,
 ) -> Column<'a, Message> {
-    let mut title: Element<_> = text(path_caches.work_path.to_str().unwrap_or_default())
-        .size(16)
-        .horizontal_alignment(alignment::Horizontal::Center)
-        .width(Length::Fill)
-        .into();
+    let custom_title: String = if let Some(custom_title) = custom_title {
+        custom_title.to_string()
+    } else {
+        "".to_string()
+    };
 
-    if let Some(new_title) = custom_title {
-        title = column![
-            title,
-            text(new_title)
+    let icons = &visual_caches.icons;
+
+    let title_widget = if visual_caches.is_custom_title_editing {
+        row![
+            text_input("Write a note for this execution here", &custom_title)
+                .on_input(Message::EditExecutionListTitle)
+                .on_submit(Message::SetExecutionListTitleEditing(false))
+                .size(16)
+                .width(Length::Fill),
+        ]
+    } else if rewritable_config.enable_title_editing && edit_data.window_edit_data.is_none() {
+        row![
+            horizontal_space(iced::Length::Fill),
+            text(custom_title)
                 .size(16)
                 .horizontal_alignment(alignment::Horizontal::Center)
-                .width(Length::Fill)
+                .width(Length::Shrink),
+            tooltip(
+                button(
+                    image(icons.themed.edit.clone())
+                        .width(Length::Fixed(8.0))
+                        .height(Length::Fixed(8.0))
+                )
+                .style(theme::Button::Secondary)
+                .on_press(Message::SetExecutionListTitleEditing(true)),
+                "Edit title",
+                tooltip::Position::Right
+            ),
+            horizontal_space(iced::Length::Fill),
         ]
-        .into();
-    }
+        .align_items(Alignment::Center)
+    } else {
+        row![text(custom_title)
+            .size(16)
+            .horizontal_alignment(alignment::Horizontal::Center)
+            .width(Length::Fill),]
+        .align_items(Alignment::Center)
+    };
+
+    let title = column![
+        text(path_caches.work_path.to_str().unwrap_or_default())
+            .size(16)
+            .horizontal_alignment(alignment::Horizontal::Center)
+            .width(Length::Fill),
+        title_widget,
+    ];
 
     let scheduled_data: Element<_> = column(
         execution_lists
@@ -2494,6 +2546,14 @@ fn produce_config_edit_content<'a>(
     );
     list_elements.push(
         checkbox(
+            "Allow edit custom title",
+            rewritable_config.enable_title_editing,
+            move |val| Message::ConfigToggleTitleEditing(val),
+        )
+        .into(),
+    );
+    list_elements.push(
+        checkbox(
             "Use custom theme",
             rewritable_config.custom_theme.is_some(),
             move |val| Message::ConfigToggleUseCustomTheme(val),
@@ -2597,7 +2657,7 @@ fn view_content<'a>(
             paths,
             theme,
             &config.custom_title,
-            &visual_caches.icons,
+            &visual_caches,
             edit_data,
             rewritable_config,
             window_state,
@@ -3245,6 +3305,7 @@ fn enter_window_edit_mode(app: &mut MainWindow) {
     app.edit_data.script_filter = String::new();
     clean_script_selection(&mut app.window_state.cursor_script);
     update_config_cache(&mut app.app_config, &app.edit_data);
+    app.visual_caches.is_custom_title_editing = false;
 }
 
 fn exit_window_edit_mode(app: &mut MainWindow) {

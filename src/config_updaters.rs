@@ -3,8 +3,8 @@ use crate::json_config_updater::{JsonConfigUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.10.5";
-pub static LATEST_CHILD_CONFIG_VERSION: &str = "0.10.5";
+pub static LATEST_CONFIG_VERSION: &str = "0.12.1";
+pub static LATEST_CHILD_CONFIG_VERSION: &str = "0.12.1";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -111,6 +111,7 @@ fn register_config_updaters() -> JsonConfigUpdater {
     });
     json_config_updater.add_update_function("0.10.4", v0_10_4_add_caption_and_error_text_colors);
     json_config_updater.add_update_function("0.10.5", v0_10_5_add_filter_option);
+    json_config_updater.add_update_function("0.12.1", v0_12_1_add_enable_title_editing_option);
     // add update functions here
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -167,6 +168,7 @@ fn register_child_config_updaters() -> JsonConfigUpdater {
     });
     json_config_updater.add_update_function("0.10.4", v0_10_4_add_caption_and_error_text_colors);
     json_config_updater.add_update_function("0.10.5", v0_10_5_add_filter_option);
+    json_config_updater.add_update_function("0.12.1", v0_12_1_add_enable_title_editing_option);
     // add update functions here
     // don't forget to update LATEST_CHILD_CONFIG_VERSION at the beginning of the file
 
@@ -228,5 +230,11 @@ fn v0_10_4_add_caption_and_error_text_colors(config_json: &mut JsonValue) {
 fn v0_10_5_add_filter_option(config_json: &mut JsonValue) {
     if let Some(rewritable) = config_json["rewritable"].as_object_mut() {
         rewritable.insert("enable_script_filtering".to_string(), json!(true));
+    }
+}
+
+fn v0_12_1_add_enable_title_editing_option(config_json: &mut JsonValue) {
+    if let Some(rewritable) = config_json["rewritable"].as_object_mut() {
+        rewritable.insert("enable_title_editing".to_string(), json!(true));
     }
 }
