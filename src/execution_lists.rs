@@ -142,6 +142,9 @@ impl ExecutionLists {
     }
 
     pub fn is_waiting_execution_to_finish(&self) -> bool {
+        if self.execution_lists.is_empty() {
+            return false;
+        }
         if let Some(execution_list) = self.execution_lists.get(self.current_execution_list - 1) {
             return execution::is_waiting_execution_thread_to_finish(
                 &execution_list.execution_data,

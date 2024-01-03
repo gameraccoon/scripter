@@ -145,7 +145,6 @@ pub enum Message {
     AddScriptToExecution(config::Guid),
     RunScripts,
     StopScripts,
-    ClearEditedScripts,
     ClearExecutionScripts,
     RescheduleScripts,
     Tick(Instant),
@@ -360,9 +359,21 @@ impl Application for MainWindow {
                     self.execution_data.request_stop_execution();
                 }
             }
-            Message::ClearEditedScripts => clear_edited_scripts(self),
-            Message::ClearExecutionScripts => clear_execution_scripts(self),
-            Message::RescheduleScripts => self.execution_data.reschedule_scripts(),
+            Message::ClearExecutionScripts => {
+                if !self.execution_data.has_started_execution() {
+                    clear_edited_scripts(self)
+                } else {
+                    clear_execution_scripts(self)
+                }
+            }
+            Message::RescheduleScripts => {
+                if self.execution_data.has_started_execution()
+                    && self.execution_data.has_finished_execution()
+                    && !self.execution_data.is_waiting_execution_to_finish()
+                {
+                    self.execution_data.reschedule_scripts()
+                }
+            }
             Message::Tick(_now) => {
                 let has_finished = self.execution_data.tick(&self.app_config);
                 if has_finished {
@@ -1285,7 +1296,12 @@ impl Application for MainWindow {
                         let is_command_key_down = modifiers.command();
                         let is_shift_key_down = modifiers.shift();
                         if is_command_key_down {
-                            handle_command_hotkey(key_code, &status, is_input_captured_by_a_widget)
+                            handle_command_hotkey(
+                                key_code,
+                                &status,
+                                is_shift_key_down,
+                                is_input_captured_by_a_widget,
+                            )
                         } else if is_shift_key_down {
                             handle_shift_hotkey(key_code, &status, is_input_captured_by_a_widget)
                         } else {
@@ -1313,6 +1329,7 @@ impl Application for MainWindow {
 fn handle_command_hotkey(
     key_code: keyboard::KeyCode,
     _status: &event::Status,
+    is_shift_key_down: bool,
     is_input_captured_by_a_widget: bool,
 ) -> Option<Message> {
     use keyboard::KeyCode;
@@ -1321,10 +1338,20 @@ fn handle_command_hotkey(
         KeyCode::W => Some(Message::RequestCloseApp),
         KeyCode::F => Some(Message::FocusFilter),
         KeyCode::E => Some(Message::TrySwitchWindowEditMode),
-        KeyCode::R => Some(Message::RunScripts),
+        KeyCode::R => {
+            if is_shift_key_down {
+                Some(Message::RescheduleScripts)
+            } else {
+                Some(Message::RunScripts)
+            }
+        }
         KeyCode::C => {
             if !is_input_captured_by_a_widget {
-                Some(Message::StopScripts)
+                if is_shift_key_down {
+                    Some(Message::StopScripts)
+                } else {
+                    Some(Message::ClearExecutionScripts)
+                }
             } else {
                 None
             }
@@ -2089,7 +2116,7 @@ fn produce_execution_list_content<'a>(
             main_icon_button(
                 icons.themed.remove.clone(),
                 clear_name,
-                Some(Message::ClearEditedScripts)
+                Some(Message::ClearExecutionScripts)
             ),
         ]
         .align_items(Alignment::Center)
@@ -3333,11 +3360,21 @@ fn focus_filter(app: &mut MainWindow) -> Command<Message> {
 }
 
 fn clear_edited_scripts(app: &mut MainWindow) {
+    if app.execution_data.has_started_execution() {
+        return;
+    }
     app.execution_data.clear_edited_scripts();
     clean_script_selection(&mut app.window_state.cursor_script);
 }
 
 fn clear_execution_scripts(app: &mut MainWindow) {
+    if app.execution_data.has_started_execution()
+        && (!app.execution_data.has_finished_execution()
+            || app.execution_data.is_waiting_execution_to_finish())
+    {
+        return;
+    }
+
     app.execution_data.clear_execution_scripts();
     clean_script_selection(&mut app.window_state.cursor_script);
 }
