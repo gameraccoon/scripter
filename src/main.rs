@@ -6,7 +6,7 @@ mod config_updaters;
 mod execution;
 mod execution_lists;
 mod file_utils;
-mod json_config_updater;
+mod json_file_updater;
 mod main_window;
 mod ring_buffer;
 mod string_constants;

@@ -2,7 +2,7 @@ use crate::config_updaters::{
     update_child_config_to_the_latest_version, update_config_to_the_latest_version,
     LATEST_CHILD_CONFIG_VERSION, LATEST_CONFIG_VERSION,
 };
-use crate::json_config_updater::UpdateResult;
+use crate::json_file_updater::UpdateResult;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;

@@ -1,5 +1,5 @@
 use crate::config;
-use crate::json_config_updater::{JsonConfigUpdater, UpdateResult};
+use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
@@ -30,8 +30,8 @@ pub fn update_child_config_to_the_latest_version(config_json: &mut JsonValue) ->
     return json_config_updater.update_json(config_json);
 }
 
-fn register_config_updaters() -> JsonConfigUpdater {
-    let mut json_config_updater = JsonConfigUpdater::new(VERSION_FIELD_NAME);
+fn register_config_updaters() -> JsonFileUpdater {
+    let mut json_config_updater = JsonFileUpdater::new(VERSION_FIELD_NAME);
 
     json_config_updater.add_update_function("0.6.0", |config_json| {
         // keep the old behavior of the "window_status_reactions" field since the default changed
@@ -112,14 +112,14 @@ fn register_config_updaters() -> JsonConfigUpdater {
     json_config_updater.add_update_function("0.10.4", v0_10_4_add_caption_and_error_text_colors);
     json_config_updater.add_update_function("0.10.5", v0_10_5_add_filter_option);
     json_config_updater.add_update_function("0.12.1", v0_12_1_add_enable_title_editing_option);
-    // add update functions here
+    // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
     json_config_updater
 }
 
-fn register_child_config_updaters() -> JsonConfigUpdater {
-    let mut json_config_updater = JsonConfigUpdater::new(VERSION_FIELD_NAME);
+fn register_child_config_updaters() -> JsonFileUpdater {
+    let mut json_config_updater = JsonFileUpdater::new(VERSION_FIELD_NAME);
 
     json_config_updater.add_update_function("0.7.2", |_config_json| {
         // empty updater to have a name for the first version
@@ -169,7 +169,7 @@ fn register_child_config_updaters() -> JsonConfigUpdater {
     json_config_updater.add_update_function("0.10.4", v0_10_4_add_caption_and_error_text_colors);
     json_config_updater.add_update_function("0.10.5", v0_10_5_add_filter_option);
     json_config_updater.add_update_function("0.12.1", v0_12_1_add_enable_title_editing_option);
-    // add update functions here
+    // add update functions above this line
     // don't forget to update LATEST_CHILD_CONFIG_VERSION at the beginning of the file
 
     json_config_updater
