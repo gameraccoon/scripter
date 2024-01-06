@@ -1,3 +1,6 @@
+// Copyright (C) Pavel Grebnev 2023
+// Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
+
 use crate::config_updaters::{
     update_child_config_to_the_latest_version, update_config_to_the_latest_version,
     LATEST_CHILD_CONFIG_VERSION, LATEST_CONFIG_VERSION,

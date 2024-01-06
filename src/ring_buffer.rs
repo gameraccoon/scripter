@@ -1,3 +1,6 @@
+// Copyright (C) Pavel Grebnev 2023
+// Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
+
 //  |-- head    |-- tail
 //  v           v
 // [1] [2] [3] [4] [ ]

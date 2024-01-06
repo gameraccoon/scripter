@@ -1,3 +1,6 @@
+// Copyright (C) Pavel Grebnev 2023-2024
+// Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
+
 pub fn hex_to_rgb(hex: &str) -> Option<[f32; 3]> {
     if hex.len() != 7 {
         return None;

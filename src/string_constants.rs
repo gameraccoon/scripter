@@ -1,3 +1,6 @@
+// Copyright (C) Pavel Grebnev 2023-2024
+// Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
+
 // depending on whether it's macOS or not we need to name the key Ctrl or Command
 #[cfg(target_os = "macos")]
 pub const FILTER_COMMAND_HINT: &str = "Command+F to focus Filter";

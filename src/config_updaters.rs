@@ -1,3 +1,6 @@
+// Copyright (C) Pavel Grebnev 2023-2024
+// Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
+
 use crate::config;
 use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};

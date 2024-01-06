@@ -1,3 +1,6 @@
+// Copyright (C) Pavel Grebnev 2023-2024
+// Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
+
 use iced::theme::{self, Theme};
 use iced::widget::container;
 
