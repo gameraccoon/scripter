@@ -62,7 +62,7 @@ impl JsonConfigUpdater {
             if let Some(found_idx) = found_idx {
                 found_idx + 1
             } else {
-                return UpdateResult::Error(format!("Version {} is not found during patching process. Make sure you didn't input the version manually into the json", version_string));
+                return UpdateResult::Error(format!("Configuration file has version {} which is not known config version, last known version is {}. You may be using an older version of the executable (and need to update), or there were manual edits done to the config.", version_string, self.latest_version));
             }
         } else {
             0
