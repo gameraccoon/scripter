@@ -47,7 +47,6 @@ impl Default for PathConfig {
 // Part of the config that can be fully overridden by the local config
 #[derive(Clone, Deserialize, Serialize)]
 pub struct RewritableConfig {
-    pub always_on_top: bool,
     pub window_status_reactions: bool,
     pub keep_window_size: bool,
     pub enable_script_filtering: bool,
@@ -296,10 +295,6 @@ pub fn get_arguments_read_error() -> Option<String> {
     GLOBAL_CONFIG.with(|config| config.arguments_read_error.clone())
 }
 
-pub fn is_always_on_top() -> bool {
-    GLOBAL_CONFIG.with(|config| config.rewritable.always_on_top)
-}
-
 pub fn save_config_to_file(config: &AppConfig) -> bool {
     let data = serde_json::to_string_pretty(&config);
     let data = match data {
@@ -367,7 +362,6 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
     AppConfig {
         version: LATEST_CONFIG_VERSION.to_string(),
         rewritable: RewritableConfig {
-            always_on_top: false,
             window_status_reactions: true,
             keep_window_size: false,
             enable_script_filtering: true,

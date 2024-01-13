@@ -225,7 +225,6 @@ pub enum WindowMessage {
     MoveConfigScriptUp(usize),
     MoveConfigScriptDown(usize),
     ToggleConfigEditing,
-    ConfigToggleAlwaysOnTop(bool),
     ConfigToggleWindowStatusReactions(bool),
     ConfigToggleKeepWindowSize(bool),
     ConfigToggleScriptFiltering(bool),
@@ -698,11 +697,6 @@ impl Application for MainWindow {
                     }
                 };
                 clean_script_selection(&mut self.window_state.cursor_script);
-            }
-            WindowMessage::ConfigToggleAlwaysOnTop(is_checked) => {
-                get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
-                    .always_on_top = is_checked;
-                self.edit_data.is_dirty = true;
             }
             WindowMessage::ConfigToggleWindowStatusReactions(is_checked) => {
                 get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
@@ -2770,14 +2764,6 @@ fn produce_config_edit_content<'a>(
     const SEPARATOR_HEIGHT: u16 = 8;
 
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-    list_elements.push(
-        checkbox(
-            "Always on top (requires restart)",
-            rewritable_config.always_on_top,
-            move |val| WindowMessage::ConfigToggleAlwaysOnTop(val),
-        )
-        .into(),
-    );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
         checkbox(
