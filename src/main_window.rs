@@ -3822,11 +3822,9 @@ fn find_best_shared_script_insert_position(
     }
 
     if last_shared_script_idx != script_idx {
-        return find_script_idx_by_id(
-            target_script_definitions,
-            &target_shared_script_uid,
-        )
-        .unwrap_or(target_script_definitions.len() - 1) + 1;
+        return find_script_idx_by_id(target_script_definitions, &target_shared_script_uid)
+            .unwrap_or(target_script_definitions.len() - 1)
+            + 1;
     }
 
     // search down
@@ -3841,11 +3839,8 @@ fn find_best_shared_script_insert_position(
     }
 
     if next_shared_script_idx != script_idx {
-        return find_script_idx_by_id(
-            target_script_definitions,
-            &target_shared_script_idx,
-        )
-        .unwrap_or(target_script_definitions.len());
+        return find_script_idx_by_id(target_script_definitions, &target_shared_script_idx)
+            .unwrap_or(target_script_definitions.len());
     }
 
     // if we didn't find any shared scripts, just insert at the end
