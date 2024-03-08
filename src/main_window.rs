@@ -440,7 +440,7 @@ impl Application for MainWindow {
                     name: "new script".to_string(),
                     icon: config::PathConfig::default(),
                     command: config::PathConfig::default(),
-                    working_directory: config::PathConfig{
+                    working_directory: config::PathConfig {
                         path: ".".to_string(),
                         path_type: config::PathType::WorkingDirRelative,
                     },
@@ -490,7 +490,9 @@ impl Application for MainWindow {
                 });
             }
             WindowMessage::EditScriptWorkingDirectory(new_working_directory) => {
-                apply_script_edit(self, move |script| script.working_directory.path = new_working_directory);
+                apply_script_edit(self, move |script| {
+                    script.working_directory.path = new_working_directory
+                });
             }
             WindowMessage::ToggleScriptWorkingDirectoryRelativeToScripter(value) => {
                 apply_script_edit(self, |script| {
@@ -883,7 +885,8 @@ impl Application for MainWindow {
                             match &mut script {
                                 config::ScriptDefinition::Original(original_script) => {
                                     original_script.uid = config::Guid::new();
-                                    original_script.name = format!("{} (copy)", original_script.name);
+                                    original_script.name =
+                                        format!("{} (copy)", original_script.name);
                                     script
                                 }
                                 _ => {

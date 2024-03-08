@@ -2,8 +2,8 @@
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use crate::config_updaters::{
-    update_local_config_to_the_latest_version, update_config_to_the_latest_version,
-    LATEST_LOCAL_CONFIG_VERSION, LATEST_CONFIG_VERSION,
+    update_config_to_the_latest_version, update_local_config_to_the_latest_version,
+    LATEST_CONFIG_VERSION, LATEST_LOCAL_CONFIG_VERSION,
 };
 use crate::json_file_updater::UpdateResult;
 use rand::RngCore;

@@ -115,7 +115,8 @@ fn register_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.10.4", v0_10_4_add_caption_and_error_text_colors);
     json_config_updater.add_update_function("0.10.5", v0_10_5_add_filter_option);
     json_config_updater.add_update_function("0.12.1", v0_12_1_add_enable_title_editing_option);
-    json_config_updater.add_update_function("0.12.2", v0_12_2_rename_child_to_local_and_parent_to_shared);
+    json_config_updater
+        .add_update_function("0.12.2", v0_12_2_rename_child_to_local_and_parent_to_shared);
     json_config_updater.add_update_function("0.13.0", v0_13_0_added_custom_working_directory);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
@@ -174,7 +175,8 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.10.4", v0_10_4_add_caption_and_error_text_colors);
     json_config_updater.add_update_function("0.10.5", v0_10_5_add_filter_option);
     json_config_updater.add_update_function("0.12.1", v0_12_1_add_enable_title_editing_option);
-    json_config_updater.add_update_function("0.12.2", v0_12_2_rename_child_to_local_and_parent_to_shared);
+    json_config_updater
+        .add_update_function("0.12.2", v0_12_2_rename_child_to_local_and_parent_to_shared);
     json_config_updater.add_update_function("0.13.0", v0_13_0_added_custom_working_directory);
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
@@ -203,8 +205,8 @@ fn convert_path_0_9_4(old_path: JsonValue, is_relative_to_scripter: bool) -> Jso
 }
 
 fn for_each_script_added_definition_pre_0_10_0<F>(config_json: &mut JsonValue, mut f: F)
-    where
-        F: FnMut(&mut JsonValue),
+where
+    F: FnMut(&mut JsonValue),
 {
     if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
         for script in script_definitions {
@@ -218,8 +220,8 @@ fn for_each_script_added_definition_pre_0_10_0<F>(config_json: &mut JsonValue, m
 }
 
 fn for_each_script_original_definition_post_0_10_0<F>(config_json: &mut JsonValue, mut f: F)
-    where
-        F: FnMut(&mut JsonValue),
+where
+    F: FnMut(&mut JsonValue),
 {
     if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
         for script in script_definitions {
