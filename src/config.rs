@@ -1,9 +1,9 @@
-// Copyright (C) Pavel Grebnev 2023
+// Copyright (C) Pavel Grebnev 2023-2024
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use crate::config_updaters::{
-    update_child_config_to_the_latest_version, update_config_to_the_latest_version,
-    LATEST_CHILD_CONFIG_VERSION, LATEST_CONFIG_VERSION,
+    update_local_config_to_the_latest_version, update_config_to_the_latest_version,
+    LATEST_LOCAL_CONFIG_VERSION, LATEST_CONFIG_VERSION,
 };
 use crate::json_file_updater::UpdateResult;
 use rand::RngCore;
@@ -37,7 +37,7 @@ impl Default for PathConfig {
     }
 }
 
-// Part of the config that can be fully overridden by the child config
+// Part of the config that can be fully overridden by the local config
 #[derive(Default, Clone, Deserialize, Serialize)]
 pub struct RewritableConfig {
     pub always_on_top: bool,
@@ -53,7 +53,7 @@ pub struct AppConfig {
     pub version: String,
     pub rewritable: RewritableConfig,
     pub script_definitions: Vec<ScriptDefinition>,
-    pub child_config_path: PathConfig,
+    pub local_config_path: PathConfig,
     #[serde(skip)]
     pub paths: PathCaches,
     #[serde(skip)]
@@ -63,7 +63,7 @@ pub struct AppConfig {
     #[serde(skip)]
     pub config_read_error: Option<String>,
     #[serde(skip)]
-    pub child_config_body: Option<Box<ChildConfig>>,
+    pub local_config_body: Option<Box<LocalConfig>>,
     #[serde(skip)]
     pub displayed_configs_list_cache: Vec<ScriptListCacheRecord>,
 }
@@ -77,7 +77,7 @@ pub struct ScriptListCacheRecord {
 }
 
 #[derive(Default, Clone, Deserialize, Serialize)]
-pub struct ChildConfig {
+pub struct LocalConfig {
     pub version: String,
     pub rewritable: RewritableConfig,
     pub script_definitions: Vec<ScriptDefinition>,
@@ -116,8 +116,8 @@ pub struct ScriptPreset {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum ScriptDefinition {
-    // taken from the parent config, second bool is whether it's hidden
-    ReferenceToParent(Guid, bool),
+    // taken from the shared config, second bool is whether it's hidden
+    ReferenceToShared(Guid, bool),
     // added in the current config
     Original(OriginalScriptDefinition),
     // preset of multiple scripts
@@ -233,21 +233,21 @@ pub fn save_config_to_file(config: &AppConfig) {
         );
     }
 
-    if let Some(child_config) = &config.child_config_body {
-        let data = serde_json::to_string_pretty(&child_config);
+    if let Some(local_config) = &config.local_config_body {
+        let data = serde_json::to_string_pretty(&local_config);
         let data = match data {
             Ok(data) => data,
             Err(err) => {
-                eprintln!("Can't serialize child config file. Error: {}", err);
+                eprintln!("Can't serialize local config file. Error: {}", err);
                 return;
             }
         };
-        if !config.child_config_path.path.is_empty() {
-            let full_config_path = get_full_path(&config.paths, &config.child_config_path);
+        if !config.local_config_path.path.is_empty() {
+            let full_config_path = get_full_path(&config.paths, &config.local_config_path);
             let result = std::fs::write(&full_config_path, data);
             if let Err(err) = result {
                 eprintln!(
-                    "Can't write child config file {}, error {}",
+                    "Can't write local config file {}, error {}",
                     &full_config_path.to_str().unwrap_or_default(),
                     err
                 );
@@ -300,19 +300,19 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             exe_folder_path: get_exe_folder_path(),
             config_path,
         },
-        child_config_path: PathConfig::default(),
+        local_config_path: PathConfig::default(),
         env_vars: app_arguments.env_vars,
         custom_title: app_arguments.custom_title,
         config_read_error: None,
-        child_config_body: None,
+        local_config_body: None,
         displayed_configs_list_cache: Vec::new(),
     }
 }
 
-pub fn get_default_child_config(parent_config: &AppConfig) -> ChildConfig {
-    ChildConfig {
-        version: LATEST_CHILD_CONFIG_VERSION.to_string(),
-        rewritable: parent_config.rewritable.clone(),
+pub fn get_default_local_config(shared_config: &AppConfig) -> LocalConfig {
+    LocalConfig {
+        version: LATEST_LOCAL_CONFIG_VERSION.to_string(),
+        rewritable: shared_config.rewritable.clone(),
         script_definitions: Vec::new(),
     }
 }
@@ -461,23 +461,23 @@ pub fn read_config() -> AppConfig {
         );
     }
 
-    if !config.child_config_path.path.is_empty() {
-        let full_child_config_path =
-            get_full_path(&default_config.paths, &config.child_config_path);
-        let child_config = match read_child_config(full_child_config_path.clone(), &mut config) {
-            Ok(child_config) => child_config,
+    if !config.local_config_path.path.is_empty() {
+        let full_local_config_path =
+            get_full_path(&default_config.paths, &config.local_config_path);
+        let local_config = match read_local_config(full_local_config_path.clone(), &mut config) {
+            Ok(local_config) => local_config,
             Err(error) => {
                 return default_config_with_error(
                     &default_config,
                     format!(
-                        "Failed to read child config file '{}'.\nError: {}",
-                        full_child_config_path.to_string_lossy(),
+                        "Failed to read local config file '{}'.\nError: {}",
+                        full_local_config_path.to_string_lossy(),
                         error
                     ),
                 );
             }
         };
-        config.child_config_body = Some(Box::new(child_config));
+        config.local_config_body = Some(Box::new(local_config));
     }
 
     config.paths = default_config.paths;
@@ -487,10 +487,10 @@ pub fn read_config() -> AppConfig {
     return config;
 }
 
-pub fn populate_parent_scripts_from_config(app_config: &mut AppConfig) {
-    if let Some(mut child_config) = app_config.child_config_body.take() {
-        populate_parent_scripts(&mut child_config, app_config);
-        app_config.child_config_body = Some(child_config);
+pub fn populate_shared_scripts_from_config(app_config: &mut AppConfig) {
+    if let Some(mut local_config) = app_config.local_config_body.take() {
+        populate_shared_scripts(&mut local_config, app_config);
+        app_config.local_config_body = Some(local_config);
     }
 }
 
@@ -498,8 +498,8 @@ pub fn get_original_script_definition_by_uid(
     app_config: &AppConfig,
     script_uid: Guid,
 ) -> Option<ScriptDefinition> {
-    if let Some(child_config) = &app_config.child_config_body {
-        for script_definition in &child_config.script_definitions {
+    if let Some(local_config) = &app_config.local_config_body {
+        for script_definition in &local_config.script_definitions {
             if original_script_definition_search_predicate(script_definition, &script_uid) {
                 return Some(script_definition.clone());
             }
@@ -535,14 +535,14 @@ fn original_script_definition_search_predicate(
     }
 }
 
-fn read_child_config(
+fn read_local_config(
     config_path: PathBuf,
-    parent_config: &mut AppConfig,
-) -> Result<ChildConfig, String> {
+    shared_config: &mut AppConfig,
+) -> Result<LocalConfig, String> {
     // if config file doesn't exist, create it
     if !config_path.exists() {
         // create default config with all the non-serializable fields set
-        let default_config = get_default_child_config(parent_config);
+        let default_config = get_default_local_config(shared_config);
         let data = serde_json::to_string_pretty(&default_config);
         let data = match data {
             Ok(data) => data,
@@ -580,9 +580,9 @@ fn read_child_config(
         Err(err) => return Err(format!("Config file has incorrect json format:\n{}", err)),
     };
 
-    let update_result = update_child_config_to_the_latest_version(&mut config_json);
+    let update_result = update_local_config_to_the_latest_version(&mut config_json);
     let config = serde_json::from_value(config_json);
-    let mut config: ChildConfig = match config {
+    let mut config: LocalConfig = match config {
         Ok(config) => config,
         Err(err) => {
             return Err(format!(
@@ -615,7 +615,7 @@ fn read_child_config(
         return Err(format!("Failed to update config file.\nError: {}", error));
     }
 
-    populate_parent_scripts(&mut config, parent_config);
+    populate_shared_scripts(&mut config, shared_config);
 
     return Ok(config);
 }
@@ -685,27 +685,27 @@ fn get_default_work_path() -> PathBuf {
     return std::env::current_dir().unwrap_or_default();
 }
 
-fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &mut AppConfig) {
-    // find all the parent scripts that are missing from the child config, and populate them
+fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut AppConfig) {
+    // find all the shared scripts that are missing from the local config, and populate them
     let mut previous_script_idx = None;
     let mut has_configs_to_remove = false;
-    for script in &parent_config.script_definitions {
+    for script in &shared_config.script_definitions {
         let original_script_uid = match script {
-            ScriptDefinition::ReferenceToParent(_, _) => {
+            ScriptDefinition::ReferenceToShared(_, _) => {
                 continue;
             }
             ScriptDefinition::Original(script) => script.uid.clone(),
             ScriptDefinition::Preset(preset) => preset.uid.clone(),
         };
 
-        // find position of the script in the child config
+        // find position of the script in the local config
         let script_idx =
-            child_config
+            local_config
                 .script_definitions
                 .iter()
-                .position(|child_script: &ScriptDefinition| match child_script {
-                    ScriptDefinition::ReferenceToParent(parent_script_uid, _is_hidden) => {
-                        *parent_script_uid == original_script_uid
+                .position(|local_script: &ScriptDefinition| match local_script {
+                    ScriptDefinition::ReferenceToShared(shared_script_uid, _is_hidden) => {
+                        *shared_script_uid == original_script_uid
                     }
                     _ => false,
                 });
@@ -719,17 +719,17 @@ fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &mut A
                 match &mut previous_script_idx {
                     Some(previous_script_idx) => {
                         // insert the script after the previous script
-                        child_config.script_definitions.insert(
+                        local_config.script_definitions.insert(
                             *previous_script_idx + 1,
-                            ScriptDefinition::ReferenceToParent(original_script_uid.clone(), false),
+                            ScriptDefinition::ReferenceToShared(original_script_uid.clone(), false),
                         );
                         *previous_script_idx = *previous_script_idx + 1;
                     }
                     None => {
                         // insert the script at the beginning
-                        child_config.script_definitions.insert(
+                        local_config.script_definitions.insert(
                             0,
-                            ScriptDefinition::ReferenceToParent(original_script_uid.clone(), false),
+                            ScriptDefinition::ReferenceToShared(original_script_uid.clone(), false),
                         );
                         previous_script_idx = Some(0);
                     }
@@ -739,16 +739,16 @@ fn populate_parent_scripts(child_config: &mut ChildConfig, parent_config: &mut A
     }
 
     if has_configs_to_remove {
-        // remove all the scripts that are not in the parent config
-        child_config.script_definitions.retain(
-            |child_script: &ScriptDefinition| match child_script {
-                ScriptDefinition::ReferenceToParent(parent_script_uid, _is_hidden) => parent_config
+        // remove all the scripts that are not in the shared config
+        local_config.script_definitions.retain(
+            |local_script: &ScriptDefinition| match local_script {
+                ScriptDefinition::ReferenceToShared(shared_script_uid, _is_hidden) => shared_config
                     .script_definitions
                     .iter()
                     .any(|script| match script {
-                        ScriptDefinition::ReferenceToParent(_, _) => false,
-                        ScriptDefinition::Original(script) => *parent_script_uid == script.uid,
-                        ScriptDefinition::Preset(preset) => *parent_script_uid == preset.uid,
+                        ScriptDefinition::ReferenceToShared(_, _) => false,
+                        ScriptDefinition::Original(script) => *shared_script_uid == script.uid,
+                        ScriptDefinition::Preset(preset) => *shared_script_uid == preset.uid,
                     }),
                 _ => true,
             },

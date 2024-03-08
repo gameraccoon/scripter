@@ -84,8 +84,8 @@ pub struct EditScriptId {
 
 #[derive(Debug, Clone, PartialEq)]
 enum ConfigEditType {
-    Child,
-    Parent,
+    Local,
+    Shared,
 }
 
 #[derive(Debug, Clone)]
@@ -192,13 +192,13 @@ pub enum WindowMessage {
     ConfigEditThemeDanger(String),
     ConfigEditThemeCaptionText(String),
     ConfigEditThemeErrorText(String),
-    ConfigEditChildConfigPath(String),
-    ConfigToggleChildConfigPathRelativeToScripter(bool),
-    SwitchToParentConfig,
-    SwitchToChildConfig,
+    ConfigEditLocalConfigPath(String),
+    ConfigToggleLocalConfigPathRelativeToScripter(bool),
+    SwitchToSharedConfig,
+    SwitchToLocalConfig,
     ToggleScriptHidden(bool),
-    CreateCopyOfParentScript(EditScriptId),
-    MoveToParent(EditScriptId),
+    CreateCopyOfSharedScript(EditScriptId),
+    MoveToShared(EditScriptId),
     SaveAsPreset,
     ScriptFilterChanged(String),
     RequestCloseApp,
@@ -284,7 +284,7 @@ impl Application for MainWindow {
     fn title(&self) -> String {
         if let Some(window_edit_data) = &self.edit_data.window_edit_data {
             match window_edit_data.edit_type {
-                ConfigEditType::Parent if self.app_config.child_config_body.is_some() => {
+                ConfigEditType::Shared if self.app_config.local_config_body.is_some() => {
                     "scripter [Editing shared config]".to_string()
                 }
                 _ => "scripter [Editing]".to_string(),
@@ -402,10 +402,10 @@ impl Application for MainWindow {
                 match script_id.script_type {
                     EditScriptType::ScriptConfig => match &self.edit_data.window_edit_data {
                         Some(WindowEditData {
-                            edit_type: ConfigEditType::Child,
+                            edit_type: ConfigEditType::Local,
                             ..
                         }) => {
-                            if let Some(config) = self.app_config.child_config_body.as_mut() {
+                            if let Some(config) = self.app_config.local_config_body.as_mut() {
                                 config.script_definitions.insert(
                                     script_id.idx + 1,
                                     make_script_copy(
@@ -613,13 +613,13 @@ impl Application for MainWindow {
                     false,
                     match self.edit_data.window_edit_data {
                         Some(WindowEditData {
-                            edit_type: ConfigEditType::Child,
+                            edit_type: ConfigEditType::Local,
                             ..
-                        }) => ConfigEditType::Child,
-                        _ => ConfigEditType::Parent,
+                        }) => ConfigEditType::Local,
+                        _ => ConfigEditType::Shared,
                     },
                 ));
-                config::populate_parent_scripts_from_config(&mut self.app_config);
+                config::populate_shared_scripts_from_config(&mut self.app_config);
                 apply_theme(self);
                 self.edit_data.is_dirty = false;
                 clean_script_selection(&mut self.window_state.cursor_script);
@@ -643,10 +643,10 @@ impl Application for MainWindow {
                         self.edit_data.window_edit_data = Some(WindowEditData::from_config(
                             &self.app_config,
                             true,
-                            if self.app_config.child_config_body.is_some() {
-                                ConfigEditType::Child
+                            if self.app_config.local_config_body.is_some() {
+                                ConfigEditType::Local
                             } else {
-                                ConfigEditType::Parent
+                                ConfigEditType::Shared
                             },
                         ));
                     }
@@ -801,27 +801,27 @@ impl Application for MainWindow {
                 );
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigEditChildConfigPath(new_value) => {
-                self.app_config.child_config_path.path = new_value;
+            WindowMessage::ConfigEditLocalConfigPath(new_value) => {
+                self.app_config.local_config_path.path = new_value;
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigToggleChildConfigPathRelativeToScripter(is_checked) => {
-                self.app_config.child_config_path.path_type = if is_checked {
+            WindowMessage::ConfigToggleLocalConfigPathRelativeToScripter(is_checked) => {
+                self.app_config.local_config_path.path_type = if is_checked {
                     config::PathType::ScripterExecutableRelative
                 } else {
                     config::PathType::WorkingDirRelative
                 };
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::SwitchToParentConfig => {
+            WindowMessage::SwitchToSharedConfig => {
                 clean_script_selection(&mut self.window_state.cursor_script);
-                switch_config_edit_mode(self, ConfigEditType::Parent);
+                switch_config_edit_mode(self, ConfigEditType::Shared);
                 apply_theme(self);
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
-            WindowMessage::SwitchToChildConfig => {
+            WindowMessage::SwitchToLocalConfig => {
                 clean_script_selection(&mut self.window_state.cursor_script);
-                switch_config_edit_mode(self, ConfigEditType::Child);
+                switch_config_edit_mode(self, ConfigEditType::Local);
                 apply_theme(self);
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
@@ -830,13 +830,13 @@ impl Application for MainWindow {
                     return Command::none();
                 };
 
-                if let Some(config) = &mut self.app_config.child_config_body {
+                if let Some(config) = &mut self.app_config.local_config_body {
                     let Some(script) = config.script_definitions.get_mut(script_id.idx) else {
                         return Command::none();
                     };
 
                     match script {
-                        config::ScriptDefinition::ReferenceToParent(_, is_hidden_value) => {
+                        config::ScriptDefinition::ReferenceToShared(_, is_hidden_value) => {
                             *is_hidden_value = is_hidden;
                             self.edit_data.is_dirty = true;
                         }
@@ -845,8 +845,8 @@ impl Application for MainWindow {
                 }
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
-            WindowMessage::CreateCopyOfParentScript(script_id) => {
-                let script = if let Some(config) = &self.app_config.child_config_body {
+            WindowMessage::CreateCopyOfSharedScript(script_id) => {
+                let script = if let Some(config) = &self.app_config.local_config_body {
                     if let Some(script) = config.script_definitions.get(script_id.idx) {
                         script
                     } else {
@@ -857,10 +857,10 @@ impl Application for MainWindow {
                 };
 
                 let new_script = match script {
-                    config::ScriptDefinition::ReferenceToParent(parent_script_id, _is_hidden) => {
+                    config::ScriptDefinition::ReferenceToShared(shared_script_id, _is_hidden) => {
                         if let Some(mut script) = config::get_original_script_definition_by_uid(
                             &self.app_config,
-                            parent_script_id.clone(),
+                            shared_script_id.clone(),
                         ) {
                             match &mut script {
                                 config::ScriptDefinition::Original(original_script) => {
@@ -881,7 +881,7 @@ impl Application for MainWindow {
                     }
                 };
 
-                if let Some(config) = &mut self.app_config.child_config_body {
+                if let Some(config) = &mut self.app_config.local_config_body {
                     config
                         .script_definitions
                         .insert(script_id.idx + 1, new_script);
@@ -890,8 +890,8 @@ impl Application for MainWindow {
                 }
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
-            WindowMessage::MoveToParent(script_id) => {
-                if let Some(config) = &mut self.app_config.child_config_body {
+            WindowMessage::MoveToShared(script_id) => {
+                if let Some(config) = &mut self.app_config.local_config_body {
                     if config.script_definitions.len() <= script_id.idx {
                         return Command::none();
                     }
@@ -899,13 +899,13 @@ impl Application for MainWindow {
                     if let Some(script) = config.script_definitions.get_mut(script_id.idx) {
                         let mut replacement_script = match script {
                             config::ScriptDefinition::Original(definition) => {
-                                config::ScriptDefinition::ReferenceToParent(
+                                config::ScriptDefinition::ReferenceToShared(
                                     definition.uid.clone(),
                                     false,
                                 )
                             }
                             config::ScriptDefinition::Preset(preset) => {
-                                config::ScriptDefinition::ReferenceToParent(
+                                config::ScriptDefinition::ReferenceToShared(
                                     preset.uid.clone(),
                                     false,
                                 )
@@ -941,7 +941,7 @@ impl Application for MainWindow {
 
                             let original_script = if let Some(original_script) = original_script {
                                 match original_script {
-                                    config::ScriptDefinition::ReferenceToParent(uid, _) => {
+                                    config::ScriptDefinition::ReferenceToShared(uid, _) => {
                                         config::get_original_script_definition_by_uid(
                                             &self.app_config,
                                             uid,
@@ -1662,20 +1662,20 @@ fn produce_script_list_content<'a>(
                     Some(WindowMessage::ToggleConfigEditing)
                 ),
             ],
-            if config.child_config_body.is_some() {
+            if config.local_config_body.is_some() {
                 match window_edit_data.edit_type {
-                    ConfigEditType::Child => {
+                    ConfigEditType::Local => {
                         column![
                             vertical_space(Length::Fixed(4.0)),
                             button(text("Edit shared config").size(16))
-                                .on_press(WindowMessage::SwitchToParentConfig)
+                                .on_press(WindowMessage::SwitchToSharedConfig)
                         ]
                     }
-                    ConfigEditType::Parent => {
+                    ConfigEditType::Shared => {
                         column![
                             vertical_space(Length::Fixed(4.0)),
                             button(text("Edit local config").size(16))
-                                .on_press(WindowMessage::SwitchToChildConfig)
+                                .on_press(WindowMessage::SwitchToLocalConfig)
                         ]
                     }
                 }
@@ -2438,7 +2438,7 @@ fn produce_script_edit_content<'a>(
                 parameters.push(
                     edit_button(
                         "Make shared",
-                        WindowMessage::MoveToParent(currently_edited_script.clone()),
+                        WindowMessage::MoveToShared(currently_edited_script.clone()),
                     )
                     .into(),
                 );
@@ -2453,7 +2453,7 @@ fn produce_script_edit_content<'a>(
                 .into(),
             );
         }
-        config::ScriptDefinition::ReferenceToParent(_, is_hidden) => {
+        config::ScriptDefinition::ReferenceToShared(_, is_hidden) => {
             parameters.push(
                 checkbox("Is script hidden", *is_hidden, move |val| {
                     WindowMessage::ToggleScriptHidden(val)
@@ -2465,7 +2465,7 @@ fn produce_script_edit_content<'a>(
                 parameters.push(
                     edit_button(
                         "Edit as a copy",
-                        WindowMessage::CreateCopyOfParentScript(currently_edited_script.clone()),
+                        WindowMessage::CreateCopyOfSharedScript(currently_edited_script.clone()),
                     )
                     .into(),
                 );
@@ -2497,7 +2497,7 @@ fn produce_script_edit_content<'a>(
                 parameters.push(
                     edit_button(
                         "Make shared",
-                        WindowMessage::MoveToParent(currently_edited_script.clone()),
+                        WindowMessage::MoveToShared(currently_edited_script.clone()),
                     )
                     .into(),
                 );
@@ -2632,14 +2632,14 @@ fn produce_config_edit_content<'a>(
         );
     }
 
-    if window_edit.edit_type == ConfigEditType::Parent {
+    if window_edit.edit_type == ConfigEditType::Shared {
         populate_path_editing_content(
             "Local config path:",
             "path/to/config.json",
-            &config.child_config_path,
+            &config.local_config_path,
             &mut list_elements,
-            |path| WindowMessage::ConfigEditChildConfigPath(path),
-            |val| WindowMessage::ConfigToggleChildConfigPathRelativeToScripter(val),
+            |path| WindowMessage::ConfigEditLocalConfigPath(path),
+            |val| WindowMessage::ConfigToggleLocalConfigPathRelativeToScripter(val),
         );
     }
 
@@ -2796,8 +2796,8 @@ fn apply_script_edit(
     if let Some(script_id) = &app.window_state.cursor_script {
         match script_id.script_type {
             EditScriptType::ScriptConfig => match &app.edit_data.window_edit_data {
-                Some(window_edit_data) if window_edit_data.edit_type == ConfigEditType::Child => {
-                    if let Some(config) = &mut app.app_config.child_config_body {
+                Some(window_edit_data) if window_edit_data.edit_type == ConfigEditType::Local => {
+                    if let Some(config) = &mut app.app_config.local_config_body {
                         match &mut config.script_definitions[script_id.idx] {
                             config::ScriptDefinition::Original(script) => {
                                 edit_fn(script);
@@ -2865,10 +2865,10 @@ fn get_rewritable_config<'a>(
     edit_type: &ConfigEditType,
 ) -> &'a config::RewritableConfig {
     match edit_type {
-        ConfigEditType::Parent => &config.rewritable,
-        ConfigEditType::Child => {
-            if let Some(child_config) = &config.child_config_body {
-                &child_config.rewritable
+        ConfigEditType::Shared => &config.rewritable,
+        ConfigEditType::Local => {
+            if let Some(local_config) = &config.local_config_body {
+                &local_config.rewritable
             } else {
                 &config.rewritable
             }
@@ -2883,8 +2883,8 @@ fn get_rewritable_config_opt<'a>(
     match &edit_data {
         Some(edit_data) => get_rewritable_config(config, &edit_data.edit_type),
         None => {
-            if let Some(child_config) = &config.child_config_body {
-                &child_config.rewritable
+            if let Some(local_config) = &config.local_config_body {
+                &local_config.rewritable
             } else {
                 &config.rewritable
             }
@@ -2907,10 +2907,10 @@ fn get_rewritable_config_mut_non_opt<'a>(
     window_edit: &WindowEditData,
 ) -> &'a mut config::RewritableConfig {
     match window_edit.edit_type {
-        ConfigEditType::Parent => &mut config.rewritable,
-        ConfigEditType::Child => {
-            if let Some(child_config) = &mut config.child_config_body {
-                &mut child_config.rewritable
+        ConfigEditType::Shared => &mut config.rewritable,
+        ConfigEditType::Local => {
+            if let Some(local_config) = &mut config.local_config_body {
+                &mut local_config.rewritable
             } else {
                 &mut config.rewritable
             }
@@ -2938,8 +2938,8 @@ fn get_script_definition_list_opt<'a>(
     match window_edit_data {
         Some(window_edit_data) => get_script_definition_list(config, &window_edit_data.edit_type),
         None => {
-            if let Some(child_config) = &config.child_config_body {
-                &child_config.script_definitions
+            if let Some(local_config) = &config.local_config_body {
+                &local_config.script_definitions
             } else {
                 &config.script_definitions
             }
@@ -2952,10 +2952,10 @@ fn get_script_definition_list<'a>(
     edit_type: &ConfigEditType,
 ) -> &'a Vec<config::ScriptDefinition> {
     match edit_type {
-        ConfigEditType::Parent => &config.script_definitions,
-        ConfigEditType::Child => {
-            if let Some(child_config) = &config.child_config_body {
-                &child_config.script_definitions
+        ConfigEditType::Shared => &config.script_definitions,
+        ConfigEditType::Local => {
+            if let Some(local_config) = &config.local_config_body {
+                &local_config.script_definitions
             } else {
                 &config.script_definitions
             }
@@ -2983,8 +2983,8 @@ fn is_local_edited_script(
     window_edit_data: &Option<WindowEditData>,
 ) -> bool {
     if let Some(window_edit_data) = &window_edit_data {
-        if window_edit_data.edit_type == ConfigEditType::Child {
-            if let Some(scripts) = &app_config.child_config_body {
+        if window_edit_data.edit_type == ConfigEditType::Local {
+            if let Some(scripts) = &app_config.local_config_body {
                 match scripts.script_definitions.get(script_idx) {
                     Some(config::ScriptDefinition::Original(_)) => {
                         return true;
@@ -3000,22 +3000,22 @@ fn is_local_edited_script(
     return false;
 }
 
-fn add_script_to_parent_config(
+fn add_script_to_shared_config(
     app_config: &mut config::AppConfig,
     script: config::ScriptDefinition,
 ) -> usize {
     app_config.script_definitions.push(script);
     let script_idx = app_config.script_definitions.len() - 1;
-    config::populate_parent_scripts_from_config(app_config);
+    config::populate_shared_scripts_from_config(app_config);
     return script_idx;
 }
 
-fn add_script_to_child_config(
+fn add_script_to_local_config(
     app_config: &mut config::AppConfig,
     edit_data: &EditData,
     script: config::ScriptDefinition,
 ) -> Option<usize> {
-    if let Some(config) = &mut app_config.child_config_body {
+    if let Some(config) = &mut app_config.local_config_body {
         config.script_definitions.push(script);
     } else {
         return None;
@@ -3023,7 +3023,7 @@ fn add_script_to_child_config(
 
     update_config_cache(app_config, edit_data);
 
-    return if let Some(config) = &mut app_config.child_config_body {
+    return if let Some(config) = &mut app_config.local_config_body {
         Some(config.script_definitions.len() - 1)
     } else {
         None
@@ -3068,7 +3068,7 @@ fn populate_path_editing_content(
 
 fn make_script_copy(script: config::ScriptDefinition) -> config::ScriptDefinition {
     match script {
-        config::ScriptDefinition::ReferenceToParent(_, _) => script,
+        config::ScriptDefinition::ReferenceToShared(_, _) => script,
         config::ScriptDefinition::Preset(preset) => {
             config::ScriptDefinition::Preset(config::ScriptPreset {
                 uid: config::Guid::new(),
@@ -3087,10 +3087,10 @@ fn make_script_copy(script: config::ScriptDefinition) -> config::ScriptDefinitio
 }
 
 fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData) {
-    let is_looking_at_child_config = if let Some(window_edit_data) = &edit_data.window_edit_data {
-        window_edit_data.edit_type == ConfigEditType::Child
+    let is_looking_at_local_config = if let Some(window_edit_data) = &edit_data.window_edit_data {
+        window_edit_data.edit_type == ConfigEditType::Local
     } else {
-        app_config.child_config_body.is_some()
+        app_config.local_config_body.is_some()
     };
 
     let binding = edit_data.script_filter.to_lowercase();
@@ -3114,37 +3114,37 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
 
     let result_list = &mut app_config.displayed_configs_list_cache;
     let paths = &app_config.paths;
-    if is_looking_at_child_config {
-        let child_config = app_config.child_config_body.as_ref().unwrap();
-        let parent_script_definitions = &app_config.script_definitions;
+    if is_looking_at_local_config {
+        let local_config = app_config.local_config_body.as_ref().unwrap();
+        let shared_script_definitions = &app_config.script_definitions;
 
         result_list.clear();
-        for script_definition in &child_config.script_definitions {
+        for script_definition in &local_config.script_definitions {
             match script_definition {
-                config::ScriptDefinition::ReferenceToParent(parent_script_uid, is_hidden) => {
-                    let parent_script =
-                        parent_script_definitions
+                config::ScriptDefinition::ReferenceToShared(shared_script_uid, is_hidden) => {
+                    let shared_script =
+                        shared_script_definitions
                             .iter()
                             .find(|script| match script {
                                 config::ScriptDefinition::Original(script) => {
-                                    script.uid == *parent_script_uid
+                                    script.uid == *shared_script_uid
                                 }
                                 config::ScriptDefinition::Preset(preset) => {
-                                    preset.uid == *parent_script_uid
+                                    preset.uid == *shared_script_uid
                                 }
                                 _ => false,
                             });
-                    match parent_script {
-                        Some(parent_script) => {
-                            let name = match &parent_script {
-                                config::ScriptDefinition::ReferenceToParent(_, _) => {
+                    match shared_script {
+                        Some(shared_script) => {
+                            let name = match &shared_script {
+                                config::ScriptDefinition::ReferenceToShared(_, _) => {
                                     "[Error]".to_string()
                                 }
                                 config::ScriptDefinition::Original(script) => script.name.clone(),
                                 config::ScriptDefinition::Preset(preset) => preset.name.clone(),
                             };
-                            let icon = match &parent_script {
-                                config::ScriptDefinition::ReferenceToParent(_, _) => {
+                            let icon = match &shared_script {
+                                config::ScriptDefinition::ReferenceToShared(_, _) => {
                                     config::PathConfig::default()
                                 }
                                 config::ScriptDefinition::Original(script) => script.icon.clone(),
@@ -3156,14 +3156,14 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
                                     name,
                                     full_icon_path: config::get_full_optional_path(paths, &icon),
                                     is_hidden: is_script_hidden,
-                                    original_script_uid: parent_script_uid.clone(),
+                                    original_script_uid: shared_script_uid.clone(),
                                 });
                             }
                         }
                         None => {
                             eprintln!(
-                                "Failed to find parent script with uid {}",
-                                parent_script_uid.data
+                                "Failed to find shared script with uid {}",
+                                shared_script_uid.data
                             )
                         }
                     }
@@ -3199,7 +3199,7 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
         result_list.clear();
         for script_definition in script_definitions {
             match script_definition {
-                config::ScriptDefinition::ReferenceToParent(_, _) => {}
+                config::ScriptDefinition::ReferenceToShared(_, _) => {}
                 config::ScriptDefinition::Original(script) => {
                     let is_script_hidden = is_script_filtered_out(&script.name);
                     if is_full_list || !is_script_hidden {
@@ -3232,15 +3232,15 @@ fn get_script_definition<'a>(
     edit_data: &EditData,
     script_idx: usize,
 ) -> &'a config::ScriptDefinition {
-    let is_looking_at_child_config = if let Some(window_edit_data) = &edit_data.window_edit_data {
-        window_edit_data.edit_type == ConfigEditType::Child
+    let is_looking_at_local_config = if let Some(window_edit_data) = &edit_data.window_edit_data {
+        window_edit_data.edit_type == ConfigEditType::Local
     } else {
-        app_config.child_config_body.is_some()
+        app_config.local_config_body.is_some()
     };
 
-    return if is_looking_at_child_config {
+    return if is_looking_at_local_config {
         &app_config
-            .child_config_body
+            .local_config_body
             .as_ref()
             .unwrap()
             .script_definitions[script_idx]
@@ -3254,15 +3254,15 @@ fn get_script_definition_mut<'a>(
     edit_data: &EditData,
     script_idx: usize,
 ) -> &'a mut config::ScriptDefinition {
-    let is_looking_at_child_config = if let Some(window_edit_data) = &edit_data.window_edit_data {
-        window_edit_data.edit_type == ConfigEditType::Child
+    let is_looking_at_local_config = if let Some(window_edit_data) = &edit_data.window_edit_data {
+        window_edit_data.edit_type == ConfigEditType::Local
     } else {
-        app_config.child_config_body.is_some()
+        app_config.local_config_body.is_some()
     };
 
-    return if is_looking_at_child_config {
+    return if is_looking_at_local_config {
         &mut app_config
-            .child_config_body
+            .local_config_body
             .as_mut()
             .unwrap()
             .script_definitions[script_idx]
@@ -3274,11 +3274,11 @@ fn get_script_definition_mut<'a>(
 fn add_script_to_config(app: &mut MainWindow, script: config::ScriptDefinition) {
     if let Some(window_edit_data) = &app.edit_data.window_edit_data {
         let script_idx = match window_edit_data.edit_type {
-            ConfigEditType::Parent => {
-                Some(add_script_to_parent_config(&mut app.app_config, script))
+            ConfigEditType::Shared => {
+                Some(add_script_to_shared_config(&mut app.app_config, script))
             }
-            ConfigEditType::Child => {
-                add_script_to_child_config(&mut app.app_config, &app.edit_data, script)
+            ConfigEditType::Local => {
+                add_script_to_local_config(&mut app.app_config, &app.edit_data, script)
             }
         };
 
@@ -3315,10 +3315,10 @@ fn enter_window_edit_mode(app: &mut MainWindow) {
     app.edit_data.window_edit_data = Some(WindowEditData::from_config(
         &app.app_config,
         false,
-        if app.app_config.child_config_body.is_some() {
-            ConfigEditType::Child
+        if app.app_config.local_config_body.is_some() {
+            ConfigEditType::Local
         } else {
-            ConfigEditType::Parent
+            ConfigEditType::Shared
         },
     ));
     app.edit_data.script_filter = String::new();
@@ -3373,7 +3373,7 @@ fn add_script_to_execution(
     };
 
     match original_script {
-        config::ScriptDefinition::ReferenceToParent(_, _) => {
+        config::ScriptDefinition::ReferenceToShared(_, _) => {
             return false;
         }
         config::ScriptDefinition::Original(_) => {
@@ -3494,16 +3494,16 @@ fn select_script_by_type(app: &mut MainWindow, script_idx: usize, script_type: E
 fn move_config_script_up(app: &mut MainWindow, index: usize) {
     if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
         match window_edit_data.edit_type {
-            ConfigEditType::Parent => {
+            ConfigEditType::Shared => {
                 if index >= 1 && index < app.app_config.script_definitions.len() {
                     app.app_config.script_definitions.swap(index, index - 1);
                     app.edit_data.is_dirty = true;
                 }
             }
-            ConfigEditType::Child => {
-                if let Some(child_config_body) = &mut app.app_config.child_config_body {
-                    if index >= 1 && index < child_config_body.script_definitions.len() {
-                        child_config_body.script_definitions.swap(index, index - 1);
+            ConfigEditType::Local => {
+                if let Some(local_config_body) = &mut app.app_config.local_config_body {
+                    if index >= 1 && index < local_config_body.script_definitions.len() {
+                        local_config_body.script_definitions.swap(index, index - 1);
                         app.edit_data.is_dirty = true;
                     }
                 }
@@ -3523,16 +3523,16 @@ fn move_config_script_up(app: &mut MainWindow, index: usize) {
 fn move_config_script_down(app: &mut MainWindow, index: usize) {
     if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
         match window_edit_data.edit_type {
-            ConfigEditType::Parent => {
+            ConfigEditType::Shared => {
                 if index + 1 < app.app_config.script_definitions.len() {
                     app.app_config.script_definitions.swap(index, index + 1);
                     app.edit_data.is_dirty = true;
                 }
             }
-            ConfigEditType::Child => {
-                if let Some(child_config_body) = &mut app.app_config.child_config_body {
-                    if index + 1 < child_config_body.script_definitions.len() {
-                        child_config_body.script_definitions.swap(index, index + 1);
+            ConfigEditType::Local => {
+                if let Some(local_config_body) = &mut app.app_config.local_config_body {
+                    if index + 1 < local_config_body.script_definitions.len() {
+                        local_config_body.script_definitions.swap(index, index + 1);
                         app.edit_data.is_dirty = true;
                     }
                 }
@@ -3681,12 +3681,12 @@ fn remove_script(app: &mut MainWindow, script_id: &EditScriptId) {
         EditScriptType::ScriptConfig => {
             if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
                 match window_edit_data.edit_type {
-                    ConfigEditType::Parent => {
+                    ConfigEditType::Shared => {
                         app.app_config.script_definitions.remove(script_id.idx);
                         app.edit_data.is_dirty = true;
                     }
-                    ConfigEditType::Child => {
-                        if let Some(config) = &mut app.app_config.child_config_body {
+                    ConfigEditType::Local => {
+                        if let Some(config) = &mut app.app_config.local_config_body {
                             config.script_definitions.remove(script_id.idx);
                             app.edit_data.is_dirty = true;
                         }
@@ -3694,7 +3694,7 @@ fn remove_script(app: &mut MainWindow, script_id: &EditScriptId) {
                 }
             }
 
-            config::populate_parent_scripts_from_config(&mut app.app_config);
+            config::populate_shared_scripts_from_config(&mut app.app_config);
             update_config_cache(&mut app.app_config, &app.edit_data);
         }
         EditScriptType::ExecutionList => {
