@@ -166,6 +166,8 @@ impl Guid {
     }
 }
 
+pub const GUID_NULL: Guid = Guid { data: 0 };
+
 #[derive(Default, Clone)]
 pub struct PathCaches {
     pub logs_path: PathBuf,

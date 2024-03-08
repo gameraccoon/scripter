@@ -834,10 +834,7 @@ impl Application for MainWindow {
                 self.edit_data.is_dirty = true;
             }
             WindowMessage::SwitchToSharedConfig => {
-                clean_script_selection(&mut self.window_state.cursor_script);
-                switch_config_edit_mode(self, ConfigEditType::Shared);
-                apply_theme(self);
-                update_config_cache(&mut self.app_config, &self.edit_data);
+                switch_to_editing_shared_config(self);
             }
             WindowMessage::SwitchToLocalConfig => {
                 clean_script_selection(&mut self.window_state.cursor_script);
@@ -917,6 +914,12 @@ impl Application for MainWindow {
                         return Command::none();
                     }
 
+                    let insert_position = find_best_shared_script_insert_position(
+                        &config.script_definitions,
+                        &self.app_config.script_definitions,
+                        &script_id,
+                    );
+
                     if let Some(script) = config.script_definitions.get_mut(script_id.idx) {
                         let mut replacement_script = match script {
                             config::ScriptDefinition::Original(definition) => {
@@ -937,12 +940,14 @@ impl Application for MainWindow {
                         };
 
                         swap(script, &mut replacement_script);
-                        self.app_config.script_definitions.push(replacement_script);
-                        select_edited_script(self, self.app_config.script_definitions.len() - 1);
+                        self.app_config
+                            .script_definitions
+                            .insert(insert_position, replacement_script);
                         self.edit_data.is_dirty = true;
+                        switch_to_editing_shared_config(self);
+                        select_edited_script(self, insert_position);
                     }
                 }
-                update_config_cache(&mut self.app_config, &self.edit_data);
             }
             WindowMessage::SaveAsPreset => {
                 let mut preset = config::ScriptPreset {
@@ -3796,4 +3801,86 @@ fn restore_window(app: &mut MainWindow) -> Command<WindowMessage> {
         );
     }
     return Command::none();
+}
+
+fn find_best_shared_script_insert_position(
+    source_script_definitions: &Vec<config::ScriptDefinition>,
+    target_script_definitions: &Vec<config::ScriptDefinition>,
+    script_id: &EditScriptId,
+) -> usize {
+    let script_idx = script_id.idx;
+
+    // first search up to find if we have reference to shared scripts
+    let mut last_shared_script_idx = script_idx;
+    let mut target_shared_script_uid = config::GUID_NULL;
+    for i in (0..script_idx).rev() {
+        if let config::ScriptDefinition::ReferenceToShared(uid, _) = &source_script_definitions[i] {
+            last_shared_script_idx = i;
+            target_shared_script_uid = uid.clone();
+            break;
+        }
+    }
+
+    if last_shared_script_idx != script_idx {
+        return find_script_idx_by_id(
+            target_script_definitions,
+            &target_shared_script_uid,
+        )
+        .unwrap_or(target_script_definitions.len() - 1) + 1;
+    }
+
+    // search down
+    let mut next_shared_script_idx = script_idx;
+    let mut target_shared_script_idx = config::GUID_NULL;
+    for i in script_idx..source_script_definitions.len() {
+        if let config::ScriptDefinition::ReferenceToShared(uid, _) = &source_script_definitions[i] {
+            next_shared_script_idx = i;
+            target_shared_script_idx = uid.clone();
+            break;
+        }
+    }
+
+    if next_shared_script_idx != script_idx {
+        return find_script_idx_by_id(
+            target_script_definitions,
+            &target_shared_script_idx,
+        )
+        .unwrap_or(target_script_definitions.len());
+    }
+
+    // if we didn't find any shared scripts, just insert at the end
+    return target_script_definitions.len();
+}
+
+fn find_script_idx_by_id(
+    script_definitions: &Vec<config::ScriptDefinition>,
+    script_id: &config::Guid,
+) -> Option<usize> {
+    for i in 0..script_definitions.len() {
+        match &script_definitions[i] {
+            config::ScriptDefinition::Original(script) => {
+                if script.uid == *script_id {
+                    return Some(i);
+                }
+            }
+            config::ScriptDefinition::Preset(preset) => {
+                if preset.uid == *script_id {
+                    return Some(i);
+                }
+            }
+            config::ScriptDefinition::ReferenceToShared(uid, _) => {
+                if *uid == *script_id {
+                    return Some(i);
+                }
+            }
+        }
+    }
+    return None;
+}
+
+fn switch_to_editing_shared_config(app: &mut MainWindow) {
+    clean_script_selection(&mut app.window_state.cursor_script);
+    switch_config_edit_mode(app, ConfigEditType::Shared);
+    apply_theme(app);
+    update_config_cache(&mut app.app_config, &app.edit_data);
 }
