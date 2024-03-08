@@ -244,6 +244,6 @@ mod tests {
         let result = json_file_updater.update_json(&mut json_value);
 
         assert_eq!(json_value, json!({"a": 10, "b": "t", "version": "4"}));
-        assert_eq!(result, UpdateResult::Error("Version 4 is not found during patching process. Make sure you didn't input the version manually into the json".to_string()));
+        assert_eq!(result, UpdateResult::Error("The file format has version 4 which is not known format version, last known format version is 3. You may be using an older version of the executable (and need to update), or there were manual edits done to the file.".to_string()));
     }
 }
