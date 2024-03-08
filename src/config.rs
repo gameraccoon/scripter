@@ -89,6 +89,7 @@ pub struct OriginalScriptDefinition {
     pub name: String,
     pub icon: PathConfig,
     pub command: PathConfig,
+    pub working_directory: PathConfig,
     pub arguments: String,
     pub autorerun_count: usize,
     pub ignore_previous_failures: bool,

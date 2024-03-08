@@ -216,6 +216,15 @@ pub fn run_scripts(
                     .stdout(stdout_type)
                     .stderr(stderr_type);
 
+                match script.working_directory.path_type {
+                    config::PathType::ScripterExecutableRelative => {
+                        command.current_dir(&path_caches.exe_folder_path.join(&script.working_directory.path));
+                    }
+                    config::PathType::WorkingDirRelative => {
+                        command.current_dir(&script.working_directory.path);
+                    }
+                }
+
                 let child = command.spawn();
 
                 // avoid potential deadlocks (cargo culted from os_pipe readme)

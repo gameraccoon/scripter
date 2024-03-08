@@ -162,6 +162,8 @@ pub enum WindowMessage {
     EditScriptName(String),
     EditScriptCommand(String),
     ToggleScriptCommandRelativeToScripter(bool),
+    EditScriptWorkingDirectory(String),
+    ToggleScriptWorkingDirectoryRelativeToScripter(bool),
     EditScriptIconPath(String),
     ToggleScriptIconPathRelativeToScripter(bool),
     EditArguments(String),
@@ -438,6 +440,10 @@ impl Application for MainWindow {
                     name: "new script".to_string(),
                     icon: config::PathConfig::default(),
                     command: config::PathConfig::default(),
+                    working_directory: config::PathConfig{
+                        path: ".".to_string(),
+                        path_type: config::PathType::WorkingDirRelative,
+                    },
                     arguments: "".to_string(),
                     autorerun_count: 0,
                     ignore_previous_failures: false,
@@ -477,6 +483,18 @@ impl Application for MainWindow {
             WindowMessage::ToggleScriptCommandRelativeToScripter(value) => {
                 apply_script_edit(self, |script| {
                     script.command.path_type = if value {
+                        config::PathType::ScripterExecutableRelative
+                    } else {
+                        config::PathType::WorkingDirRelative
+                    }
+                });
+            }
+            WindowMessage::EditScriptWorkingDirectory(new_working_directory) => {
+                apply_script_edit(self, move |script| script.working_directory.path = new_working_directory);
+            }
+            WindowMessage::ToggleScriptWorkingDirectoryRelativeToScripter(value) => {
+                apply_script_edit(self, |script| {
+                    script.working_directory.path_type = if value {
                         config::PathType::ScripterExecutableRelative
                     } else {
                         config::PathType::WorkingDirRelative
@@ -2346,6 +2364,15 @@ fn produce_script_edit_content<'a>(
                     &mut parameters,
                     |path| WindowMessage::EditScriptCommand(path),
                     |val| WindowMessage::ToggleScriptCommandRelativeToScripter(val),
+                );
+
+                populate_path_editing_content(
+                    "Working directory:",
+                    "path/to/directory",
+                    &script.working_directory,
+                    &mut parameters,
+                    |path| WindowMessage::EditScriptWorkingDirectory(path),
+                    |val| WindowMessage::ToggleScriptWorkingDirectoryRelativeToScripter(val),
                 );
 
                 populate_path_editing_content(

@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.12.2";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.12.2";
+pub static LATEST_CONFIG_VERSION: &str = "0.13.0";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.13.0";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -116,6 +116,7 @@ fn register_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.10.5", v0_10_5_add_filter_option);
     json_config_updater.add_update_function("0.12.1", v0_12_1_add_enable_title_editing_option);
     json_config_updater.add_update_function("0.12.2", v0_12_2_rename_child_to_local_and_parent_to_shared);
+    json_config_updater.add_update_function("0.13.0", v0_13_0_added_custom_working_directory);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -174,6 +175,7 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.10.5", v0_10_5_add_filter_option);
     json_config_updater.add_update_function("0.12.1", v0_12_1_add_enable_title_editing_option);
     json_config_updater.add_update_function("0.12.2", v0_12_2_rename_child_to_local_and_parent_to_shared);
+    json_config_updater.add_update_function("0.13.0", v0_13_0_added_custom_working_directory);
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
 
@@ -201,13 +203,28 @@ fn convert_path_0_9_4(old_path: JsonValue, is_relative_to_scripter: bool) -> Jso
 }
 
 fn for_each_script_added_definition_pre_0_10_0<F>(config_json: &mut JsonValue, mut f: F)
-where
-    F: FnMut(&mut JsonValue),
+    where
+        F: FnMut(&mut JsonValue),
 {
     if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
         for script in script_definitions {
             if let Some(obj) = script.as_object_mut() {
                 if let Some(value) = obj.get_mut("Added") {
+                    f(value);
+                }
+            }
+        }
+    }
+}
+
+fn for_each_script_original_definition_post_0_10_0<F>(config_json: &mut JsonValue, mut f: F)
+    where
+        F: FnMut(&mut JsonValue),
+{
+    if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
+        for script in script_definitions {
+            if let Some(obj) = script.as_object_mut() {
+                if let Some(value) = obj.get_mut("Original") {
                     f(value);
                 }
             }
@@ -260,4 +277,13 @@ fn v0_12_2_rename_child_to_local_and_parent_to_shared(config_json: &mut JsonValu
     if config_json.get("child_config_path").is_some() {
         config_json["local_config_path"] = config_json["child_config_path"].take();
     }
+}
+
+fn v0_13_0_added_custom_working_directory(config_json: &mut JsonValue) {
+    for_each_script_original_definition_post_0_10_0(config_json, |script| {
+        script["working_directory"] = json!({
+            "path_type": "WorkingDirRelative",
+            "path": ".",
+        });
+    });
 }
