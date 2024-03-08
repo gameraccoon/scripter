@@ -858,11 +858,20 @@ impl Application for MainWindow {
 
                 let new_script = match script {
                     config::ScriptDefinition::ReferenceToParent(parent_script_id, _is_hidden) => {
-                        if let Some(script) = config::get_original_script_definition_by_uid(
+                        if let Some(mut script) = config::get_original_script_definition_by_uid(
                             &self.app_config,
                             parent_script_id.clone(),
                         ) {
-                            script
+                            match &mut script {
+                                config::ScriptDefinition::Original(original_script) => {
+                                    original_script.uid = config::Guid::new();
+                                    original_script.name = format!("{} (copy)", original_script.name);
+                                    script
+                                }
+                                _ => {
+                                    return Command::none();
+                                }
+                            }
                         } else {
                             return Command::none();
                         }
