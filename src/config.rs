@@ -5,7 +5,7 @@ use crate::config_updaters::{
     update_config_to_the_latest_version, update_local_config_to_the_latest_version,
     LATEST_CONFIG_VERSION, LATEST_LOCAL_CONFIG_VERSION,
 };
-use crate::json_file_updater::UpdateResult;
+use crate::json_file_updater::{JsonFileUpdaterError, UpdateResult};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
@@ -48,6 +48,34 @@ pub struct RewritableConfig {
     pub custom_theme: Option<CustomTheme>,
 }
 
+#[derive(Clone)]
+pub enum ConfigReadError {
+    FileReadError {
+        file_path: PathBuf,
+        error: String,
+    },
+    DataParseJsonError {
+        file_path: PathBuf,
+        error: String,
+    },
+    UpdaterUnknownVersion {
+        file_path: PathBuf,
+        version: String,
+        latest_version: String,
+    },
+    ConfigDeserializeError {
+        file_path: PathBuf,
+        error: String,
+    },
+    ConfigSerializeError {
+        error: String,
+    },
+    FileWriteError {
+        file_path: PathBuf,
+        error: String,
+    },
+}
+
 #[derive(Default, Clone, Deserialize, Serialize)]
 pub struct AppConfig {
     pub version: String,
@@ -61,7 +89,7 @@ pub struct AppConfig {
     #[serde(skip)]
     pub custom_title: Option<String>,
     #[serde(skip)]
-    pub config_read_error: Option<String>,
+    pub config_read_error: Option<ConfigReadError>,
     #[serde(skip)]
     pub local_config_body: Option<Box<LocalConfig>>,
     #[serde(skip)]
@@ -342,7 +370,7 @@ fn get_config_path(app_arguments: &AppArguments) -> PathBuf {
         .join(DEFAULT_CONFIG_NAME);
 }
 
-fn default_config_with_error(config: &AppConfig, error: String) -> AppConfig {
+fn default_config_with_error(config: &AppConfig, error: ConfigReadError) -> AppConfig {
     AppConfig {
         config_read_error: Some(error),
         ..config.clone()
@@ -364,21 +392,20 @@ pub fn read_config() -> AppConfig {
             Err(err) => {
                 return default_config_with_error(
                     &default_config,
-                    format!(
-                        "Failed to serialize default config.\nNotify the developer about this error.\nError: {}",
-                        err,
-                    )
+                    ConfigReadError::ConfigSerializeError {
+                        error: format!("Failed to serialize default config: {}", err,),
+                    },
                 )
-            },
+            }
         };
         let result = std::fs::write(&default_config.paths.config_path, data);
-        if result.is_err() {
+        if let Err(err) = result {
             return default_config_with_error(
                 &default_config,
-                format!(
-                    "Failed to write default config to '{}'.\nMake sure you have write rights to that folder",
-                    default_config.paths.config_path.to_string_lossy()
-                ),
+                ConfigReadError::FileWriteError {
+                    file_path: default_config.paths.config_path.clone(),
+                    error: err.to_string(),
+                },
             );
         }
     }
@@ -390,11 +417,10 @@ pub fn read_config() -> AppConfig {
         Err(err) => {
             return default_config_with_error(
                 &default_config,
-                format!(
-                    "Config file '{}' can't be read.\nMake sure you have read rights to that file.\nError: {}",
-                    default_config.paths.config_path.to_string_lossy(),
-                    err
-                ),
+                ConfigReadError::FileReadError {
+                    file_path: default_config.paths.config_path.clone(),
+                    error: err.to_string(),
+                },
             )
         }
     };
@@ -404,11 +430,10 @@ pub fn read_config() -> AppConfig {
         Err(err) => {
             return default_config_with_error(
                 &default_config,
-                format!(
-                    "Config file '{}' has incorrect json format:\n{}",
-                    default_config.paths.config_path.to_string_lossy(),
-                    err
-                ),
+                ConfigReadError::DataParseJsonError {
+                    file_path: default_config.paths.config_path.clone(),
+                    error: err.to_string(),
+                },
             )
         }
     };
@@ -417,16 +442,13 @@ pub fn read_config() -> AppConfig {
     let config = serde_json::from_value(config_json);
     let mut config = match config {
         Ok(config) => config,
-        Err(err) => {
-            default_config_with_error(
-                &default_config,
-                format!(
-                    "Config file '{}' can't be read.\nMake sure your manual edits were correct.\nError: {}",
-                    default_config.paths.config_path.to_string_lossy(),
-                    err
-                ),
-            )
-        }
+        Err(err) => default_config_with_error(
+            &default_config,
+            ConfigReadError::ConfigDeserializeError {
+                file_path: default_config.paths.config_path.clone(),
+                error: err.to_string(),
+            },
+        ),
     };
 
     if update_result == UpdateResult::Updated {
@@ -436,32 +458,39 @@ pub fn read_config() -> AppConfig {
             Err(err) => {
                 return default_config_with_error(
                     &default_config,
-                    format!(
-                        "Failed to serialize the updated config.\nNotify the developer about this error.\nError: {}",
-                        err
-                    ),
+                    ConfigReadError::ConfigSerializeError {
+                        error: format!("Failed to serialize the updated config: {}", err),
+                    },
                 )
             }
         };
         let result = std::fs::write(&default_config.paths.config_path, data);
-        if result.is_err() {
+        if let Err(err) = result {
             return default_config_with_error(
                 &default_config,
-                format!(
-                    "Failed to write the updated config to '{}'.\nMake sure you have write rights to that folder and file",
-                    default_config.paths.config_path.to_string_lossy()
-                ),
+                ConfigReadError::FileWriteError {
+                    file_path: default_config.paths.config_path.clone(),
+                    error: err.to_string(),
+                },
             );
         }
     } else if let UpdateResult::Error(error) = update_result {
-        return default_config_with_error(
-            &default_config,
-            format!(
-                "Failed to update config file '{}'.\nError: {}",
-                default_config.paths.config_path.to_string_lossy(),
-                error
-            ),
-        );
+        let file_path = default_config.paths.config_path.clone();
+        match error {
+            JsonFileUpdaterError::UnknownVersion {
+                version,
+                latest_version,
+            } => {
+                return default_config_with_error(
+                    &default_config,
+                    ConfigReadError::UpdaterUnknownVersion {
+                        file_path,
+                        version,
+                        latest_version,
+                    },
+                );
+            }
+        };
     }
 
     if !config.local_config_path.path.is_empty() {
@@ -470,14 +499,7 @@ pub fn read_config() -> AppConfig {
         let local_config = match read_local_config(full_local_config_path.clone(), &mut config) {
             Ok(local_config) => local_config,
             Err(error) => {
-                return default_config_with_error(
-                    &default_config,
-                    format!(
-                        "Failed to read local config file '{}'.\nError: {}",
-                        full_local_config_path.to_string_lossy(),
-                        error
-                    ),
-                );
+                return default_config_with_error(&default_config, error);
             }
         };
         config.local_config_body = Some(Box::new(local_config));
@@ -541,7 +563,7 @@ fn original_script_definition_search_predicate(
 fn read_local_config(
     config_path: PathBuf,
     shared_config: &mut AppConfig,
-) -> Result<LocalConfig, String> {
+) -> Result<LocalConfig, ConfigReadError> {
     // if config file doesn't exist, create it
     if !config_path.exists() {
         // create default config with all the non-serializable fields set
@@ -550,19 +572,17 @@ fn read_local_config(
         let data = match data {
             Ok(data) => data,
             Err(err) => {
-                return Err(format!(
-                        "Failed to serialize default config.\nNotify the developer about this error.\nError: {}",
-                        err,
-                    )
-                )
-            },
+                return Err(ConfigReadError::ConfigSerializeError {
+                    error: format!("Failed to serialize default local config: {}", err,),
+                })
+            }
         };
         let result = std::fs::write(&config_path, data);
-        if result.is_err() {
-            return Err(format!(
-                    "Failed to write default config to the file.\nMake sure you have write rights to that folder",
-                )
-            );
+        if let Err(err) = result {
+            return Err(ConfigReadError::FileWriteError {
+                file_path: config_path,
+                error: err.to_string(),
+            });
         }
     }
 
@@ -571,16 +591,21 @@ fn read_local_config(
     let data = match data {
         Ok(data) => data,
         Err(err) => {
-            return Err(format!(
-            "Config file can't be read.\nMake sure you have read rights to that file.\nError: {}",
-            err
-        ))
+            return Err(ConfigReadError::FileReadError {
+                file_path: config_path,
+                error: err.to_string(),
+            })
         }
     };
     let config_json = serde_json::from_str(&data);
     let mut config_json = match config_json {
         Ok(config_json) => config_json,
-        Err(err) => return Err(format!("Config file has incorrect json format:\n{}", err)),
+        Err(err) => {
+            return Err(ConfigReadError::DataParseJsonError {
+                file_path: config_path,
+                error: err.to_string(),
+            })
+        }
     };
 
     let update_result = update_local_config_to_the_latest_version(&mut config_json);
@@ -588,10 +613,10 @@ fn read_local_config(
     let mut config: LocalConfig = match config {
         Ok(config) => config,
         Err(err) => {
-            return Err(format!(
-                "Config file can't be read.\nMake sure your manual edits were correct.\nError: {}",
-                err
-            ))
+            return Err(ConfigReadError::ConfigDeserializeError {
+                file_path: config_path,
+                error: err.to_string(),
+            })
         }
     };
 
@@ -600,22 +625,31 @@ fn read_local_config(
         let data = match data {
             Ok(data) => data,
             Err(err) => {
-                return Err(format!(
-                        "Failed to serialize the updated config.\nNotify the developer about this error.\nError: {}",
-                        err
-                    )
-                );
+                return Err(ConfigReadError::ConfigSerializeError {
+                    error: format!("Failed to serialize the updated local config: {}", err),
+                });
             }
         };
         let result = std::fs::write(&config_path, data);
-        if result.is_err() {
-            return Err(format!(
-                    "Failed to write the updated config.\nMake sure you have write rights to that folder and file",
-                ),
-            );
+        if let Err(err) = result {
+            return Err(ConfigReadError::FileWriteError {
+                file_path: config_path,
+                error: err.to_string(),
+            });
         }
     } else if let UpdateResult::Error(error) = update_result {
-        return Err(format!("Failed to update config file.\nError: {}", error));
+        match error {
+            JsonFileUpdaterError::UnknownVersion {
+                version,
+                latest_version,
+            } => {
+                return Err(ConfigReadError::UpdaterUnknownVersion {
+                    file_path: config_path,
+                    version,
+                    latest_version,
+                });
+            }
+        };
     }
 
     populate_shared_scripts(&mut config, shared_config);

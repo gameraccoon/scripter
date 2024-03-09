@@ -80,10 +80,18 @@ pub struct JsonFileUpdater {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum JsonFileUpdaterError {
+    UnknownVersion {
+        version: String,
+        latest_version: String,
+    },
+}
+
+#[derive(Debug, PartialEq)]
 pub enum UpdateResult {
     Updated,
     NoUpdateNeeded,
-    Error(String),
+    Error(JsonFileUpdaterError),
 }
 
 struct Patcher {
@@ -130,7 +138,10 @@ impl JsonFileUpdater {
             if let Some(found_idx) = found_idx {
                 found_idx + 1
             } else {
-                return UpdateResult::Error(format!("The file format has version {} which is not known format version, last known format version is {}. You may be using an older version of the executable (and need to update), or there were manual edits done to the file.", version_string, self.latest_version));
+                return UpdateResult::Error(JsonFileUpdaterError::UnknownVersion {
+                    version: version_string.to_string(),
+                    latest_version: self.latest_version.clone(),
+                });
             }
         } else {
             0
@@ -244,6 +255,9 @@ mod tests {
         let result = json_file_updater.update_json(&mut json_value);
 
         assert_eq!(json_value, json!({"a": 10, "b": "t", "version": "4"}));
-        assert_eq!(result, UpdateResult::Error("The file format has version 4 which is not known format version, last known format version is 3. You may be using an older version of the executable (and need to update), or there were manual edits done to the file.".to_string()));
+        assert_eq!(
+            result,
+            UpdateResult::Error(JsonFileUpdaterError::UnknownVersion("4", "3"))
+        );
     }
 }

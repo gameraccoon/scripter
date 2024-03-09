@@ -170,7 +170,6 @@ pub enum WindowMessage {
     ToggleRequiresArguments(bool),
     EditArgumentsHint(String),
     EditAutorerunCount(String),
-    OpenFile(PathBuf),
     ToggleIgnoreFailures(bool),
     EnterWindowEditMode,
     ExitWindowEditMode,
@@ -215,6 +214,8 @@ pub enum WindowMessage {
     SwitchPaneFocus(bool),
     SetExecutionListTitleEditing(bool),
     EditExecutionListTitle(String),
+    OpenWithDefaultApplication(PathBuf),
+    OpenUrl(String),
 }
 
 impl Application for MainWindow {
@@ -562,48 +563,6 @@ impl Application for MainWindow {
 
                 if let Some(new_autorerun_count) = new_autorerun_count {
                     apply_script_edit(self, |script| script.autorerun_count = new_autorerun_count)
-                }
-            }
-            WindowMessage::OpenFile(path) => {
-                #[cfg(target_os = "windows")]
-                {
-                    let result = std::process::Command::new("explorer")
-                        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                        .arg(path)
-                        .stdin(std::process::Stdio::null())
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .spawn();
-
-                    if result.is_err() {
-                        return Command::none();
-                    }
-                }
-                #[cfg(target_os = "linux")]
-                {
-                    let result = std::process::Command::new("xdg-open")
-                        .arg(path)
-                        .stdin(std::process::Stdio::null())
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .spawn();
-
-                    if result.is_err() {
-                        return Command::none();
-                    }
-                }
-                #[cfg(target_os = "macos")]
-                {
-                    let result = std::process::Command::new("open")
-                        .arg(path)
-                        .stdin(std::process::Stdio::null())
-                        .stdout(std::process::Stdio::null())
-                        .stderr(std::process::Stdio::null())
-                        .spawn();
-
-                    if result.is_err() {
-                        return Command::none();
-                    }
                 }
             }
             WindowMessage::ToggleIgnoreFailures(value) => {
@@ -1228,6 +1187,16 @@ impl Application for MainWindow {
             WindowMessage::EditExecutionListTitle(new_title) => {
                 self.app_config.custom_title = Some(new_title);
             }
+            WindowMessage::OpenWithDefaultApplication(file_path) => {
+                if let Err(e) = open::that(file_path) {
+                    eprintln!("Failed to open file with default application: {}", e);
+                }
+            }
+            WindowMessage::OpenUrl(url) => {
+                if let Err(e) = open::that(url) {
+                    eprintln!("Failed to open URL: {}", e);
+                }
+            }
         }
 
         Command::none()
@@ -1582,7 +1551,7 @@ fn produce_script_list_content<'a>(
     theme: &Theme,
 ) -> Column<'a, WindowMessage> {
     if let Some(error) = &config.config_read_error {
-        return column![text(format!("Error: {}", error))];
+        return get_config_error_content(error, theme);
     }
 
     let data: Element<_> = column(
@@ -1968,7 +1937,7 @@ fn produce_execution_list_content<'a>(
                             tooltip(
                                 inline_icon_button(
                                     icons.themed.log.clone(),
-                                    WindowMessage::OpenFile(log_dir_path),
+                                    WindowMessage::OpenWithDefaultApplication(log_dir_path),
                                 ),
                                 "Open log directory",
                                 tooltip::Position::Right,
@@ -1987,7 +1956,7 @@ fn produce_execution_list_content<'a>(
                             tooltip(
                                 inline_icon_button(
                                     icons.themed.log.clone(),
-                                    WindowMessage::OpenFile(output_path),
+                                    WindowMessage::OpenWithDefaultApplication(output_path),
                                 ),
                                 "Open log file",
                                 tooltip::Position::Right,
@@ -3878,4 +3847,156 @@ fn switch_to_editing_shared_config(app: &mut MainWindow) {
     switch_config_edit_mode(app, ConfigEditType::Shared);
     apply_theme(app);
     update_config_cache(&mut app.app_config, &app.edit_data);
+}
+
+fn get_config_error_content<'a>(
+    error: &config::ConfigReadError,
+    _theme: &Theme,
+) -> Column<'a, WindowMessage> {
+    let mut content = Vec::new();
+    content.push(text("Error:").into());
+    match error {
+        config::ConfigReadError::FileReadError { file_path, error } => {
+            content.push(
+                text(format!(
+                    "Failed to read file '{}'",
+                    file_path.to_string_lossy()
+                ))
+                .into(),
+            );
+            content.push(text("Make sure the file has correct access rights").into());
+            content.push(text(format!("Details: {}", error)).into());
+            if let Some(file_path) = file_path.parent() {
+                content.push(
+                    button("Open file location")
+                        .on_press(WindowMessage::OpenWithDefaultApplication(
+                            file_path.to_path_buf(),
+                        ))
+                        .into(),
+                );
+            }
+        }
+        config::ConfigReadError::DataParseJsonError { file_path, error } => {
+            content.push(
+                text(format!(
+                    "Failed to parse JSON data from file '{}'",
+                    file_path.to_string_lossy()
+                ))
+                .into(),
+            );
+            content.push(
+                text("If you made any manual edits to the file, make sure they are correct").into(),
+            );
+            content.push(text(format!("Details: {}", error)).into());
+            content.push(
+                button("Open file")
+                    .on_press(WindowMessage::OpenWithDefaultApplication(file_path.clone()))
+                    .into(),
+            );
+            content.push(text("If you believe this is a bug in scripter, please report it").into());
+            content.push(
+                button("Report bug")
+                    .on_press(WindowMessage::OpenUrl(
+                        "https://github.com/gameraccoon/scripter/labels/bug".to_string(),
+                    ))
+                    .into(),
+            );
+        }
+        config::ConfigReadError::UpdaterUnknownVersion {
+            file_path,
+            version,
+            latest_version,
+        } => {
+            content.push(
+                text(format!(
+                    "Unknown version of the config file '{}'",
+                    file_path.to_string_lossy()
+                ))
+                .into(),
+            );
+            content.push(
+                text(format!(
+                    "The version of the file is '{}', latest known version is '{}'",
+                    version, latest_version
+                ))
+                .into(),
+            );
+            content.push(
+                text("This version of Scripter might not be compatible with the file").into(),
+            );
+            content.push(text("Please update Scripter to the latest version").into());
+            content.push(
+                button("Open releases")
+                    .on_press(WindowMessage::OpenUrl(
+                        "https://github.com/gameraccoon/scripter/releases".to_string(),
+                    ))
+                    .into(),
+            );
+        }
+        config::ConfigReadError::ConfigDeserializeError { file_path, error } => {
+            content.push(
+                text(format!(
+                    "Failed to deserialize config file '{}'",
+                    file_path.to_string_lossy()
+                ))
+                .into(),
+            );
+            content.push(
+                text("If you made any manual edits to the file, make sure they are correct").into(),
+            );
+            content.push(text(format!("Details: {}", error)).into());
+            content.push(
+                button("Open file")
+                    .on_press(WindowMessage::OpenWithDefaultApplication(file_path.clone()))
+                    .into(),
+            );
+            content.push(text("If you believe this is a bug in scripter, please report it").into());
+            content.push(
+                button("Report bug")
+                    .on_press(WindowMessage::OpenUrl(
+                        "https://github.com/gameraccoon/scripter/labels/bug".to_string(),
+                    ))
+                    .into(),
+            );
+        }
+        config::ConfigReadError::ConfigSerializeError { error } => {
+            content.push(text("Failed to serialize a config file").into());
+            content.push(
+                text("This is likely a bug in Scripter, please report it to the developer").into(),
+            );
+            content.push(text(format!("Details: {}", error)).into());
+            content.push(
+                button("Report bug")
+                    .on_press(WindowMessage::OpenUrl(
+                        "https://github.com/gameraccoon/scripter/labels/bug".to_string(),
+                    ))
+                    .into(),
+            );
+        }
+        config::ConfigReadError::FileWriteError { file_path, error } => {
+            content.push(
+                text(format!(
+                    "Failed to write to file '{}'",
+                    file_path.to_string_lossy()
+                ))
+                .into(),
+            );
+            content.push(
+                text("Make sure the file has correct access rights and is not read-only").into(),
+            );
+            content.push(text(format!("Details: {}", error)).into());
+            if let Some(file_path) = file_path.parent() {
+                content.push(
+                    button("Open file location")
+                        .on_press(WindowMessage::OpenWithDefaultApplication(
+                            file_path.to_path_buf(),
+                        ))
+                        .into(),
+                );
+            }
+        }
+    }
+
+    content.push(text(format!("Application version {}", env!("CARGO_PKG_VERSION"))).into());
+    return Column::with_children(content).spacing(10);
 }
