@@ -7,6 +7,9 @@ assignees: gameraccoon
 
 ---
 
+**Version**
+What application version you're using
+
 **Steps to Reproduce**
 What one needs to do to reproduce the bug
 1. Open the app
