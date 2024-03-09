@@ -257,7 +257,10 @@ mod tests {
         assert_eq!(json_value, json!({"a": 10, "b": "t", "version": "4"}));
         assert_eq!(
             result,
-            UpdateResult::Error(JsonFileUpdaterError::UnknownVersion("4", "3"))
+            UpdateResult::Error(JsonFileUpdaterError::UnknownVersion {
+                version: "4".to_string(),
+                latest_version: "3".to_string()
+            })
         );
     }
 }
