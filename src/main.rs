@@ -20,6 +20,11 @@ use iced::window::icon;
 use iced::{Application, Settings};
 
 pub fn main() -> iced::Result {
+    if let Some(e) = config::get_arguments_read_error() {
+        eprintln!("{}", e);
+        return Ok(());
+    }
+
     let mut settings = Settings::default();
     if let Ok(icon) = icon::from_rgba(include_bytes!("../res/icon.rgba").to_vec(), 128, 128) {
         settings.window.icon = Some(icon);
