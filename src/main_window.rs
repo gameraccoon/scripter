@@ -8,8 +8,8 @@ use iced::alignment::{self, Alignment};
 use iced::theme::{self, Theme};
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{
-    button, checkbox, column, container, horizontal_space, image, image::Handle, row, scrollable,
-    text, text_input, tooltip, vertical_space, Button, Column,
+    button, checkbox, column, container, horizontal_rule, horizontal_space, image, image::Handle,
+    pick_list, row, scrollable, text, text_input, tooltip, vertical_space, Button, Column,
 };
 use iced::window::{self, request_user_attention, resize};
 use iced::{event, executor, keyboard, ContentFit, Event};
@@ -36,6 +36,24 @@ const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: u32 = 30;
 const ONE_TITLE_LINE_HEIGHT: u32 = 16;
 const EMPTY_EXECUTION_LIST_HEIGHT: u32 = 150;
 const EXTRA_EDIT_CONTENT_HEIGHT: u32 = 40;
+
+const PATH_TYPE_PICK_LIST: &[config::PathType] = &[
+    config::PathType::WorkingDirRelative,
+    config::PathType::ScripterExecutableRelative,
+];
+impl std::fmt::Display for config::PathType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                config::PathType::WorkingDirRelative => "Path relative to working directory",
+                config::PathType::ScripterExecutableRelative =>
+                    "Path relative to scripter executable",
+            }
+        )
+    }
+}
 
 // these should be static not just const
 static FILTER_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
@@ -161,11 +179,11 @@ pub enum WindowMessage {
     MoveExecutionScriptDown(usize),
     EditScriptName(String),
     EditScriptCommand(String),
-    ToggleScriptCommandRelativeToScripter(bool),
+    EditScriptCommandRelativeToScripter(config::PathType),
     EditScriptWorkingDirectory(String),
-    ToggleScriptWorkingDirectoryRelativeToScripter(bool),
+    EditScriptWorkingDirectoryRelativeToScripter(config::PathType),
     EditScriptIconPath(String),
-    ToggleScriptIconPathRelativeToScripter(bool),
+    EditScriptIconPathRelativeToScripter(config::PathType),
     EditArguments(String),
     ToggleRequiresArguments(bool),
     EditArgumentsHint(String),
@@ -194,7 +212,7 @@ pub enum WindowMessage {
     ConfigEditThemeCaptionText(String),
     ConfigEditThemeErrorText(String),
     ConfigEditLocalConfigPath(String),
-    ConfigToggleLocalConfigPathRelativeToScripter(bool),
+    ConfigEditLocalConfigPathRelativeToScripter(config::PathType),
     SwitchToSharedConfig,
     SwitchToLocalConfig,
     ToggleScriptHidden(bool),
@@ -482,28 +500,16 @@ impl Application for MainWindow {
             WindowMessage::EditScriptCommand(new_command) => {
                 apply_script_edit(self, move |script| script.command.path = new_command);
             }
-            WindowMessage::ToggleScriptCommandRelativeToScripter(value) => {
-                apply_script_edit(self, |script| {
-                    script.command.path_type = if value {
-                        config::PathType::ScripterExecutableRelative
-                    } else {
-                        config::PathType::WorkingDirRelative
-                    }
-                });
+            WindowMessage::EditScriptCommandRelativeToScripter(value) => {
+                apply_script_edit(self, |script| script.command.path_type = value);
             }
             WindowMessage::EditScriptWorkingDirectory(new_working_directory) => {
                 apply_script_edit(self, move |script| {
                     script.working_directory.path = new_working_directory
                 });
             }
-            WindowMessage::ToggleScriptWorkingDirectoryRelativeToScripter(value) => {
-                apply_script_edit(self, |script| {
-                    script.working_directory.path_type = if value {
-                        config::PathType::ScripterExecutableRelative
-                    } else {
-                        config::PathType::WorkingDirRelative
-                    }
-                });
+            WindowMessage::EditScriptWorkingDirectoryRelativeToScripter(value) => {
+                apply_script_edit(self, |script| script.working_directory.path_type = value);
             }
             WindowMessage::EditScriptIconPath(new_icon_path) => {
                 if let Some(preset) =
@@ -516,13 +522,7 @@ impl Application for MainWindow {
                     apply_script_edit(self, move |script| script.icon.path = new_icon_path);
                 }
             }
-            WindowMessage::ToggleScriptIconPathRelativeToScripter(new_relative) => {
-                let new_path_type = if new_relative {
-                    config::PathType::ScripterExecutableRelative
-                } else {
-                    config::PathType::WorkingDirRelative
-                };
-
+            WindowMessage::EditScriptIconPathRelativeToScripter(new_path_type) => {
                 if let Some(preset) =
                     get_editing_preset(&mut self.app_config, &self.edit_data, &self.window_state)
                 {
@@ -785,12 +785,8 @@ impl Application for MainWindow {
                 self.app_config.local_config_path.path = new_value;
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigToggleLocalConfigPathRelativeToScripter(is_checked) => {
-                self.app_config.local_config_path.path_type = if is_checked {
-                    config::PathType::ScripterExecutableRelative
-                } else {
-                    config::PathType::WorkingDirRelative
-                };
+            WindowMessage::ConfigEditLocalConfigPathRelativeToScripter(new_path_type) => {
+                self.app_config.local_config_path.path_type = new_path_type;
                 self.edit_data.is_dirty = true;
             }
             WindowMessage::SwitchToSharedConfig => {
@@ -2343,6 +2339,8 @@ fn produce_script_edit_content<'a>(
         return Column::new();
     };
 
+    const SEPARATOR_HEIGHT: u16 = 8;
+
     if currently_edited_script.script_type == EditScriptType::ScriptConfig {
         if edit_data.window_edit_data.is_none() {
             return Column::new();
@@ -2369,6 +2367,7 @@ fn produce_script_edit_content<'a>(
 
     match script {
         config::ScriptDefinition::Original(script) => {
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(text("Name:").into());
             parameters.push(
                 text_input("name", &script.name)
@@ -2378,34 +2377,38 @@ fn produce_script_edit_content<'a>(
             );
 
             if currently_edited_script.script_type == EditScriptType::ScriptConfig {
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                 populate_path_editing_content(
                     "Command:",
                     "command",
                     &script.command,
                     &mut parameters,
                     |path| WindowMessage::EditScriptCommand(path),
-                    |val| WindowMessage::ToggleScriptCommandRelativeToScripter(val),
+                    |val| WindowMessage::EditScriptCommandRelativeToScripter(val),
                 );
 
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                 populate_path_editing_content(
-                    "Working directory:",
+                    "Working directory override:",
                     "path/to/directory",
                     &script.working_directory,
                     &mut parameters,
                     |path| WindowMessage::EditScriptWorkingDirectory(path),
-                    |val| WindowMessage::ToggleScriptWorkingDirectoryRelativeToScripter(val),
+                    |val| WindowMessage::EditScriptWorkingDirectoryRelativeToScripter(val),
                 );
 
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                 populate_path_editing_content(
                     "Path to the icon:",
                     "path/to/icon.png",
                     &script.icon,
                     &mut parameters,
                     |path| WindowMessage::EditScriptIconPath(path),
-                    |val| WindowMessage::ToggleScriptIconPathRelativeToScripter(val),
+                    |val| WindowMessage::EditScriptIconPathRelativeToScripter(val),
                 );
             }
 
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
                 text(
                     if currently_edited_script.script_type == EditScriptType::ExecutionList {
@@ -2442,6 +2445,7 @@ fn produce_script_edit_content<'a>(
                     .into(),
                 );
 
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                 parameters.push(text("Argument hint:").into());
                 parameters.push(
                     text_input("", &script.arguments_hint)
@@ -2451,6 +2455,7 @@ fn produce_script_edit_content<'a>(
                 );
             }
 
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(text("Retry count:").into());
             parameters.push(
                 text_input("0", &visual_caches.autorerun_count)
@@ -2459,6 +2464,7 @@ fn produce_script_edit_content<'a>(
                     .into(),
             );
 
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
                 checkbox(
                     "Ignore previous failures",
@@ -2467,6 +2473,8 @@ fn produce_script_edit_content<'a>(
                 )
                 .into(),
             );
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
             if currently_edited_script.script_type == EditScriptType::ScriptConfig {
                 parameters.push(
@@ -2500,8 +2508,11 @@ fn produce_script_edit_content<'a>(
                 .style(theme::Button::Destructive)
                 .into(),
             );
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
         }
         config::ScriptDefinition::ReferenceToShared(_, is_hidden) => {
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
                 checkbox("Is script hidden", *is_hidden, move |val| {
                     WindowMessage::ToggleScriptHidden(val)
@@ -2509,6 +2520,7 @@ fn produce_script_edit_content<'a>(
                 .into(),
             );
 
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             if currently_edited_script.script_type == EditScriptType::ScriptConfig {
                 parameters.push(
                     edit_button(
@@ -2527,6 +2539,7 @@ fn produce_script_edit_content<'a>(
                     )
                     .into(),
                 );
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             }
         }
         config::ScriptDefinition::Preset(preset) => {
@@ -2538,14 +2551,17 @@ fn produce_script_edit_content<'a>(
                     .into(),
             );
 
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             populate_path_editing_content(
                 "Path to the icon:",
                 "path/to/icon.png",
                 &preset.icon,
                 &mut parameters,
                 |path| WindowMessage::EditScriptIconPath(path),
-                |val| WindowMessage::ToggleScriptIconPathRelativeToScripter(val),
+                |val| WindowMessage::EditScriptIconPathRelativeToScripter(val),
             );
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
             if is_local_edited_script(
                 currently_edited_script.idx,
@@ -2569,6 +2585,8 @@ fn produce_script_edit_content<'a>(
                 .style(theme::Button::Destructive)
                 .into(),
             );
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
         }
     }
 
@@ -2589,6 +2607,9 @@ fn produce_config_edit_content<'a>(
 
     let mut list_elements: Vec<Element<'_, WindowMessage, iced::Renderer>> = Vec::new();
 
+    const SEPARATOR_HEIGHT: u16 = 8;
+
+    list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
         checkbox(
             "Always on top (requires restart)",
@@ -2597,6 +2618,7 @@ fn produce_config_edit_content<'a>(
         )
         .into(),
     );
+    list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
         checkbox(
             "Window status reactions",
@@ -2605,6 +2627,7 @@ fn produce_config_edit_content<'a>(
         )
         .into(),
     );
+    list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
         checkbox(
             "Keep window size",
@@ -2613,6 +2636,7 @@ fn produce_config_edit_content<'a>(
         )
         .into(),
     );
+    list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
         checkbox(
             "Show script filter",
@@ -2621,6 +2645,7 @@ fn produce_config_edit_content<'a>(
         )
         .into(),
     );
+    list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
         checkbox(
             "Allow edit custom title",
@@ -2629,6 +2654,7 @@ fn produce_config_edit_content<'a>(
         )
         .into(),
     );
+    list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
         checkbox(
             "Use custom theme",
@@ -2639,6 +2665,7 @@ fn produce_config_edit_content<'a>(
     );
 
     if let Some(_theme) = &rewritable_config.custom_theme {
+        list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
         list_elements.push(text("Background:").into());
         list_elements.push(
             text_input("#000000", &window_edit.theme_color_background)
@@ -2691,20 +2718,22 @@ fn produce_config_edit_content<'a>(
     }
 
     if window_edit.edit_type == ConfigEditType::Shared {
+        list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
         populate_path_editing_content(
             "Local config path:",
             "path/to/config.json",
             &config.local_config_path,
             &mut list_elements,
             |path| WindowMessage::ConfigEditLocalConfigPath(path),
-            |val| WindowMessage::ConfigToggleLocalConfigPathRelativeToScripter(val),
+            |val| WindowMessage::ConfigEditLocalConfigPathRelativeToScripter(val),
         );
     }
 
-    return column![scrollable(column(list_elements))]
+    list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+
+    return column![scrollable(column(list_elements).spacing(10))]
         .width(Length::Fill)
         .height(Length::Fill)
-        .spacing(10)
         .align_items(Alignment::Start);
 }
 
@@ -3105,7 +3134,7 @@ fn populate_path_editing_content(
     path: &config::PathConfig,
     edit_content: &mut Vec<Element<'_, WindowMessage, iced::Renderer>>,
     on_path_changed: impl Fn(String) -> WindowMessage + 'static,
-    on_path_type_changed: impl Fn(bool) -> WindowMessage + 'static,
+    on_path_type_changed: impl Fn(config::PathType) -> WindowMessage + 'static,
 ) {
     edit_content.push(text(caption).into());
     edit_content.push(
@@ -3115,9 +3144,9 @@ fn populate_path_editing_content(
             .into(),
     );
     edit_content.push(
-        checkbox(
-            "Path relative to scripter executable",
-            path.path_type == config::PathType::ScripterExecutableRelative,
+        pick_list(
+            PATH_TYPE_PICK_LIST,
+            Some(path.path_type),
             on_path_type_changed,
         )
         .into(),

@@ -16,7 +16,7 @@ const DEFAULT_CONFIG_NAME: &str = "scripter_config.json";
 const WORK_PATH_CONFIG_NAME: &str = ".scripter_config.json";
 thread_local!(static GLOBAL_CONFIG: AppConfig = read_config());
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
 pub enum PathType {
     WorkingDirRelative,
     ScripterExecutableRelative,
