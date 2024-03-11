@@ -216,6 +216,7 @@ pub enum WindowMessage {
     EditExecutionListTitle(String),
     OpenWithDefaultApplication(PathBuf),
     OpenUrl(String),
+    SwitchToOriginalSharedScript(EditScriptId),
 }
 
 impl Application for MainWindow {
@@ -1196,6 +1197,49 @@ impl Application for MainWindow {
                 if let Err(e) = open::that(url) {
                     eprintln!("Failed to open URL: {}", e);
                 }
+            }
+            WindowMessage::SwitchToOriginalSharedScript(local_script_id) => {
+                let original_script_uid = {
+                    let script = get_script_definition(
+                        &self.app_config,
+                        &self.edit_data,
+                        local_script_id.idx,
+                    );
+                    match script {
+                        config::ScriptDefinition::ReferenceToShared(uid, _) => uid,
+                        _ => return Command::none(),
+                    }
+                };
+
+                let mut original_script_idx = self.app_config.script_definitions.len();
+                for (idx, script_definition) in
+                    self.app_config.script_definitions.iter().enumerate()
+                {
+                    match script_definition {
+                        config::ScriptDefinition::Original(script) => {
+                            if script.uid == *original_script_uid {
+                                original_script_idx = idx;
+                                break;
+                            }
+                        }
+                        config::ScriptDefinition::Preset(preset) => {
+                            if preset.uid == *original_script_uid {
+                                original_script_idx = idx;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                if original_script_idx == self.app_config.script_definitions.len() {
+                    return Command::none();
+                }
+
+                switch_config_edit_mode(self, ConfigEditType::Shared);
+                select_edited_script(self, original_script_idx);
+
+                update_config_cache(&mut self.app_config, &self.edit_data);
             }
         }
 
@@ -2470,6 +2514,16 @@ fn produce_script_edit_content<'a>(
                     edit_button(
                         "Edit as a copy",
                         WindowMessage::CreateCopyOfSharedScript(currently_edited_script.clone()),
+                    )
+                    .into(),
+                );
+
+                parameters.push(
+                    edit_button(
+                        "Edit original",
+                        WindowMessage::SwitchToOriginalSharedScript(
+                            currently_edited_script.clone(),
+                        ),
                     )
                     .into(),
                 );
