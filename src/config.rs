@@ -737,7 +737,10 @@ fn get_app_arguments() -> AppArguments {
                     custom_work_path: None,
                     env_vars: Vec::new(),
                     custom_title: None,
-                    read_error: Some(format!("Unknown argument: {}\nUse --help to see the list of supported arguments", arg)),
+                    read_error: Some(format!(
+                        "Unknown argument: {}\nUse --help to see the list of supported arguments",
+                        arg
+                    )),
                 };
             }
         }
