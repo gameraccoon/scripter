@@ -83,6 +83,8 @@ pub struct AppConfig {
     pub script_definitions: Vec<ScriptDefinition>,
     pub local_config_path: PathConfig,
     #[serde(skip)]
+    pub is_read_only: bool,
+    #[serde(skip)]
     pub paths: PathCaches,
     #[serde(skip)]
     pub env_vars: Vec<(OsString, OsString)>,
@@ -253,13 +255,13 @@ pub fn is_always_on_top() -> bool {
     GLOBAL_CONFIG.with(|config| config.rewritable.always_on_top)
 }
 
-pub fn save_config_to_file(config: &AppConfig) {
+pub fn save_config_to_file(config: &AppConfig) -> bool {
     let data = serde_json::to_string_pretty(&config);
     let data = match data {
         Ok(data) => data,
         Err(err) => {
             eprintln!("Can't serialize config file {}", err);
-            return;
+            return false;
         }
     };
     let result = std::fs::write(&config.paths.config_path, data);
@@ -269,6 +271,7 @@ pub fn save_config_to_file(config: &AppConfig) {
             config.paths.config_path.display(),
             err
         );
+        return false;
     }
 
     if let Some(local_config) = &config.local_config_body {
@@ -277,7 +280,7 @@ pub fn save_config_to_file(config: &AppConfig) {
             Ok(data) => data,
             Err(err) => {
                 eprintln!("Can't serialize local config file. Error: {}", err);
-                return;
+                return false;
             }
         };
         if !config.local_config_path.path.is_empty() {
@@ -289,9 +292,12 @@ pub fn save_config_to_file(config: &AppConfig) {
                     &full_config_path.to_str().unwrap_or_default(),
                     err
                 );
+                return false;
             }
         }
     }
+
+    return true;
 }
 
 pub fn get_full_path(paths: &PathCaches, path_config: &PathConfig) -> PathBuf {
@@ -324,6 +330,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             custom_theme: Some(CustomTheme::default()),
         },
         script_definitions: Vec::new(),
+        is_read_only: !has_write_permission(&config_path),
         paths: PathCaches {
             logs_path: if let Some(custom_logs_path) = app_arguments.custom_logs_path.clone() {
                 PathBuf::from(custom_logs_path)
@@ -460,27 +467,29 @@ pub fn read_config() -> AppConfig {
     };
 
     if update_result == UpdateResult::Updated {
-        let data = serde_json::to_string_pretty(&config);
-        let data = match data {
-            Ok(data) => data,
-            Err(err) => {
+        if !config.is_read_only {
+            let data = serde_json::to_string_pretty(&config);
+            let data = match data {
+                Ok(data) => data,
+                Err(err) => {
+                    return default_config_with_error(
+                        &default_config,
+                        ConfigReadError::ConfigSerializeError {
+                            error: format!("Failed to serialize the updated config: {}", err),
+                        },
+                    )
+                }
+            };
+            let result = std::fs::write(&default_config.paths.config_path, data);
+            if let Err(err) = result {
                 return default_config_with_error(
                     &default_config,
-                    ConfigReadError::ConfigSerializeError {
-                        error: format!("Failed to serialize the updated config: {}", err),
+                    ConfigReadError::FileWriteError {
+                        file_path: default_config.paths.config_path.clone(),
+                        error: err.to_string(),
                     },
-                )
+                );
             }
-        };
-        let result = std::fs::write(&default_config.paths.config_path, data);
-        if let Err(err) = result {
-            return default_config_with_error(
-                &default_config,
-                ConfigReadError::FileWriteError {
-                    file_path: default_config.paths.config_path.clone(),
-                    error: err.to_string(),
-                },
-            );
         }
     } else if let UpdateResult::Error(error) = update_result {
         let file_path = default_config.paths.config_path.clone();
@@ -501,22 +510,28 @@ pub fn read_config() -> AppConfig {
         };
     }
 
+    config.paths = default_config.paths;
+    config.is_read_only = default_config.is_read_only;
+    config.env_vars = app_arguments.env_vars;
+    config.custom_title = app_arguments.custom_title;
+    config.arguments_read_error = app_arguments.read_error;
+
     if !config.local_config_path.path.is_empty() {
-        let full_local_config_path =
-            get_full_path(&default_config.paths, &config.local_config_path);
+        let full_local_config_path = get_full_path(&config.paths, &config.local_config_path);
+
+        if !config.is_read_only && !has_write_permission(&full_local_config_path) {
+            // if at lease one of the configs is read-only, both should be read-only
+            config.is_read_only = true;
+        }
+
         let local_config = match read_local_config(full_local_config_path.clone(), &mut config) {
             Ok(local_config) => local_config,
             Err(error) => {
-                return default_config_with_error(&default_config, error);
+                return default_config_with_error(&config, error);
             }
         };
         config.local_config_body = Some(Box::new(local_config));
     }
-
-    config.paths = default_config.paths;
-    config.env_vars = app_arguments.env_vars;
-    config.custom_title = app_arguments.custom_title;
-    config.arguments_read_error = app_arguments.read_error;
 
     return config;
 }
@@ -630,21 +645,23 @@ fn read_local_config(
     };
 
     if update_result == UpdateResult::Updated {
-        let data = serde_json::to_string_pretty(&config);
-        let data = match data {
-            Ok(data) => data,
-            Err(err) => {
-                return Err(ConfigReadError::ConfigSerializeError {
-                    error: format!("Failed to serialize the updated local config: {}", err),
+        if !shared_config.is_read_only {
+            let data = serde_json::to_string_pretty(&config);
+            let data = match data {
+                Ok(data) => data,
+                Err(err) => {
+                    return Err(ConfigReadError::ConfigSerializeError {
+                        error: format!("Failed to serialize the updated local config: {}", err),
+                    });
+                }
+            };
+            let result = std::fs::write(&config_path, data);
+            if let Err(err) = result {
+                return Err(ConfigReadError::FileWriteError {
+                    file_path: config_path,
+                    error: err.to_string(),
                 });
             }
-        };
-        let result = std::fs::write(&config_path, data);
-        if let Err(err) = result {
-            return Err(ConfigReadError::FileWriteError {
-                file_path: config_path,
-                error: err.to_string(),
-            });
         }
     } else if let UpdateResult::Error(error) = update_result {
         match error {
@@ -905,4 +922,16 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
             },
         );
     }
+}
+
+fn has_write_permission(path: &Path) -> bool {
+    // Check if able to write inside directory
+    let md = std::fs::metadata(path);
+    if let Err(_) = md {
+        return false;
+    }
+    let md = md.unwrap();
+
+    let permissions = md.permissions();
+    return !permissions.readonly();
 }

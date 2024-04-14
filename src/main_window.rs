@@ -581,10 +581,12 @@ impl Application for MainWindow {
                 }
             }
             WindowMessage::SaveConfig => {
-                config::save_config_to_file(&self.app_config);
-                self.app_config = config::read_config();
-                self.edit_data.is_dirty = false;
-                update_config_cache(&mut self.app_config, &self.edit_data);
+                let has_saved = config::save_config_to_file(&self.app_config);
+                if has_saved {
+                    self.app_config = config::read_config();
+                    self.edit_data.is_dirty = false;
+                    update_config_cache(&mut self.app_config, &self.edit_data);
+                }
             }
             WindowMessage::RevertConfig => {
                 self.app_config = config::read_config();
@@ -1261,6 +1263,7 @@ impl Application for MainWindow {
                         total_panes,
                         &self.visual_caches.icons,
                         &self.edit_data,
+                        &self.app_config,
                         &self.execution_data,
                         is_maximized,
                         size,
@@ -2799,6 +2802,7 @@ fn view_controls<'a>(
     total_panes: usize,
     icons: &ui_icons::IconCaches,
     edit_data: &EditData,
+    config: &config::AppConfig,
     execution_lists: &execution_lists::ExecutionLists,
     is_maximized: bool,
     size: Size,
@@ -2807,6 +2811,7 @@ fn view_controls<'a>(
     let mut row = row![].spacing(5);
 
     if *variant == PaneVariant::ScriptList
+        && !config.is_read_only
         && !edit_data.window_edit_data.is_some()
         && !execution_lists.has_started_execution()
     {
@@ -3399,6 +3404,10 @@ fn get_editing_preset<'a>(
 }
 
 fn enter_window_edit_mode(app: &mut MainWindow) {
+    if app.app_config.is_read_only {
+        return;
+    }
+
     app.edit_data.window_edit_data = Some(WindowEditData::from_config(
         &app.app_config,
         false,
