@@ -22,6 +22,12 @@ pub enum PathType {
     ScripterExecutableRelative,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
+pub enum ConfigUpdateBehavior {
+    OnStartup,
+    OnManualSave,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PathConfig {
     pub path: String,
@@ -38,13 +44,14 @@ impl Default for PathConfig {
 }
 
 // Part of the config that can be fully overridden by the local config
-#[derive(Default, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct RewritableConfig {
     pub always_on_top: bool,
     pub window_status_reactions: bool,
     pub keep_window_size: bool,
     pub enable_script_filtering: bool,
     pub enable_title_editing: bool,
+    pub config_version_update_behavior: ConfigUpdateBehavior,
     pub custom_theme: Option<CustomTheme>,
 }
 
@@ -76,7 +83,7 @@ pub enum ConfigReadError {
     },
 }
 
-#[derive(Default, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct AppConfig {
     pub version: String,
     pub rewritable: RewritableConfig,
@@ -108,7 +115,7 @@ pub struct ScriptListCacheRecord {
     pub original_script_uid: Guid,
 }
 
-#[derive(Default, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct LocalConfig {
     pub version: String,
     pub rewritable: RewritableConfig,
@@ -327,6 +334,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             keep_window_size: false,
             enable_script_filtering: true,
             enable_title_editing: true,
+            config_version_update_behavior: ConfigUpdateBehavior::OnStartup,
             custom_theme: Some(CustomTheme::default()),
         },
         script_definitions: Vec::new(),
@@ -469,7 +477,9 @@ pub fn read_config() -> AppConfig {
     };
 
     if update_result == UpdateResult::Updated {
-        if !config.is_read_only {
+        if !config.is_read_only
+            && config.rewritable.config_version_update_behavior == ConfigUpdateBehavior::OnStartup
+        {
             let data = serde_json::to_string_pretty(&config);
             let data = match data {
                 Ok(data) => data,
@@ -647,7 +657,9 @@ fn read_local_config(
     };
 
     if update_result == UpdateResult::Updated {
-        if !shared_config.is_read_only {
+        if !shared_config.is_read_only
+            && config.rewritable.config_version_update_behavior == ConfigUpdateBehavior::OnStartup
+        {
             let data = serde_json::to_string_pretty(&config);
             let data = match data {
                 Ok(data) => data,

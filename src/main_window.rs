@@ -55,6 +55,23 @@ impl std::fmt::Display for config::PathType {
     }
 }
 
+const CONFIG_UPDATE_BEHAVIOR_PICK_LIST: &[config::ConfigUpdateBehavior] = &[
+    config::ConfigUpdateBehavior::OnStartup,
+    config::ConfigUpdateBehavior::OnManualSave,
+];
+impl std::fmt::Display for config::ConfigUpdateBehavior {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                config::ConfigUpdateBehavior::OnStartup => "On application startup",
+                config::ConfigUpdateBehavior::OnManualSave => "Only on manual save",
+            }
+        )
+    }
+}
+
 // these should be static not just const
 static FILTER_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 static ARGUMENTS_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
@@ -203,6 +220,7 @@ pub enum WindowMessage {
     ConfigToggleKeepWindowSize(bool),
     ConfigToggleScriptFiltering(bool),
     ConfigToggleTitleEditing(bool),
+    ConfigUpdateBehaviorChanged(config::ConfigUpdateBehavior),
     ConfigToggleUseCustomTheme(bool),
     ConfigEditThemeBackground(String),
     ConfigEditThemeText(String),
@@ -658,6 +676,11 @@ impl Application for MainWindow {
             WindowMessage::ConfigToggleTitleEditing(is_checked) => {
                 get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
                     .enable_title_editing = is_checked;
+                self.edit_data.is_dirty = true;
+            }
+            WindowMessage::ConfigUpdateBehaviorChanged(value) => {
+                get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
+                    .config_version_update_behavior = value;
                 self.edit_data.is_dirty = true;
             }
             WindowMessage::ConfigToggleUseCustomTheme(is_checked) => {
@@ -2654,6 +2677,16 @@ fn produce_config_edit_content<'a>(
             "Allow edit custom title",
             rewritable_config.enable_title_editing,
             move |val| WindowMessage::ConfigToggleTitleEditing(val),
+        )
+        .into(),
+    );
+    list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    list_elements.push(text("Update config version:").into());
+    list_elements.push(
+        pick_list(
+            CONFIG_UPDATE_BEHAVIOR_PICK_LIST,
+            Some(rewritable_config.config_version_update_behavior),
+            WindowMessage::ConfigUpdateBehaviorChanged,
         )
         .into(),
     );

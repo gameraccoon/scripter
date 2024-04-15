@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.13.0";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.13.0";
+pub static LATEST_CONFIG_VERSION: &str = "0.14.0";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.14.0";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -118,6 +118,7 @@ fn register_config_updaters() -> JsonFileUpdater {
     json_config_updater
         .add_update_function("0.12.2", v0_12_2_rename_child_to_local_and_parent_to_shared);
     json_config_updater.add_update_function("0.13.0", v0_13_0_added_custom_working_directory);
+    json_config_updater.add_update_function("0.14.0", v0_14_0_added_config_version_update_field);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -178,6 +179,7 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     json_config_updater
         .add_update_function("0.12.2", v0_12_2_rename_child_to_local_and_parent_to_shared);
     json_config_updater.add_update_function("0.13.0", v0_13_0_added_custom_working_directory);
+    json_config_updater.add_update_function("0.14.0", v0_14_0_added_config_version_update_field);
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
 
@@ -288,4 +290,13 @@ fn v0_13_0_added_custom_working_directory(config_json: &mut JsonValue) {
             "path": ".",
         });
     });
+}
+
+fn v0_14_0_added_config_version_update_field(config_json: &mut JsonValue) {
+    if let Some(rewritable) = config_json["rewritable"].as_object_mut() {
+        rewritable.insert(
+            "config_version_update_behavior".to_string(),
+            json!("OnStartup"),
+        );
+    }
 }
