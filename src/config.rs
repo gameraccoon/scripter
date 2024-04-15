@@ -455,15 +455,17 @@ pub fn read_config() -> AppConfig {
 
     let update_result = update_config_to_the_latest_version(&mut config_json);
     let config = serde_json::from_value(config_json);
-    let mut config = match config {
+    let mut config: AppConfig = match config {
         Ok(config) => config,
-        Err(err) => default_config_with_error(
-            &default_config,
-            ConfigReadError::ConfigDeserializeError {
-                file_path: default_config.paths.config_path.clone(),
-                error: err.to_string(),
-            },
-        ),
+        Err(err) => {
+            return default_config_with_error(
+                &default_config,
+                ConfigReadError::ConfigDeserializeError {
+                    file_path: default_config.paths.config_path.clone(),
+                    error: err.to_string(),
+                },
+            )
+        }
     };
 
     if update_result == UpdateResult::Updated {
