@@ -1,6 +1,7 @@
 // Copyright (C) Pavel Grebnev 2023-2024
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
+use crate::app_arguments::{self, AppArguments};
 use crate::config_updaters::{
     update_config_to_the_latest_version, update_local_config_to_the_latest_version,
     LATEST_CONFIG_VERSION, LATEST_LOCAL_CONFIG_VERSION,
@@ -10,7 +11,6 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 const DEFAULT_CONFIG_NAME: &str = "scripter_config.json";
 const WORK_PATH_CONFIG_NAME: &str = ".scripter_config.json";
@@ -215,16 +215,6 @@ pub struct PathCaches {
     pub config_path: PathBuf,
 }
 
-#[derive(Default, Clone)]
-struct AppArguments {
-    custom_config_path: Option<String>,
-    custom_logs_path: Option<String>,
-    custom_work_path: Option<String>,
-    env_vars: Vec<(OsString, OsString)>,
-    custom_title: Option<String>,
-    read_error: Option<String>,
-}
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CustomTheme {
     pub background: [f32; 3],
@@ -401,7 +391,7 @@ fn default_config_with_error(config: &AppConfig, error: ConfigReadError) -> AppC
 }
 
 pub fn read_config() -> AppConfig {
-    let app_arguments = get_app_arguments();
+    let app_arguments = app_arguments::get_app_arguments();
 
     let config_path = get_config_path(&app_arguments);
 
@@ -695,156 +685,6 @@ fn read_local_config(
     populate_shared_scripts(&mut config, shared_config);
 
     return Ok(config);
-}
-
-struct Argument {
-    name: &'static str,
-    syntax: &'static str,
-    description: &'static str,
-}
-
-const SUPPORTED_ARGS: &[Argument] = &[
-    Argument {
-        name: "--help",
-        syntax: "--help",
-        description: "Show this help",
-    },
-    Argument {
-        name: "--version",
-        syntax: "--version",
-        description: "Show the application version",
-    },
-    Argument {
-        name: "--config-path",
-        syntax: "--config-path <path>",
-        description: "Set custom path to the config file",
-    },
-    Argument {
-        name: "--logs-path",
-        syntax: "--logs-path <path>",
-        description: "Set path to the logs folder",
-    },
-    Argument {
-        name: "--work-path",
-        syntax: "--work-path <path>",
-        description: "Set default working directory for scripts",
-    },
-    Argument {
-        name: "--env",
-        syntax: "--env <name> <value>",
-        description: "Add an enviroment variable that will be set for all the scripts",
-    },
-    Argument {
-        name: "--title",
-        syntax: "--title <title>",
-        description: "Set custom window title",
-    },
-];
-
-fn get_app_arguments() -> AppArguments {
-    let mut custom_config_path = None;
-    let mut custom_logs_path = None;
-    let mut custom_work_path = None;
-    let mut env_vars = Vec::new();
-    let mut custom_title = None;
-
-    let args: Vec<String> = std::env::args().collect();
-
-    for i in 1..args.len() {
-        let arg = &args[i];
-
-        if arg.starts_with("--") {
-            let mut found = false;
-            for supported_arg in SUPPORTED_ARGS {
-                if arg == supported_arg.name {
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                return AppArguments {
-                    custom_config_path: None,
-                    custom_logs_path: None,
-                    custom_work_path: None,
-                    env_vars: Vec::new(),
-                    custom_title: None,
-                    read_error: Some(format!(
-                        "Unknown argument: {}\nUse --help to see the list of supported arguments",
-                        arg
-                    )),
-                };
-            }
-        }
-
-        if arg == "--help" {
-            let mut help_text = "Supported arguments:\n".to_string();
-            let mut max_syntax_len = 0;
-            for arg in SUPPORTED_ARGS {
-                max_syntax_len = max_syntax_len.max(arg.syntax.len());
-            }
-            for arg in SUPPORTED_ARGS {
-                help_text.push_str(&arg.syntax);
-                for _ in 0..max_syntax_len - arg.syntax.len() + 1 {
-                    help_text.push(' ');
-                }
-                help_text.push_str(arg.description);
-                help_text.push_str("\n");
-            }
-            help_text.push_str("\n");
-            help_text.push_str("Example: scripter --config-path C:\\config.json --logs-path C:\\logs --work-path C:\\work --env VAR1 value1 --env VAR2 value2");
-            return AppArguments {
-                custom_config_path: None,
-                custom_logs_path: None,
-                custom_work_path: None,
-                env_vars: Vec::new(),
-                custom_title: None,
-                read_error: Some(help_text),
-            };
-        }
-        if arg == "--version" {
-            return AppArguments {
-                custom_config_path: None,
-                custom_logs_path: None,
-                custom_work_path: None,
-                env_vars: Vec::new(),
-                custom_title: None,
-                read_error: Some(env!("CARGO_PKG_VERSION").to_string()),
-            };
-        }
-        if arg == "--config-path" {
-            if i + 1 < args.len() {
-                custom_config_path = Some(args[i + 1].clone());
-            }
-        } else if arg == "--logs-path" {
-            if i + 1 < args.len() {
-                custom_logs_path = Some(args[i + 1].clone());
-            }
-        } else if arg == "--work-path" {
-            if i + 1 < args.len() {
-                custom_work_path = Some(args[i + 1].clone());
-            }
-        } else if arg == "--env" {
-            if i + 2 < args.len() {
-                env_vars.push((
-                    OsString::from_str(&args[i + 1]).unwrap_or_default(),
-                    OsString::from_str(&args[i + 2]).unwrap_or_default(),
-                ));
-            }
-        } else if arg == "--title" {
-            if i + 1 < args.len() {
-                custom_title = Some(args[i + 1].clone());
-            }
-        }
-    }
-
-    AppArguments {
-        custom_config_path,
-        custom_logs_path,
-        custom_work_path,
-        env_vars,
-        custom_title,
-        read_error: None,
-    }
 }
 
 fn get_exe_folder_path() -> PathBuf {

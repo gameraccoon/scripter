@@ -3,6 +3,7 @@
 
 #![windows_subsystem = "windows"]
 
+mod app_arguments;
 mod color_utils;
 mod config;
 mod config_updaters;
