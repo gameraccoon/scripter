@@ -372,19 +372,17 @@ impl Application for MainWindow {
                 return restore_window(self);
             }
             WindowMessage::MaximizeOrRestoreExecutionPane => {
-                if self.execution_data.has_started_execution() {
-                    return if self.window_state.has_maximized_pane {
-                        restore_window(self)
-                    } else {
-                        maximize_pane(
+                if self.window_state.has_maximized_pane {
+                    return restore_window(self);
+                } else {
+                    if self.execution_data.has_started_execution()
+                        || !self.execution_data.get_edited_execution_list().is_empty()
+                    {
+                        return maximize_pane(
                             self,
                             self.pane_by_pane_type[&PaneVariant::ExecutionList],
                             self.window_state.full_window_size,
-                        )
-                    };
-                } else {
-                    if self.window_state.has_maximized_pane {
-                        return restore_window(self);
+                        );
                     }
                 }
             }
@@ -2865,7 +2863,7 @@ fn view_controls<'a>(
 
     if total_panes > 1
         && (is_maximized
-            || (*variant == PaneVariant::ExecutionList && execution_lists.has_started_execution()))
+            || (*variant == PaneVariant::ExecutionList && (execution_lists.has_started_execution() || !execution_lists.get_edited_execution_list().is_empty())))
     {
         let toggle = {
             let (content, message) = if is_maximized {
