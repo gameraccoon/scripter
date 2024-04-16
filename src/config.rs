@@ -123,6 +123,12 @@ pub struct LocalConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ReferenceToSharedScript {
+    pub uid: Guid,
+    pub is_hidden: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OriginalScriptDefinition {
     pub uid: Guid,
     pub name: String,
@@ -157,7 +163,7 @@ pub struct ScriptPreset {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum ScriptDefinition {
     // taken from the shared config, second bool is whether it's hidden
-    ReferenceToShared(Guid, bool),
+    ReferenceToShared(ReferenceToSharedScript),
     // added in the current config
     Original(OriginalScriptDefinition),
     // preset of multiple scripts
@@ -713,7 +719,7 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
     let mut has_configs_to_remove = false;
     for script in &shared_config.script_definitions {
         let original_script_uid = match script {
-            ScriptDefinition::ReferenceToShared(_, _) => {
+            ScriptDefinition::ReferenceToShared(_) => {
                 continue;
             }
             ScriptDefinition::Original(script) => script.uid.clone(),
@@ -726,8 +732,8 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
                 .script_definitions
                 .iter()
                 .position(|local_script: &ScriptDefinition| match local_script {
-                    ScriptDefinition::ReferenceToShared(shared_script_uid, _is_hidden) => {
-                        *shared_script_uid == original_script_uid
+                    ScriptDefinition::ReferenceToShared(reference) => {
+                        reference.uid == original_script_uid
                     }
                     _ => false,
                 });
@@ -743,7 +749,10 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
                         // insert the script after the previous script
                         local_config.script_definitions.insert(
                             *previous_script_idx + 1,
-                            ScriptDefinition::ReferenceToShared(original_script_uid.clone(), false),
+                            ScriptDefinition::ReferenceToShared(ReferenceToSharedScript {
+                                uid: original_script_uid.clone(),
+                                is_hidden: false,
+                            }),
                         );
                         *previous_script_idx = *previous_script_idx + 1;
                     }
@@ -751,7 +760,10 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
                         // insert the script at the beginning
                         local_config.script_definitions.insert(
                             0,
-                            ScriptDefinition::ReferenceToShared(original_script_uid.clone(), false),
+                            ScriptDefinition::ReferenceToShared(ReferenceToSharedScript {
+                                uid: original_script_uid.clone(),
+                                is_hidden: false,
+                            }),
                         );
                         previous_script_idx = Some(0);
                     }
@@ -764,13 +776,13 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
         // remove all the scripts that are not in the shared config
         local_config.script_definitions.retain(
             |local_script: &ScriptDefinition| match local_script {
-                ScriptDefinition::ReferenceToShared(shared_script_uid, _is_hidden) => shared_config
+                ScriptDefinition::ReferenceToShared(reference) => shared_config
                     .script_definitions
                     .iter()
                     .any(|script| match script {
-                        ScriptDefinition::ReferenceToShared(_, _) => false,
-                        ScriptDefinition::Original(script) => *shared_script_uid == script.uid,
-                        ScriptDefinition::Preset(preset) => *shared_script_uid == preset.uid,
+                        ScriptDefinition::ReferenceToShared(_) => false,
+                        ScriptDefinition::Original(script) => reference.uid == script.uid,
+                        ScriptDefinition::Preset(preset) => reference.uid == preset.uid,
                     }),
                 _ => true,
             },

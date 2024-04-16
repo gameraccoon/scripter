@@ -832,8 +832,8 @@ impl Application for MainWindow {
                     };
 
                     match script {
-                        config::ScriptDefinition::ReferenceToShared(_, is_hidden_value) => {
-                            *is_hidden_value = is_hidden;
+                        config::ScriptDefinition::ReferenceToShared(reference) => {
+                            reference.is_hidden = is_hidden;
                             self.edit_data.is_dirty = true;
                         }
                         _ => {}
@@ -853,10 +853,10 @@ impl Application for MainWindow {
                 };
 
                 let new_script = match script {
-                    config::ScriptDefinition::ReferenceToShared(shared_script_id, _is_hidden) => {
+                    config::ScriptDefinition::ReferenceToShared(reference) => {
                         if let Some(mut script) = config::get_original_script_definition_by_uid(
                             &self.app_config,
-                            shared_script_id.clone(),
+                            reference.uid.clone(),
                         ) {
                             match &mut script {
                                 config::ScriptDefinition::Original(original_script) => {
@@ -903,14 +903,18 @@ impl Application for MainWindow {
                         let mut replacement_script = match script {
                             config::ScriptDefinition::Original(definition) => {
                                 config::ScriptDefinition::ReferenceToShared(
-                                    definition.uid.clone(),
-                                    false,
+                                    config::ReferenceToSharedScript {
+                                        uid: definition.uid.clone(),
+                                        is_hidden: false,
+                                    },
                                 )
                             }
                             config::ScriptDefinition::Preset(preset) => {
                                 config::ScriptDefinition::ReferenceToShared(
-                                    preset.uid.clone(),
-                                    false,
+                                    config::ReferenceToSharedScript {
+                                        uid: preset.uid.clone(),
+                                        is_hidden: false,
+                                    },
                                 )
                             }
                             _ => {
@@ -946,10 +950,10 @@ impl Application for MainWindow {
 
                             let original_script = if let Some(original_script) = original_script {
                                 match original_script {
-                                    config::ScriptDefinition::ReferenceToShared(uid, _) => {
+                                    config::ScriptDefinition::ReferenceToShared(reference) => {
                                         config::get_original_script_definition_by_uid(
                                             &self.app_config,
-                                            uid,
+                                            reference.uid,
                                         )
                                     }
                                     _ => Some(original_script),
@@ -1225,7 +1229,9 @@ impl Application for MainWindow {
                         local_script_id.idx,
                     );
                     match script {
-                        config::ScriptDefinition::ReferenceToShared(uid, _) => uid,
+                        config::ScriptDefinition::ReferenceToShared(reference) => {
+                            reference.uid.clone()
+                        }
                         _ => return Command::none(),
                     }
                 };
@@ -1236,13 +1242,13 @@ impl Application for MainWindow {
                 {
                     match script_definition {
                         config::ScriptDefinition::Original(script) => {
-                            if script.uid == *original_script_uid {
+                            if script.uid == original_script_uid {
                                 original_script_idx = idx;
                                 break;
                             }
                         }
                         config::ScriptDefinition::Preset(preset) => {
-                            if preset.uid == *original_script_uid {
+                            if preset.uid == original_script_uid {
                                 original_script_idx = idx;
                                 break;
                             }
@@ -2535,10 +2541,10 @@ fn produce_script_edit_content<'a>(
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
         }
-        config::ScriptDefinition::ReferenceToShared(_, is_hidden) => {
+        config::ScriptDefinition::ReferenceToShared(reference) => {
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
-                checkbox("Is script hidden", *is_hidden, move |val| {
+                checkbox("Is script hidden", reference.is_hidden, move |val| {
                     WindowMessage::ToggleScriptHidden(val)
                 })
                 .into(),
@@ -2863,7 +2869,9 @@ fn view_controls<'a>(
 
     if total_panes > 1
         && (is_maximized
-            || (*variant == PaneVariant::ExecutionList && (execution_lists.has_started_execution() || !execution_lists.get_edited_execution_list().is_empty())))
+            || (*variant == PaneVariant::ExecutionList
+                && (execution_lists.has_started_execution()
+                    || !execution_lists.get_edited_execution_list().is_empty())))
     {
         let toggle = {
             let (content, message) = if is_maximized {
@@ -3191,7 +3199,7 @@ fn populate_path_editing_content(
 
 fn make_script_copy(script: config::ScriptDefinition) -> config::ScriptDefinition {
     match script {
-        config::ScriptDefinition::ReferenceToShared(_, _) => script,
+        config::ScriptDefinition::ReferenceToShared(_) => script,
         config::ScriptDefinition::Preset(preset) => {
             config::ScriptDefinition::Preset(config::ScriptPreset {
                 uid: config::Guid::new(),
@@ -3244,49 +3252,50 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
         result_list.clear();
         for script_definition in &local_config.script_definitions {
             match script_definition {
-                config::ScriptDefinition::ReferenceToShared(shared_script_uid, is_hidden) => {
+                config::ScriptDefinition::ReferenceToShared(reference) => {
                     let shared_script =
                         shared_script_definitions
                             .iter()
                             .find(|script| match script {
                                 config::ScriptDefinition::Original(script) => {
-                                    script.uid == *shared_script_uid
+                                    script.uid == reference.uid
                                 }
                                 config::ScriptDefinition::Preset(preset) => {
-                                    preset.uid == *shared_script_uid
+                                    preset.uid == reference.uid
                                 }
                                 _ => false,
                             });
                     match shared_script {
                         Some(shared_script) => {
                             let name = match &shared_script {
-                                config::ScriptDefinition::ReferenceToShared(_, _) => {
+                                config::ScriptDefinition::ReferenceToShared(_) => {
                                     "[Error]".to_string()
                                 }
                                 config::ScriptDefinition::Original(script) => script.name.clone(),
                                 config::ScriptDefinition::Preset(preset) => preset.name.clone(),
                             };
                             let icon = match &shared_script {
-                                config::ScriptDefinition::ReferenceToShared(_, _) => {
+                                config::ScriptDefinition::ReferenceToShared(_) => {
                                     config::PathConfig::default()
                                 }
                                 config::ScriptDefinition::Original(script) => script.icon.clone(),
                                 config::ScriptDefinition::Preset(preset) => preset.icon.clone(),
                             };
-                            let is_script_hidden = *is_hidden || is_script_filtered_out(&name);
+                            let is_script_hidden =
+                                reference.is_hidden || is_script_filtered_out(&name);
                             if is_full_list || !is_script_hidden {
                                 result_list.push(config::ScriptListCacheRecord {
                                     name,
                                     full_icon_path: config::get_full_optional_path(paths, &icon),
                                     is_hidden: is_script_hidden,
-                                    original_script_uid: shared_script_uid.clone(),
+                                    original_script_uid: reference.uid.clone(),
                                 });
                             }
                         }
                         None => {
                             eprintln!(
                                 "Failed to find shared script with uid {}",
-                                shared_script_uid.data
+                                reference.uid.data
                             )
                         }
                     }
@@ -3322,7 +3331,7 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
         result_list.clear();
         for script_definition in script_definitions {
             match script_definition {
-                config::ScriptDefinition::ReferenceToShared(_, _) => {}
+                config::ScriptDefinition::ReferenceToShared(_) => {}
                 config::ScriptDefinition::Original(script) => {
                     let is_script_hidden = is_script_filtered_out(&script.name);
                     if is_full_list || !is_script_hidden {
@@ -3500,7 +3509,7 @@ fn add_script_to_execution(
     };
 
     match original_script {
-        config::ScriptDefinition::ReferenceToShared(_, _) => {
+        config::ScriptDefinition::ReferenceToShared(_) => {
             return false;
         }
         config::ScriptDefinition::Original(_) => {
@@ -3906,9 +3915,11 @@ fn find_best_shared_script_insert_position(
     let mut last_shared_script_idx = script_idx;
     let mut target_shared_script_uid = config::GUID_NULL;
     for i in (0..script_idx).rev() {
-        if let config::ScriptDefinition::ReferenceToShared(uid, _) = &source_script_definitions[i] {
+        if let config::ScriptDefinition::ReferenceToShared(reference) =
+            &source_script_definitions[i]
+        {
             last_shared_script_idx = i;
-            target_shared_script_uid = uid.clone();
+            target_shared_script_uid = reference.uid.clone();
             break;
         }
     }
@@ -3923,9 +3934,11 @@ fn find_best_shared_script_insert_position(
     let mut next_shared_script_idx = script_idx;
     let mut target_shared_script_idx = config::GUID_NULL;
     for i in script_idx..source_script_definitions.len() {
-        if let config::ScriptDefinition::ReferenceToShared(uid, _) = &source_script_definitions[i] {
+        if let config::ScriptDefinition::ReferenceToShared(reference) =
+            &source_script_definitions[i]
+        {
             next_shared_script_idx = i;
-            target_shared_script_idx = uid.clone();
+            target_shared_script_idx = reference.uid.clone();
             break;
         }
     }
@@ -3955,8 +3968,8 @@ fn find_script_idx_by_id(
                     return Some(i);
                 }
             }
-            config::ScriptDefinition::ReferenceToShared(uid, _) => {
-                if *uid == *script_id {
+            config::ScriptDefinition::ReferenceToShared(reference) => {
+                if reference.uid == *script_id {
                     return Some(i);
                 }
             }
