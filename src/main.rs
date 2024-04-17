@@ -7,6 +7,7 @@ mod app_arguments;
 mod color_utils;
 mod config;
 mod config_updaters;
+mod custom_keybinds;
 mod execution;
 mod execution_lists;
 mod file_utils;

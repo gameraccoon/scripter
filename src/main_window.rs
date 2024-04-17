@@ -5,6 +5,7 @@
 use std::os::windows::process::CommandExt;
 
 use iced::alignment::{self, Alignment};
+use iced::keyboard::Modifiers;
 use iced::theme::{self, Theme};
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{
@@ -25,6 +26,7 @@ use std::time::{Duration, Instant};
 
 use crate::color_utils;
 use crate::config;
+use crate::custom_keybinds;
 use crate::execution;
 use crate::execution_lists;
 use crate::file_utils;
@@ -93,6 +95,7 @@ pub struct MainWindow {
     visual_caches: VisualCaches,
     edit_data: EditData,
     window_state: WindowState,
+    keybinds: custom_keybinds::CustomKeybinds<WindowMessage>,
 }
 
 #[derive(Debug, Clone)]
@@ -253,6 +256,7 @@ pub enum WindowMessage {
     OpenWithDefaultApplication(PathBuf),
     OpenUrl(String),
     SwitchToOriginalSharedScript(EditScriptId),
+    ProcessKeyPress(keyboard::KeyCode, keyboard::Modifiers),
 }
 
 impl Application for MainWindow {
@@ -313,10 +317,102 @@ impl Application for MainWindow {
                 is_command_key_down: false,
                 has_maximized_pane: false,
             },
+            keybinds: custom_keybinds::CustomKeybinds::new(),
         };
 
         update_theme_icons(&mut main_window);
         update_config_cache(&mut main_window.app_config, &main_window.edit_data);
+
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::W,
+            Modifiers::COMMAND,
+            WindowMessage::RequestCloseApp,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::F,
+            Modifiers::COMMAND,
+            WindowMessage::FocusFilter,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::E,
+            Modifiers::COMMAND,
+            WindowMessage::TrySwitchWindowEditMode,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::R,
+            Modifiers::COMMAND | Modifiers::SHIFT,
+            WindowMessage::RescheduleScripts,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::R,
+            Modifiers::COMMAND,
+            WindowMessage::RunScripts,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::C,
+            Modifiers::COMMAND | Modifiers::SHIFT,
+            WindowMessage::StopScripts,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::C,
+            Modifiers::COMMAND,
+            WindowMessage::ClearExecutionScripts,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::Q,
+            Modifiers::COMMAND,
+            WindowMessage::MaximizeOrRestoreExecutionPane,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::Enter,
+            Modifiers::empty(),
+            WindowMessage::CursorConfirm,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::Enter,
+            Modifiers::COMMAND,
+            WindowMessage::CursorConfirm,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::Down,
+            Modifiers::SHIFT,
+            WindowMessage::MoveScriptDown,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::Up,
+            Modifiers::SHIFT,
+            WindowMessage::MoveScriptUp,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::Tab,
+            Modifiers::SHIFT,
+            WindowMessage::SwitchPaneFocus(false),
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::Down,
+            Modifiers::empty(),
+            WindowMessage::MoveCursorDown,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::Up,
+            Modifiers::empty(),
+            WindowMessage::MoveCursorUp,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::Enter,
+            Modifiers::empty(),
+            WindowMessage::CursorConfirm,
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::Tab,
+            Modifiers::empty(),
+            WindowMessage::SwitchPaneFocus(true),
+        );
+        main_window.keybinds.add_keybind(
+            keyboard::KeyCode::Delete,
+            Modifiers::empty(),
+            WindowMessage::RemoveCursorScript,
+        );
 
         return (main_window, Command::none());
     }
@@ -1266,6 +1362,26 @@ impl Application for MainWindow {
 
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
+            WindowMessage::ProcessKeyPress(key, modifiers) => {
+                let command = self.keybinds.get_keybind_copy(key, modifiers);
+
+                let Some(command) = command else {
+                    return Command::none();
+                };
+
+                // avoid infinite recursion
+                match command {
+                    WindowMessage::ProcessKeyPress(_, _) => return Command::none(),
+                    _ => {}
+                };
+
+                let command = self.update(command);
+
+                return Command::batch([
+                    text_input::focus(text_input::Id::new("dummy")),
+                    command,
+                ]);
+            }
         }
 
         Command::none()
@@ -1379,27 +1495,12 @@ impl Application for MainWindow {
                             return Some(WindowMessage::OnCommandKeyStateChanged(true));
                         }
 
-                        let is_input_captured_by_a_widget = if let event::Status::Captured = status
-                        {
-                            true
-                        } else {
-                            false
-                        };
-
-                        let is_command_key_down = modifiers.command();
-                        let is_shift_key_down = modifiers.shift();
-                        if is_command_key_down {
-                            handle_command_hotkey(
-                                key_code,
-                                &status,
-                                is_shift_key_down,
-                                is_input_captured_by_a_widget,
-                            )
-                        } else if is_shift_key_down {
-                            handle_shift_hotkey(key_code, &status, is_input_captured_by_a_widget)
-                        } else {
-                            handle_key_press(key_code, &status, is_input_captured_by_a_widget)
+                        // avoid registering any key presses when we're inputing text
+                        if status == event::Status::Captured && key_code != KeyCode::Enter {
+                            return None;
                         }
+
+                        Some(WindowMessage::ProcessKeyPress(key_code, modifiers))
                     }
                     Event::Keyboard(keyboard::Event::KeyReleased {
                         modifiers: _modifiers,
@@ -1416,74 +1517,6 @@ impl Application for MainWindow {
             }),
             time::every(Duration::from_millis(100)).map(WindowMessage::Tick),
         ])
-    }
-}
-
-fn handle_command_hotkey(
-    key_code: keyboard::KeyCode,
-    _status: &event::Status,
-    is_shift_key_down: bool,
-    is_input_captured_by_a_widget: bool,
-) -> Option<WindowMessage> {
-    use keyboard::KeyCode;
-
-    match key_code {
-        KeyCode::W => Some(WindowMessage::RequestCloseApp),
-        KeyCode::F => Some(WindowMessage::FocusFilter),
-        KeyCode::E => Some(WindowMessage::TrySwitchWindowEditMode),
-        KeyCode::R => {
-            if is_shift_key_down {
-                Some(WindowMessage::RescheduleScripts)
-            } else {
-                Some(WindowMessage::RunScripts)
-            }
-        }
-        KeyCode::C => {
-            if !is_input_captured_by_a_widget {
-                if is_shift_key_down {
-                    Some(WindowMessage::StopScripts)
-                } else {
-                    Some(WindowMessage::ClearExecutionScripts)
-                }
-            } else {
-                None
-            }
-        }
-        KeyCode::Q => Some(WindowMessage::MaximizeOrRestoreExecutionPane),
-        KeyCode::Enter => Some(WindowMessage::CursorConfirm),
-        _ => None,
-    }
-}
-
-fn handle_shift_hotkey(
-    key_code: keyboard::KeyCode,
-    _status: &event::Status,
-    _is_input_captured_by_a_widget: bool,
-) -> Option<WindowMessage> {
-    use keyboard::KeyCode;
-
-    match key_code {
-        KeyCode::Down => Some(WindowMessage::MoveScriptDown),
-        KeyCode::Up => Some(WindowMessage::MoveScriptUp),
-        KeyCode::Tab => Some(WindowMessage::SwitchPaneFocus(false)),
-        _ => None,
-    }
-}
-
-fn handle_key_press(
-    key_code: keyboard::KeyCode,
-    _status: &event::Status,
-    _is_input_captured_by_a_widget: bool,
-) -> Option<WindowMessage> {
-    use keyboard::KeyCode;
-
-    match key_code {
-        KeyCode::Down => Some(WindowMessage::MoveCursorDown),
-        KeyCode::Up => Some(WindowMessage::MoveCursorUp),
-        KeyCode::Enter => Some(WindowMessage::CursorConfirm),
-        KeyCode::Tab => Some(WindowMessage::SwitchPaneFocus(true)),
-        KeyCode::Delete => Some(WindowMessage::RemoveCursorScript),
-        _ => None,
     }
 }
 
