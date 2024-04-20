@@ -52,34 +52,44 @@ mod tests {
     fn custom_keybinds_can_be_added_and_removed() {
         let mut keybinds = CustomKeybinds::new();
 
-        let keybindA = Keybind {
-            key: keyboard::KeyCode::Key1,
-            modifiers: keyboard::Modifiers::default(),
-        };
-        let keybindB = Keybind {
-            key: keyboard::KeyCode::Key2,
-            modifiers: keyboard::Modifiers::default(),
-        };
+        keybinds.add_keybind(KeyCode::Key1, Modifiers::empty(), "A");
 
-        keybinds.add_keybind(keybindA, "A");
+        assert_eq!(keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()), true);
+        assert_eq!(keybinds.has_keybind(KeyCode::Key2, Modifiers::empty()), false);
+        assert_eq!(keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()), Some(&"A"));
+        assert_eq!(keybinds.get_keybind(KeyCode::Key2, Modifiers::empty()), None);
 
-        assert_eq!(keybinds.has_keybind(keybindA), true);
-        assert_eq!(keybinds.has_keybind(keybindB), false);
-        assert_eq!(keybinds.get_keybind(keybindA), Some(&"A"));
-        assert_eq!(keybinds.get_keybind(keybindB), None);
+        keybinds.add_keybind(KeyCode::Key2, Modifiers::empty(), "B");
 
-        keybinds.add_keybind(keybindB, "B");
+        assert_eq!(keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()), true);
+        assert_eq!(keybinds.has_keybind(KeyCode::Key2, Modifiers::empty()), true);
+        assert_eq!(keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()), Some(&"A"));
+        assert_eq!(keybinds.get_keybind(KeyCode::Key2, Modifiers::empty()), Some(&"B"));
 
-        assert_eq!(keybinds.has_keybind(keybindA), true);
-        assert_eq!(keybinds.has_keybind(keybindB), true);
-        assert_eq!(keybinds.get_keybind(keybindA), Some(&"A"));
-        assert_eq!(keybinds.get_keybind(keybindB), Some(&"B"));
+        keybinds.remove_keybind(KeyCode::Key1, Modifiers::empty());
 
-        keybinds.remove_keybind(keybindA);
+        assert_eq!(keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()), false);
+        assert_eq!(keybinds.has_keybind(KeyCode::Key2, Modifiers::empty()), true);
+        assert_eq!(keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()), None);
+        assert_eq!(keybinds.get_keybind(KeyCode::Key2, Modifiers::empty()), Some(&"B"));
+    }
 
-        assert_eq!(keybinds.has_keybind(keybindA), false);
-        assert_eq!(keybinds.has_keybind(keybindB), true);
-        assert_eq!(keybinds.get_keybind(keybindA), None);
-        assert_eq!(keybinds.get_keybind(keybindB), Some(&"B"));
+    #[test]
+    fn custom_keybinds_can_have_different_modifiers() {
+        let mut keybinds = CustomKeybinds::new();
+
+        keybinds.add_keybind(KeyCode::Key1, Modifiers::empty(), "A");
+
+        assert_eq!(keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()), true);
+        assert_eq!(keybinds.has_keybind(KeyCode::Key1, Modifiers::SHIFT), false);
+        assert_eq!(keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()), Some(&"A"));
+        assert_eq!(keybinds.get_keybind(KeyCode::Key1, Modifiers::SHIFT), None);
+
+        keybinds.add_keybind(KeyCode::Key1, Modifiers::SHIFT, "B");
+
+        assert_eq!(keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()), true);
+        assert_eq!(keybinds.has_keybind(KeyCode::Key1, Modifiers::SHIFT), true);
+        assert_eq!(keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()), Some(&"A"));
+        assert_eq!(keybinds.get_keybind(KeyCode::Key1, Modifiers::SHIFT), Some(&"B"));
     }
 }
