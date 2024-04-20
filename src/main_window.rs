@@ -30,7 +30,6 @@ use crate::execution;
 use crate::execution_lists;
 use crate::file_utils;
 use crate::key_mapping;
-use crate::string_constants;
 use crate::style;
 use crate::ui_icons;
 
@@ -84,6 +83,7 @@ pub struct VisualCaches {
     is_custom_title_editing: bool,
     recent_logs: Vec<String>,
     icons: ui_icons::IconCaches,
+    keybind_hints: HashMap<config::AppAction, String>,
 }
 
 pub struct MainWindow {
@@ -304,6 +304,7 @@ impl Application for MainWindow {
                 is_custom_title_editing: false,
                 recent_logs: Vec::new(),
                 icons: ui_icons::IconCaches::new(),
+                keybind_hints: HashMap::new(),
             },
             edit_data: EditData {
                 script_filter: String::new(),
@@ -1287,10 +1288,7 @@ impl Application for MainWindow {
 
                 let command = self.update(command);
 
-                return Command::batch([
-                    text_input::focus(text_input::Id::new("dummy")),
-                    command,
-                ]);
+                return Command::batch([text_input::focus(text_input::Id::new("dummy")), command]);
             }
         }
 
@@ -1314,7 +1312,7 @@ impl Application for MainWindow {
                         id,
                         variant,
                         total_panes,
-                        &self.visual_caches.icons,
+                        &self.visual_caches,
                         &self.edit_data,
                         &self.app_config,
                         &self.execution_data,
@@ -1519,6 +1517,28 @@ fn main_icon_button(
     }
 }
 
+fn main_icon_button_string(
+    icon_handle: Handle,
+    label: String,
+    message: Option<WindowMessage>,
+) -> Button<'static, WindowMessage> {
+    let new_button = button(row![
+        image(icon_handle)
+            .width(Length::Fixed(16.0))
+            .height(Length::Fixed(16.0)),
+        horizontal_space(4),
+        text(label.to_string()).width(Length::Shrink).size(16),
+    ])
+    .width(Length::Shrink)
+    .padding(8);
+
+    if let Some(message) = message {
+        new_button.on_press(message)
+    } else {
+        new_button
+    }
+}
+
 fn main_button(label: &str, message: WindowMessage) -> Button<WindowMessage> {
     button(row![text(label).width(Length::Shrink).size(16),])
         .width(Length::Shrink)
@@ -1531,6 +1551,7 @@ fn edit_mode_button<'a>(
     message: WindowMessage,
     is_dirty: bool,
     window_state: &WindowState,
+    visual_caches: &VisualCaches,
 ) -> Button<'a, WindowMessage> {
     let icon = image(icon_handle)
         .width(Length::Fixed(12.0))
@@ -1538,7 +1559,12 @@ fn edit_mode_button<'a>(
 
     button(if window_state.is_command_key_down {
         row![
-            text(string_constants::EDIT_COMMAND_HINT).size(12),
+            text(format_keybind_hint(
+                visual_caches,
+                "Edit",
+                config::AppAction::TrySwitchWindowEditMode
+            ))
+            .size(12),
             horizontal_space(4),
             icon
         ]
@@ -1559,7 +1585,7 @@ fn produce_script_list_content<'a>(
     config: &config::AppConfig,
     rewritable_config: &config::RewritableConfig,
     edit_data: &EditData,
-    icons: &ui_icons::IconCaches,
+    visual_caches: &VisualCaches,
     window_state: &WindowState,
     theme: &Theme,
 ) -> Column<'a, WindowMessage> {
@@ -1588,12 +1614,12 @@ fn produce_script_list_content<'a>(
                 let edit_buttons = if edit_data.window_edit_data.is_some() {
                     row![
                         inline_icon_button(
-                            icons.themed.up.clone(),
+                            visual_caches.icons.themed.up.clone(),
                             WindowMessage::MoveConfigScriptUp(i)
                         ),
                         horizontal_space(5),
                         inline_icon_button(
-                            icons.themed.down.clone(),
+                            visual_caches.icons.themed.down.clone(),
                             WindowMessage::MoveConfigScriptDown(i)
                         ),
                         horizontal_space(5),
@@ -1605,7 +1631,7 @@ fn produce_script_list_content<'a>(
                 let icon = if will_run_on_click {
                     row![
                         horizontal_space(6),
-                        image(icons.themed.quick_launch.clone())
+                        image(visual_caches.icons.themed.quick_launch.clone())
                             .width(22)
                             .height(22),
                     ]
@@ -1659,13 +1685,13 @@ fn produce_script_list_content<'a>(
             vertical_space(Length::Fixed(4.0)),
             row![
                 main_icon_button(
-                    icons.themed.plus.clone(),
+                    visual_caches.icons.themed.plus.clone(),
                     "Add script",
                     Some(WindowMessage::AddScriptToConfig)
                 ),
                 horizontal_space(Length::Fixed(4.0)),
                 main_icon_button(
-                    icons.themed.settings.clone(),
+                    visual_caches.icons.themed.settings.clone(),
                     "Settings",
                     Some(WindowMessage::ToggleConfigEditing)
                 ),
@@ -1695,7 +1721,7 @@ fn produce_script_list_content<'a>(
                     vertical_space(Length::Fixed(4.0)),
                     row![
                         main_icon_button(
-                            icons.themed.back.clone(),
+                            visual_caches.icons.themed.back.clone(),
                             "Exit editing mode",
                             Some(WindowMessage::ExitWindowEditMode)
                         ),
@@ -1713,7 +1739,7 @@ fn produce_script_list_content<'a>(
                 column![
                     vertical_space(Length::Fixed(4.0)),
                     main_icon_button(
-                        icons.themed.back.clone(),
+                        visual_caches.icons.themed.back.clone(),
                         "Exit editing mode",
                         Some(WindowMessage::ExitWindowEditMode)
                     ),
@@ -1728,14 +1754,18 @@ fn produce_script_list_content<'a>(
         if rewritable_config.enable_script_filtering && edit_data.window_edit_data.is_none() {
             row![
                 horizontal_space(5),
-                text_input(
-                    if window_state.is_command_key_down {
-                        string_constants::FILTER_COMMAND_HINT
-                    } else {
-                        "filter"
-                    },
-                    &edit_data.script_filter
-                )
+                if window_state.is_command_key_down {
+                    text_input(
+                        &format_keybind_hint(
+                            visual_caches,
+                            "Focus filter",
+                            config::AppAction::FocusFilter,
+                        ),
+                        &edit_data.script_filter,
+                    )
+                } else {
+                    text_input("filter", &edit_data.script_filter)
+                }
                 .id(FILTER_INPUT_ID.clone())
                 .on_input(WindowMessage::ScriptFilterChanged)
                 .width(Length::Fill),
@@ -1745,9 +1775,9 @@ fn produce_script_list_content<'a>(
                         vertical_space(Length::Fixed(4.0)),
                         button(image(
                             (if theme.extended_palette().danger.base.text.r > 0.5 {
-                                &icons.bright
+                                &visual_caches.icons.bright
                             } else {
-                                &icons.dark
+                                &visual_caches.icons.dark
                             })
                             .remove
                             .clone()
@@ -2101,26 +2131,38 @@ fn produce_execution_list_content<'a>(
     .into();
 
     let clear_name = if window_state.is_command_key_down {
-        string_constants::CLEAR_COMMAND_HINT
+        format_keybind_hint(
+            visual_caches,
+            "Clear",
+            config::AppAction::ClearExecutionScripts,
+        )
     } else {
-        "Clear"
+        "Clear".to_string()
     };
 
     let execution_controls = column![if execution_lists.has_finished_execution() {
         if !execution_lists.is_waiting_execution_to_finish() {
             row![
-                main_icon_button(
-                    icons.themed.retry.clone(),
-                    if window_state.is_command_key_down {
-                        string_constants::RESCHEDULE_COMMAND_HINT
-                    } else {
-                        "Reschedule"
-                    },
-                    Some(WindowMessage::RescheduleScripts)
-                ),
-                main_icon_button(
+                if window_state.is_command_key_down {
+                    main_icon_button_string(
+                        icons.themed.retry.clone(),
+                        format_keybind_hint(
+                            visual_caches,
+                            "Reschedulte",
+                            config::AppAction::RescheduleScripts,
+                        ),
+                        Some(WindowMessage::RescheduleScripts),
+                    )
+                } else {
+                    main_icon_button(
+                        icons.themed.retry.clone(),
+                        "Reschedule",
+                        Some(WindowMessage::RescheduleScripts),
+                    )
+                },
+                main_icon_button_string(
                     icons.themed.remove.clone(),
-                    clear_name,
+                    clear_name.clone(),
                     Some(WindowMessage::ClearExecutionScripts)
                 ),
             ]
@@ -2138,15 +2180,19 @@ fn produce_execution_list_content<'a>(
         {
             row![text("Waiting for the execution to stop")].align_items(Alignment::Center)
         } else {
-            row![main_icon_button(
-                icons.themed.stop.clone(),
-                if window_state.is_command_key_down {
-                    string_constants::STOP_COMMAND_HINT
-                } else {
-                    "Stop"
-                },
-                Some(WindowMessage::StopScripts)
-            )]
+            if window_state.is_command_key_down {
+                row![main_icon_button_string(
+                    icons.themed.stop.clone(),
+                    format_keybind_hint(visual_caches, "Stop", config::AppAction::StopScripts),
+                    Some(WindowMessage::StopScripts)
+                )]
+            } else {
+                row![main_icon_button(
+                    icons.themed.stop.clone(),
+                    "Stop",
+                    Some(WindowMessage::StopScripts)
+                )]
+            }
             .align_items(Alignment::Center)
         }
     } else {
@@ -2171,20 +2217,20 @@ fn produce_execution_list_content<'a>(
             .any(|script| is_script_missing_arguments(script));
 
         let run_name = if window_state.is_command_key_down {
-            string_constants::RUN_COMMAND_HINT
+            format_keybind_hint(visual_caches, "Run", config::AppAction::RunScripts)
         } else {
-            "Run"
+            "Run".to_string()
         };
 
         let run_button = if has_scripts_missing_arguments {
             column![tooltip(
-                main_icon_button(icons.themed.play.clone(), run_name, None,),
+                main_icon_button_string(icons.themed.play.clone(), run_name, None,),
                 "Some scripts are missing arguments",
                 tooltip::Position::Top
             )
             .style(theme::Container::Box)]
         } else {
-            column![main_icon_button(
+            column![main_icon_button_string(
                 icons.themed.play.clone(),
                 run_name,
                 Some(WindowMessage::RunScripts)
@@ -2192,7 +2238,7 @@ fn produce_execution_list_content<'a>(
         };
         row![
             run_button,
-            main_icon_button(
+            main_icon_button_string(
                 icons.themed.remove.clone(),
                 clear_name,
                 Some(WindowMessage::ClearExecutionScripts)
@@ -2737,7 +2783,7 @@ fn view_content<'a>(
             config,
             rewritable_config,
             edit_data,
-            &visual_caches.icons,
+            &visual_caches,
             window_state,
             theme,
         ),
@@ -2780,7 +2826,7 @@ fn view_controls<'a>(
     pane: pane_grid::Pane,
     variant: &PaneVariant,
     total_panes: usize,
-    icons: &ui_icons::IconCaches,
+    visual_caches: &VisualCaches,
     edit_data: &EditData,
     config: &config::AppConfig,
     execution_lists: &execution_lists::ExecutionLists,
@@ -2798,10 +2844,11 @@ fn view_controls<'a>(
         row = row.push(
             tooltip(
                 edit_mode_button(
-                    icons.themed.edit.clone(),
+                    visual_caches.icons.themed.edit.clone(),
                     WindowMessage::EnterWindowEditMode,
                     edit_data.is_dirty,
                     window_state,
+                    visual_caches,
                 ),
                 "Enter editing mode",
                 tooltip::Position::Left,
@@ -2820,9 +2867,13 @@ fn view_controls<'a>(
             let (content, message) = if is_maximized {
                 (
                     if window_state.is_command_key_down {
-                        string_constants::UNFOCUS_COMMAND_HINT
+                        format_keybind_hint(
+                            visual_caches,
+                            "Restore full window",
+                            config::AppAction::MaximizeOrRestoreExecutionPane,
+                        )
                     } else {
-                        "Restore full window"
+                        "Restore full window".to_string()
                     },
                     WindowMessage::Restore,
                 )
@@ -2835,9 +2886,13 @@ fn view_controls<'a>(
 
                 (
                     if window_state.is_command_key_down {
-                        string_constants::FOCUS_COMMAND_HINT
+                        format_keybind_hint(
+                            visual_caches,
+                            "Focus",
+                            config::AppAction::MaximizeOrRestoreExecutionPane,
+                        )
                     } else {
-                        "Focus"
+                        "Focus".to_string()
                     },
                     WindowMessage::Maximize(pane, window_size),
                 )
@@ -4127,5 +4182,23 @@ pub fn update_keybinds(app: &mut MainWindow) {
             modifiers,
             get_window_message_from_app_action(app_action_bind.action),
         );
+
+        app.visual_caches.keybind_hints.insert(
+            app_action_bind.action,
+            format!(
+                "{}",
+                key_mapping::get_readable_keybind_name(
+                    app_action_bind.keybind.key,
+                    app_action_bind.keybind.modifiers
+                ),
+            ),
+        );
     }
+}
+
+fn format_keybind_hint(caches: &VisualCaches, hint: &str, action: config::AppAction) -> String {
+    if let Some(keybind_hint) = caches.keybind_hints.get(&action) {
+        return format!("{} ({})", hint, keybind_hint);
+    }
+    return hint.to_string();
 }

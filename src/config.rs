@@ -248,7 +248,7 @@ impl Default for CustomTheme {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum AppAction {
     RequestCloseApp,
     FocusFilter,

@@ -15,7 +15,6 @@ mod json_file_updater;
 mod key_mapping;
 mod main_window;
 mod ring_buffer;
-mod string_constants;
 mod style;
 mod ui_icons;
 
