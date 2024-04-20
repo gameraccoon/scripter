@@ -7,6 +7,7 @@ use crate::config_updaters::{
     LATEST_CONFIG_VERSION, LATEST_LOCAL_CONFIG_VERSION,
 };
 use crate::json_file_updater::{JsonFileUpdaterError, UpdateResult};
+use crate::key_mapping::{CustomKeyCode, CustomModifiers};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
@@ -53,6 +54,7 @@ pub struct RewritableConfig {
     pub enable_title_editing: bool,
     pub config_version_update_behavior: ConfigUpdateBehavior,
     pub custom_theme: Option<CustomTheme>,
+    pub app_actions_keybinds: Vec<AppActionKeybind>,
 }
 
 #[derive(Clone)]
@@ -246,6 +248,38 @@ impl Default for CustomTheme {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum AppAction {
+    RequestCloseApp,
+    FocusFilter,
+    TrySwitchWindowEditMode,
+    RescheduleScripts,
+    RunScripts,
+    StopScripts,
+    ClearExecutionScripts,
+    MaximizeOrRestoreExecutionPane,
+    CursorConfirm,
+    MoveScriptDown,
+    MoveScriptUp,
+    SwitchPaneFocusForward,
+    SwitchPaneFocusBackwards,
+    MoveCursorDown,
+    MoveCursorUp,
+    RemoveCursorScript,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedKeybind {
+    pub key: CustomKeyCode,
+    pub modifiers: CustomModifiers,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppActionKeybind {
+    pub action: AppAction,
+    pub keybind: SavedKeybind,
+}
+
 pub fn get_app_config_copy() -> AppConfig {
     GLOBAL_CONFIG.with(|config| config.clone())
 }
@@ -332,6 +366,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             enable_title_editing: true,
             config_version_update_behavior: ConfigUpdateBehavior::OnStartup,
             custom_theme: Some(CustomTheme::default()),
+            app_actions_keybinds: get_default_app_action_keybinds(),
         },
         script_definitions: Vec::new(),
         is_read_only: !has_write_permission(&config_path),
@@ -592,6 +627,14 @@ fn original_script_definition_search_predicate(
     }
 }
 
+pub fn get_current_rewritable_config<'a>(app_config: &'a AppConfig) -> &'a RewritableConfig {
+    if let Some(local_config) = &app_config.local_config_body {
+        return &local_config.rewritable;
+    }
+
+    return &app_config.rewritable;
+}
+
 fn read_local_config(
     config_path: PathBuf,
     shared_config: &mut AppConfig,
@@ -800,4 +843,136 @@ fn has_write_permission(path: &Path) -> bool {
 
     let permissions = md.permissions();
     return !permissions.readonly();
+}
+
+fn get_default_app_action_keybinds() -> Vec<AppActionKeybind> {
+    let mut keybinds = Vec::new();
+    keybinds.push(AppActionKeybind {
+        action: AppAction::RequestCloseApp,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::W,
+            modifiers: CustomModifiers::COMMAND,
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::FocusFilter,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::F,
+            modifiers: CustomModifiers::COMMAND,
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::TrySwitchWindowEditMode,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::E,
+            modifiers: CustomModifiers::COMMAND,
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::RescheduleScripts,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::R,
+            modifiers: CustomModifiers::COMMAND | CustomModifiers::SHIFT,
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::RunScripts,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::R,
+            modifiers: CustomModifiers::COMMAND,
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::StopScripts,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::C,
+            modifiers: CustomModifiers::COMMAND | CustomModifiers::SHIFT,
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::ClearExecutionScripts,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::C,
+            modifiers: CustomModifiers::COMMAND,
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::MaximizeOrRestoreExecutionPane,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::Q,
+            modifiers: CustomModifiers::COMMAND,
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::CursorConfirm,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::Enter,
+            modifiers: CustomModifiers::empty(),
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::CursorConfirm,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::Enter,
+            modifiers: CustomModifiers::COMMAND,
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::MoveScriptDown,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::Down,
+            modifiers: CustomModifiers::SHIFT,
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::MoveScriptUp,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::Up,
+            modifiers: CustomModifiers::SHIFT,
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::SwitchPaneFocusBackwards,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::Tab,
+            modifiers: CustomModifiers::SHIFT,
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::MoveCursorDown,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::Down,
+            modifiers: CustomModifiers::empty(),
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::MoveCursorUp,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::Up,
+            modifiers: CustomModifiers::empty(),
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::CursorConfirm,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::Enter,
+            modifiers: CustomModifiers::empty(),
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::SwitchPaneFocusForward,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::Tab,
+            modifiers: CustomModifiers::empty(),
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::RemoveCursorScript,
+        keybind: SavedKeybind {
+            key: CustomKeyCode::Delete,
+            modifiers: CustomModifiers::empty(),
+        },
+    });
+
+    return keybinds;
 }

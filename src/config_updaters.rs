@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.14.0";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.14.0";
+pub static LATEST_CONFIG_VERSION: &str = "0.14.1";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.14.1";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -119,6 +119,7 @@ fn register_config_updaters() -> JsonFileUpdater {
         .add_update_function("0.12.2", v0_12_2_rename_child_to_local_and_parent_to_shared);
     json_config_updater.add_update_function("0.13.0", v0_13_0_added_custom_working_directory);
     json_config_updater.add_update_function("0.14.0", v0_14_0_added_config_version_update_field);
+    json_config_updater.add_update_function("0.14.1", v0_14_1_added_app_action_keybinds);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -180,6 +181,7 @@ fn register_local_config_updaters() -> JsonFileUpdater {
         .add_update_function("0.12.2", v0_12_2_rename_child_to_local_and_parent_to_shared);
     json_config_updater.add_update_function("0.13.0", v0_13_0_added_custom_working_directory);
     json_config_updater.add_update_function("0.14.0", v0_14_0_added_config_version_update_field);
+    json_config_updater.add_update_function("0.14.1", v0_14_1_added_app_action_keybinds);
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
 
@@ -297,6 +299,84 @@ fn v0_14_0_added_config_version_update_field(config_json: &mut JsonValue) {
         rewritable.insert(
             "config_version_update_behavior".to_string(),
             json!("OnStartup"),
+        );
+    }
+}
+
+fn v0_14_1_added_app_action_keybinds(config_json: &mut JsonValue) {
+    if let Some(rewritable) = config_json["rewritable"].as_object_mut() {
+        rewritable.insert(
+            "app_actions_keybinds".to_string(),
+            json!([
+                {
+                    "action": "RequestCloseApp",
+                    "keybind": {"key": "W", "modifiers": "Cmd"},
+                },
+                {
+                    "action": "FocusFilter",
+                    "keybind": {"key": "F", "modifiers": "Cmd"},
+                },
+                {
+                    "action": "TrySwitchWindowEditMode",
+                    "keybind": {"key": "E", "modifiers": "Cmd"},
+                },
+                {
+                    "action": "RescheduleScripts",
+                    "keybind": {"key": "R", "modifiers": "Cmd+Shift"},
+                },
+                {
+                    "action": "RunScripts",
+                    "keybind": {"key": "R", "modifiers": "Cmd"},
+                },
+                {
+                    "action": "StopScripts",
+                    "keybind": {"key": "C", "modifiers": "Cmd+Shift"},
+                },
+                {
+                    "action": "ClearExecutionScripts",
+                    "keybind": {"key": "C", "modifiers": "Cmd"},
+                },
+                {
+                    "action": "MaximizeOrRestoreExecutionPane",
+                    "keybind": {"key": "Q", "modifiers": "Cmd"},
+                },
+                {
+                    "action": "CursorConfirm",
+                    "keybind": {"key": "Enter", "modifiers": ""},
+                },
+                {
+                    "action": "CursorConfirm",
+                    "keybind": {"key": "Enter", "modifiers": "Cmd"},
+                },
+                {
+                    "action": "MoveScriptDown",
+                    "keybind": {"key": "Down", "modifiers": "Shift"},
+                },
+                {
+                    "action": "MoveScriptUp",
+                    "keybind": {"key": "Up", "modifiers": "Shift"},
+                },
+                {
+                    "action": "SwitchPaneFocusBackwards",
+                    "keybind": {"key": "Tab", "modifiers": "Shift"},
+                },
+                {
+                    "action": "MoveCursorDown",
+                    "keybind": {"key": "Down", "modifiers": ""},
+                },
+                {
+                    "action": "MoveCursorUp",
+                    "keybind": {"key": "Up", "modifiers": ""},
+                },
+                {
+                    "action": "SwitchPaneFocusForward",
+                    "keybind": {"key": "Tab", "modifiers": ""},
+                },
+                {
+                    "action": "RemoveCursorScript",
+                    "keybind": {"key": "Delete", "modifiers": ""},
+                },
+            ]),
         );
     }
 }

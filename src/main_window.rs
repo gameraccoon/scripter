@@ -5,7 +5,6 @@
 use std::os::windows::process::CommandExt;
 
 use iced::alignment::{self, Alignment};
-use iced::keyboard::Modifiers;
 use iced::theme::{self, Theme};
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{
@@ -30,6 +29,7 @@ use crate::custom_keybinds;
 use crate::execution;
 use crate::execution_lists;
 use crate::file_utils;
+use crate::key_mapping;
 use crate::string_constants;
 use crate::style;
 use crate::ui_icons;
@@ -322,97 +322,7 @@ impl Application for MainWindow {
 
         update_theme_icons(&mut main_window);
         update_config_cache(&mut main_window.app_config, &main_window.edit_data);
-
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::W,
-            Modifiers::COMMAND,
-            WindowMessage::RequestCloseApp,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::F,
-            Modifiers::COMMAND,
-            WindowMessage::FocusFilter,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::E,
-            Modifiers::COMMAND,
-            WindowMessage::TrySwitchWindowEditMode,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::R,
-            Modifiers::COMMAND | Modifiers::SHIFT,
-            WindowMessage::RescheduleScripts,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::R,
-            Modifiers::COMMAND,
-            WindowMessage::RunScripts,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::C,
-            Modifiers::COMMAND | Modifiers::SHIFT,
-            WindowMessage::StopScripts,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::C,
-            Modifiers::COMMAND,
-            WindowMessage::ClearExecutionScripts,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::Q,
-            Modifiers::COMMAND,
-            WindowMessage::MaximizeOrRestoreExecutionPane,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::Enter,
-            Modifiers::empty(),
-            WindowMessage::CursorConfirm,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::Enter,
-            Modifiers::COMMAND,
-            WindowMessage::CursorConfirm,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::Down,
-            Modifiers::SHIFT,
-            WindowMessage::MoveScriptDown,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::Up,
-            Modifiers::SHIFT,
-            WindowMessage::MoveScriptUp,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::Tab,
-            Modifiers::SHIFT,
-            WindowMessage::SwitchPaneFocus(false),
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::Down,
-            Modifiers::empty(),
-            WindowMessage::MoveCursorDown,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::Up,
-            Modifiers::empty(),
-            WindowMessage::MoveCursorUp,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::Enter,
-            Modifiers::empty(),
-            WindowMessage::CursorConfirm,
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::Tab,
-            Modifiers::empty(),
-            WindowMessage::SwitchPaneFocus(true),
-        );
-        main_window.keybinds.add_keybind(
-            keyboard::KeyCode::Delete,
-            Modifiers::empty(),
-            WindowMessage::RemoveCursorScript,
-        );
+        update_keybinds(&mut main_window);
 
         return (main_window, Command::none());
     }
@@ -4168,4 +4078,54 @@ fn get_config_error_content<'a>(
 
     content.push(text(format!("Application version {}", env!("CARGO_PKG_VERSION"))).into());
     return Column::with_children(content).spacing(10);
+}
+
+pub fn get_window_message_from_app_action(app_action: config::AppAction) -> WindowMessage {
+    match app_action {
+        config::AppAction::RequestCloseApp => WindowMessage::RequestCloseApp,
+        config::AppAction::FocusFilter => WindowMessage::FocusFilter,
+        config::AppAction::TrySwitchWindowEditMode => WindowMessage::TrySwitchWindowEditMode,
+        config::AppAction::RescheduleScripts => WindowMessage::RescheduleScripts,
+        config::AppAction::RunScripts => WindowMessage::RunScripts,
+        config::AppAction::StopScripts => WindowMessage::StopScripts,
+        config::AppAction::ClearExecutionScripts => WindowMessage::ClearExecutionScripts,
+        config::AppAction::MaximizeOrRestoreExecutionPane => {
+            WindowMessage::MaximizeOrRestoreExecutionPane
+        }
+        config::AppAction::CursorConfirm => WindowMessage::CursorConfirm,
+        config::AppAction::MoveScriptDown => WindowMessage::MoveScriptDown,
+        config::AppAction::MoveScriptUp => WindowMessage::MoveScriptUp,
+        config::AppAction::SwitchPaneFocusForward => WindowMessage::SwitchPaneFocus(true),
+        config::AppAction::SwitchPaneFocusBackwards => WindowMessage::SwitchPaneFocus(false),
+        config::AppAction::MoveCursorDown => WindowMessage::MoveCursorDown,
+        config::AppAction::MoveCursorUp => WindowMessage::MoveCursorUp,
+        config::AppAction::RemoveCursorScript => WindowMessage::RemoveCursorScript,
+    }
+}
+
+pub fn update_keybinds(app: &mut MainWindow) {
+    app.keybinds = custom_keybinds::CustomKeybinds::new();
+    let rewritable_config = config::get_current_rewritable_config(&app.app_config);
+    for app_action_bind in &rewritable_config.app_actions_keybinds {
+        let key = key_mapping::get_iced_key_code_from_custom_key_code(app_action_bind.keybind.key);
+        let modifiers = key_mapping::get_iced_modifiers_from_custom_modifiers(
+            app_action_bind.keybind.modifiers,
+        );
+        if app.keybinds.has_keybind(key, modifiers) {
+            eprintln!(
+                "Keybind is used for multiple actions, skipping: {}",
+                key_mapping::get_readable_keybind_name(
+                    app_action_bind.keybind.key,
+                    app_action_bind.keybind.modifiers
+                )
+            );
+            continue;
+        }
+
+        app.keybinds.add_keybind(
+            key,
+            modifiers,
+            get_window_message_from_app_action(app_action_bind.action),
+        );
+    }
 }
