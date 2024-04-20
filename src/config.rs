@@ -269,7 +269,7 @@ pub enum AppAction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SavedKeybind {
+pub struct CustomKeybind {
     pub key: CustomKeyCode,
     pub modifiers: CustomModifiers,
 }
@@ -277,7 +277,7 @@ pub struct SavedKeybind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppActionKeybind {
     pub action: AppAction,
-    pub keybind: SavedKeybind,
+    pub keybind: CustomKeybind,
 }
 
 pub fn get_app_config_copy() -> AppConfig {
@@ -849,126 +849,126 @@ fn get_default_app_action_keybinds() -> Vec<AppActionKeybind> {
     let mut keybinds = Vec::new();
     keybinds.push(AppActionKeybind {
         action: AppAction::RequestCloseApp,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::W,
             modifiers: CustomModifiers::COMMAND,
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::FocusFilter,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::F,
             modifiers: CustomModifiers::COMMAND,
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::TrySwitchWindowEditMode,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::E,
             modifiers: CustomModifiers::COMMAND,
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::RescheduleScripts,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::R,
             modifiers: CustomModifiers::COMMAND | CustomModifiers::SHIFT,
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::RunScripts,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::R,
             modifiers: CustomModifiers::COMMAND,
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::StopScripts,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::C,
             modifiers: CustomModifiers::COMMAND | CustomModifiers::SHIFT,
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::ClearExecutionScripts,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::C,
             modifiers: CustomModifiers::COMMAND,
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::MaximizeOrRestoreExecutionPane,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::Q,
             modifiers: CustomModifiers::COMMAND,
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::CursorConfirm,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::Enter,
             modifiers: CustomModifiers::empty(),
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::CursorConfirm,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::Enter,
             modifiers: CustomModifiers::COMMAND,
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::MoveScriptDown,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::Down,
             modifiers: CustomModifiers::SHIFT,
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::MoveScriptUp,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::Up,
             modifiers: CustomModifiers::SHIFT,
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::SwitchPaneFocusBackwards,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::Tab,
             modifiers: CustomModifiers::SHIFT,
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::MoveCursorDown,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::Down,
             modifiers: CustomModifiers::empty(),
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::MoveCursorUp,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::Up,
             modifiers: CustomModifiers::empty(),
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::CursorConfirm,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::Enter,
             modifiers: CustomModifiers::empty(),
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::SwitchPaneFocusForward,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::Tab,
             modifiers: CustomModifiers::empty(),
         },
     });
     keybinds.push(AppActionKeybind {
         action: AppAction::RemoveCursorScript,
-        keybind: SavedKeybind {
+        keybind: CustomKeybind {
             key: CustomKeyCode::Delete,
             modifiers: CustomModifiers::empty(),
         },
