@@ -13,6 +13,7 @@ mod execution_lists;
 mod file_utils;
 mod json_file_updater;
 mod key_mapping;
+mod keybind_editing;
 mod main_window;
 mod ring_buffer;
 mod style;

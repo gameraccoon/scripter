@@ -29,7 +29,7 @@ use crate::custom_keybinds;
 use crate::execution;
 use crate::execution_lists;
 use crate::file_utils;
-use crate::key_mapping;
+use crate::keybind_editing;
 use crate::style;
 use crate::ui_icons;
 
@@ -83,19 +83,19 @@ pub struct VisualCaches {
     is_custom_title_editing: bool,
     recent_logs: Vec<String>,
     icons: ui_icons::IconCaches,
-    keybind_hints: HashMap<config::AppAction, String>,
+    pub keybind_hints: HashMap<keybind_editing::KeybindAssociatedData, String>,
 }
 
 pub struct MainWindow {
     panes: pane_grid::State<AppPane>,
     pane_by_pane_type: HashMap<PaneVariant, pane_grid::Pane>,
     execution_data: execution_lists::ExecutionLists,
-    app_config: config::AppConfig,
+    pub app_config: config::AppConfig,
     theme: Theme,
-    visual_caches: VisualCaches,
-    edit_data: EditData,
+    pub visual_caches: VisualCaches,
+    pub edit_data: EditData,
     window_state: WindowState,
-    keybinds: custom_keybinds::CustomKeybinds<config::AppAction>,
+    pub keybinds: custom_keybinds::CustomKeybinds<config::AppAction>,
 }
 
 #[derive(Debug, Clone)]
@@ -103,9 +103,9 @@ pub struct EditData {
     // a string that is used to filter the list of scripts
     script_filter: String,
     // state of the global to the window editing mode
-    window_edit_data: Option<WindowEditData>,
+    pub window_edit_data: Option<WindowEditData>,
     // do we have unsaved changes
-    is_dirty: bool,
+    pub is_dirty: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -127,12 +127,11 @@ enum ConfigEditType {
 }
 
 #[derive(Debug, Clone)]
-struct WindowEditData {
-    is_editing_config: bool,
+pub struct WindowEditData {
+    pub is_editing_config: bool,
     edit_type: ConfigEditType,
 
-    edited_action: Option<config::AppAction>,
-    edited_action_error: Option<(config::AppAction, String)>,
+    pub keybind_editing: keybind_editing::KeybindEditData,
 
     // theme color temp strings
     theme_color_background: String,
@@ -159,8 +158,7 @@ impl WindowEditData {
         Self {
             is_editing_config,
             edit_type,
-            edited_action: None,
-            edited_action_error: None,
+            keybind_editing: keybind_editing::KeybindEditData::new(),
             theme_color_background: color_utils::rgb_to_hex(&theme.background),
             theme_color_text: color_utils::rgb_to_hex(&theme.text),
             theme_color_primary: color_utils::rgb_to_hex(&theme.primary),
@@ -262,8 +260,8 @@ pub enum WindowMessage {
     OpenUrl(String),
     SwitchToOriginalSharedScript(EditScriptId),
     ProcessKeyPress(keyboard::KeyCode, keyboard::Modifiers),
-    StartRecordingAppActionKeybind(config::AppAction),
-    StopRecordingAppActionKeybind,
+    StartRecordingKeybind(keybind_editing::KeybindAssociatedData),
+    StopRecordingKeybind,
 }
 
 impl Application for MainWindow {
@@ -330,7 +328,7 @@ impl Application for MainWindow {
 
         update_theme_icons(&mut main_window);
         update_config_cache(&mut main_window.app_config, &main_window.edit_data);
-        update_keybinds(&mut main_window);
+        keybind_editing::update_keybinds(&mut main_window);
 
         return (main_window, Command::none());
     }
@@ -1281,46 +1279,7 @@ impl Application for MainWindow {
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
             WindowMessage::ProcessKeyPress(iced_key, iced_modifiers) => {
-                // check keybind editing first
-                let edited_action =
-                    if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
-                        let edited_action = window_edit_data.edited_action.clone();
-                        window_edit_data.edited_action = None;
-                        window_edit_data.edited_action_error = None;
-                        edited_action
-                    } else {
-                        None
-                    };
-
-                if let Some(action) = edited_action {
-                    if iced_key == keyboard::KeyCode::Escape {
-                        clear_app_action_keybind(self, &action);
-                        self.edit_data.is_dirty = true;
-                    } else {
-                        if let Some(old_keybind) =
-                            self.keybinds.get_keybind(iced_key, iced_modifiers)
-                        {
-                            if *old_keybind != action {
-                                if let Some(window_edit_data) = &mut self.edit_data.window_edit_data
-                                {
-                                    window_edit_data.edited_action_error =
-                                        Some((action, "Error: Keybind already in use".to_string()));
-                                }
-                                return Command::none();
-                            }
-                        }
-
-                        let key = key_mapping::get_custom_key_code_from_iced_key_code(iced_key);
-                        let modifiers =
-                            key_mapping::get_custom_modifiers_from_iced_modifiers(iced_modifiers);
-                        set_app_action_keybind(
-                            self,
-                            &action,
-                            config::CustomKeybind { key, modifiers },
-                        );
-                        self.edit_data.is_dirty = true;
-                    }
-                    update_keybinds(self);
+                if keybind_editing::process_key_press(self, iced_key, iced_modifiers) {
                     return Command::none();
                 }
 
@@ -1343,16 +1302,16 @@ impl Application for MainWindow {
 
                 return Command::batch([text_input::focus(text_input::Id::new("dummy")), command]);
             }
-            WindowMessage::StartRecordingAppActionKeybind(action) => {
+            WindowMessage::StartRecordingKeybind(data) => {
                 if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
-                    window_edit_data.edited_action = Some(action);
-                    window_edit_data.edited_action_error = None;
+                    window_edit_data.keybind_editing.edited_keybind = Some(data);
+                    window_edit_data.keybind_editing.edited_keybind_error = None;
                 }
             }
-            WindowMessage::StopRecordingAppActionKeybind => {
+            WindowMessage::StopRecordingKeybind => {
                 if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
-                    window_edit_data.edited_action = None;
-                    window_edit_data.edited_action_error = None;
+                    window_edit_data.keybind_editing.edited_keybind = None;
+                    window_edit_data.keybind_editing.edited_keybind_error = None;
                 }
             }
         }
@@ -2826,92 +2785,96 @@ fn produce_config_edit_content<'a>(
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(text("Keybinds").into());
 
-    populate_app_action_keybind_editing_content(
+    keybind_editing::populate_keybind_editing_content(
         &mut list_elements,
         window_edit,
         visual_caches,
         "Enter/exit focus mode:",
-        config::AppAction::MaximizeOrRestoreExecutionPane,
+        keybind_editing::KeybindAssociatedData::AppAction(
+            config::AppAction::MaximizeOrRestoreExecutionPane,
+        ),
     );
 
-    populate_app_action_keybind_editing_content(
+    keybind_editing::populate_keybind_editing_content(
         &mut list_elements,
         window_edit,
         visual_caches,
         "Enter/exit editing mode:",
-        config::AppAction::TrySwitchWindowEditMode,
+        keybind_editing::KeybindAssociatedData::AppAction(
+            config::AppAction::TrySwitchWindowEditMode,
+        ),
     );
 
-    populate_app_action_keybind_editing_content(
+    keybind_editing::populate_keybind_editing_content(
         &mut list_elements,
         window_edit,
         visual_caches,
         "Try safely close app:",
-        config::AppAction::RequestCloseApp,
+        keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::RequestCloseApp),
     );
 
-    populate_app_action_keybind_editing_content(
+    keybind_editing::populate_keybind_editing_content(
         &mut list_elements,
         window_edit,
         visual_caches,
         "Focus filter:",
-        config::AppAction::FocusFilter,
+        keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::FocusFilter),
     );
 
-    populate_app_action_keybind_editing_content(
+    keybind_editing::populate_keybind_editing_content(
         &mut list_elements,
         window_edit,
         visual_caches,
         "Run scripts:",
-        config::AppAction::RunScripts,
+        keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::RunScripts),
     );
 
-    populate_app_action_keybind_editing_content(
+    keybind_editing::populate_keybind_editing_content(
         &mut list_elements,
         window_edit,
         visual_caches,
         "Stop scripts:",
-        config::AppAction::StopScripts,
+        keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::StopScripts),
     );
 
-    populate_app_action_keybind_editing_content(
+    keybind_editing::populate_keybind_editing_content(
         &mut list_elements,
         window_edit,
         visual_caches,
         "Remove selected script:",
-        config::AppAction::RemoveCursorScript,
+        keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::RemoveCursorScript),
     );
 
-    populate_app_action_keybind_editing_content(
+    keybind_editing::populate_keybind_editing_content(
         &mut list_elements,
         window_edit,
         visual_caches,
         "Clear scripts:",
-        config::AppAction::ClearExecutionScripts,
+        keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::ClearExecutionScripts),
     );
 
-    populate_app_action_keybind_editing_content(
+    keybind_editing::populate_keybind_editing_content(
         &mut list_elements,
         window_edit,
         visual_caches,
         "Reschedule previous execution:",
-        config::AppAction::RescheduleScripts,
+        keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::RescheduleScripts),
     );
 
-    populate_app_action_keybind_editing_content(
+    keybind_editing::populate_keybind_editing_content(
         &mut list_elements,
         window_edit,
         visual_caches,
         "Move selected script down:",
-        config::AppAction::MoveScriptDown,
+        keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::MoveScriptDown),
     );
 
-    populate_app_action_keybind_editing_content(
+    keybind_editing::populate_keybind_editing_content(
         &mut list_elements,
         window_edit,
         visual_caches,
         "Move selected script up:",
-        config::AppAction::MoveScriptUp,
+        keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::MoveScriptUp),
     );
 
     if window_edit.edit_type == ConfigEditType::Shared {
@@ -3189,7 +3152,7 @@ fn get_rewritable_config_opt<'a>(
     }
 }
 
-fn get_rewritable_config_mut<'a>(
+pub fn get_rewritable_config_mut<'a>(
     config: &'a mut config::AppConfig,
     window_edit: &Option<WindowEditData>,
 ) -> &'a mut config::RewritableConfig {
@@ -4326,127 +4289,12 @@ pub fn get_window_message_from_app_action(app_action: config::AppAction) -> Wind
     }
 }
 
-pub fn update_keybinds(app: &mut MainWindow) {
-    app.keybinds = custom_keybinds::CustomKeybinds::new();
-    app.visual_caches.keybind_hints.clear();
-    let rewritable_config = config::get_current_rewritable_config(&app.app_config);
-    for app_action_bind in &rewritable_config.app_actions_keybinds {
-        let key = key_mapping::get_iced_key_code_from_custom_key_code(app_action_bind.keybind.key);
-        let modifiers = key_mapping::get_iced_modifiers_from_custom_modifiers(
-            app_action_bind.keybind.modifiers,
-        );
-        if app.keybinds.has_keybind(key, modifiers) {
-            eprintln!(
-                "Keybind is used for multiple actions, skipping: {}",
-                key_mapping::get_readable_keybind_name(
-                    app_action_bind.keybind.key,
-                    app_action_bind.keybind.modifiers
-                )
-            );
-            continue;
-        }
-
-        app.keybinds
-            .add_keybind(key, modifiers, app_action_bind.action);
-
-        app.visual_caches.keybind_hints.insert(
-            app_action_bind.action,
-            format!(
-                "{}",
-                key_mapping::get_readable_keybind_name(
-                    app_action_bind.keybind.key,
-                    app_action_bind.keybind.modifiers
-                ),
-            ),
-        );
-    }
-}
-
 fn format_keybind_hint(caches: &VisualCaches, hint: &str, action: config::AppAction) -> String {
-    if let Some(keybind_hint) = caches.keybind_hints.get(&action) {
+    if let Some(keybind_hint) = caches
+        .keybind_hints
+        .get(&keybind_editing::KeybindAssociatedData::AppAction(action))
+    {
         return format!("{} ({})", hint, keybind_hint);
     }
     return hint.to_string();
-}
-
-fn populate_app_action_keybind_editing_content(
-    edit_content: &mut Vec<Element<'_, WindowMessage, iced::Renderer>>,
-    window_edit_data: &WindowEditData,
-    visual_caches: &VisualCaches,
-    caption: &str,
-    app_action: config::AppAction,
-) {
-    edit_content.push(text(caption).into());
-
-    if window_edit_data.is_editing_config {
-        if let Some(action) = window_edit_data.edited_action {
-            if action == app_action {
-                edit_content.push(
-                    button("<recording> Esc to clear")
-                        .on_press(WindowMessage::StopRecordingAppActionKeybind)
-                        .into(),
-                );
-                return;
-            }
-        }
-    }
-
-    if let Some((action, error)) = &window_edit_data.edited_action_error {
-        if *action == app_action {
-            edit_content.push(
-                button(text(error))
-                    .on_press(WindowMessage::StartRecordingAppActionKeybind(app_action))
-                    .into(),
-            );
-            return;
-        }
-    }
-
-    if let Some(keybind_hint) = visual_caches.keybind_hints.get(&app_action) {
-        edit_content.push(
-            button(text(keybind_hint))
-                .on_press(WindowMessage::StartRecordingAppActionKeybind(app_action))
-                .into(),
-        );
-        return;
-    }
-
-    edit_content.push(
-        button("Not set")
-            .on_press(WindowMessage::StartRecordingAppActionKeybind(app_action))
-            .into(),
-    );
-}
-
-fn set_app_action_keybind(
-    app: &mut MainWindow,
-    app_action: &config::AppAction,
-    keybind: config::CustomKeybind,
-) {
-    let rewritable_config =
-        get_rewritable_config_mut(&mut app.app_config, &app.edit_data.window_edit_data);
-    // remove all keybinds with the same action
-    rewritable_config
-        .app_actions_keybinds
-        .retain(|x| x.action != *app_action);
-    // add new keybind
-    rewritable_config
-        .app_actions_keybinds
-        .push(config::AppActionKeybind {
-            action: *app_action,
-            keybind,
-        });
-
-    update_keybinds(app);
-}
-
-fn clear_app_action_keybind(app: &mut MainWindow, app_action: &config::AppAction) {
-    let rewritable_config =
-        get_rewritable_config_mut(&mut app.app_config, &app.edit_data.window_edit_data);
-    // remove all keybinds with the same action
-    rewritable_config
-        .app_actions_keybinds
-        .retain(|x| x.action != *app_action);
-
-    update_keybinds(app);
 }

@@ -54,24 +54,60 @@ mod tests {
 
         keybinds.add_keybind(KeyCode::Key1, Modifiers::empty(), "A");
 
-        assert_eq!(keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()), true);
-        assert_eq!(keybinds.has_keybind(KeyCode::Key2, Modifiers::empty()), false);
-        assert_eq!(keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()), Some(&"A"));
-        assert_eq!(keybinds.get_keybind(KeyCode::Key2, Modifiers::empty()), None);
+        assert_eq!(
+            keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()),
+            true
+        );
+        assert_eq!(
+            keybinds.has_keybind(KeyCode::Key2, Modifiers::empty()),
+            false
+        );
+        assert_eq!(
+            keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()),
+            Some(&"A")
+        );
+        assert_eq!(
+            keybinds.get_keybind(KeyCode::Key2, Modifiers::empty()),
+            None
+        );
 
         keybinds.add_keybind(KeyCode::Key2, Modifiers::empty(), "B");
 
-        assert_eq!(keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()), true);
-        assert_eq!(keybinds.has_keybind(KeyCode::Key2, Modifiers::empty()), true);
-        assert_eq!(keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()), Some(&"A"));
-        assert_eq!(keybinds.get_keybind(KeyCode::Key2, Modifiers::empty()), Some(&"B"));
+        assert_eq!(
+            keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()),
+            true
+        );
+        assert_eq!(
+            keybinds.has_keybind(KeyCode::Key2, Modifiers::empty()),
+            true
+        );
+        assert_eq!(
+            keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()),
+            Some(&"A")
+        );
+        assert_eq!(
+            keybinds.get_keybind(KeyCode::Key2, Modifiers::empty()),
+            Some(&"B")
+        );
 
         keybinds.remove_keybind(KeyCode::Key1, Modifiers::empty());
 
-        assert_eq!(keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()), false);
-        assert_eq!(keybinds.has_keybind(KeyCode::Key2, Modifiers::empty()), true);
-        assert_eq!(keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()), None);
-        assert_eq!(keybinds.get_keybind(KeyCode::Key2, Modifiers::empty()), Some(&"B"));
+        assert_eq!(
+            keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()),
+            false
+        );
+        assert_eq!(
+            keybinds.has_keybind(KeyCode::Key2, Modifiers::empty()),
+            true
+        );
+        assert_eq!(
+            keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()),
+            None
+        );
+        assert_eq!(
+            keybinds.get_keybind(KeyCode::Key2, Modifiers::empty()),
+            Some(&"B")
+        );
     }
 
     #[test]
@@ -80,16 +116,31 @@ mod tests {
 
         keybinds.add_keybind(KeyCode::Key1, Modifiers::empty(), "A");
 
-        assert_eq!(keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()), true);
+        assert_eq!(
+            keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()),
+            true
+        );
         assert_eq!(keybinds.has_keybind(KeyCode::Key1, Modifiers::SHIFT), false);
-        assert_eq!(keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()), Some(&"A"));
+        assert_eq!(
+            keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()),
+            Some(&"A")
+        );
         assert_eq!(keybinds.get_keybind(KeyCode::Key1, Modifiers::SHIFT), None);
 
         keybinds.add_keybind(KeyCode::Key1, Modifiers::SHIFT, "B");
 
-        assert_eq!(keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()), true);
+        assert_eq!(
+            keybinds.has_keybind(KeyCode::Key1, Modifiers::empty()),
+            true
+        );
         assert_eq!(keybinds.has_keybind(KeyCode::Key1, Modifiers::SHIFT), true);
-        assert_eq!(keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()), Some(&"A"));
-        assert_eq!(keybinds.get_keybind(KeyCode::Key1, Modifiers::SHIFT), Some(&"B"));
+        assert_eq!(
+            keybinds.get_keybind(KeyCode::Key1, Modifiers::empty()),
+            Some(&"A")
+        );
+        assert_eq!(
+            keybinds.get_keybind(KeyCode::Key1, Modifiers::SHIFT),
+            Some(&"B")
+        );
     }
 }
