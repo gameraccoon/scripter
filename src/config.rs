@@ -447,7 +447,7 @@ pub fn read_config() -> AppConfig {
     // create default config with all the non-serializable fields set
     let default_config = get_default_config(app_arguments.clone(), config_path);
     // if config file doesn't exist, create it
-    if !default_config.paths.config_path.exists() {
+    if !default_config.paths.config_path.exists() && !default_config.is_read_only {
         let data = serde_json::to_string_pretty(&default_config);
         let data = match data {
             Ok(data) => data,
@@ -563,9 +563,9 @@ pub fn read_config() -> AppConfig {
 
     config.paths = default_config.paths;
     config.is_read_only = default_config.is_read_only;
-    config.env_vars = app_arguments.env_vars;
-    config.custom_title = app_arguments.custom_title;
-    config.arguments_read_error = app_arguments.read_error;
+    config.env_vars = default_config.env_vars;
+    config.custom_title = default_config.custom_title;
+    config.arguments_read_error = default_config.arguments_read_error;
 
     if !config.local_config_path.path.is_empty() {
         let full_local_config_path = get_full_path(&config.paths, &config.local_config_path);
@@ -842,9 +842,24 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
 }
 
 fn has_write_permission(path: &Path) -> bool {
-    // Check if able to write inside directory
+    // check if the file exists, and if it doesn't check for the parent directory
+    let path = if path.exists() {
+        path
+    } else {
+        match path.parent() {
+            Some(parent) => parent,
+            None => return false,
+        }
+    };
+
+    // check if able to write to the file/directory
     let md = std::fs::metadata(path);
-    if let Err(_) = md {
+    if let Err(err) = md {
+        eprintln!(
+            "Can't get metadata for the file/directory '{}': {}",
+            path.to_str().unwrap_or_default(),
+            err
+        );
         return false;
     }
     let md = md.unwrap();
