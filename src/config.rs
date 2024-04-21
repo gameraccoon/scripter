@@ -961,13 +961,6 @@ fn get_default_app_action_keybinds() -> Vec<AppActionKeybind> {
         },
     });
     keybinds.push(AppActionKeybind {
-        action: AppAction::CursorConfirm,
-        keybind: CustomKeybind {
-            key: CustomKeyCode::Enter,
-            modifiers: CustomModifiers::empty(),
-        },
-    });
-    keybinds.push(AppActionKeybind {
         action: AppAction::SwitchPaneFocusForward,
         keybind: CustomKeybind {
             key: CustomKeyCode::Tab,
