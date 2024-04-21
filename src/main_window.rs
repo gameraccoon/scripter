@@ -30,6 +30,7 @@ use crate::execution;
 use crate::execution_lists;
 use crate::file_utils;
 use crate::keybind_editing;
+use crate::keybind_editing::KeybindAssociatedData;
 use crate::style;
 use crate::ui_icons;
 
@@ -95,7 +96,7 @@ pub struct MainWindow {
     pub visual_caches: VisualCaches,
     pub edit_data: EditData,
     window_state: WindowState,
-    pub keybinds: custom_keybinds::CustomKeybinds<config::AppAction>,
+    pub keybinds: custom_keybinds::CustomKeybinds<keybind_editing::KeybindAssociatedData>,
 }
 
 #[derive(Debug, Clone)]
@@ -188,6 +189,7 @@ pub enum WindowMessage {
     Restore,
     MaximizeOrRestoreExecutionPane,
     AddScriptToExecution(config::Guid),
+    AddScriptToExecutionWithoutRunning(config::Guid),
     RunScripts,
     StopScripts,
     ClearExecutionScripts,
@@ -405,6 +407,9 @@ impl Application for MainWindow {
                     run_scheduled_scripts(self);
                 }
             }
+            WindowMessage::AddScriptToExecutionWithoutRunning(script_uid) => {
+                add_script_to_execution(self, script_uid, true);
+            }
             WindowMessage::RunScripts => {
                 if !self.edit_data.window_edit_data.is_some() {
                     run_scheduled_scripts(self);
@@ -614,6 +619,7 @@ impl Application for MainWindow {
                     self.app_config = config::read_config();
                     self.edit_data.is_dirty = false;
                     update_config_cache(&mut self.app_config, &self.edit_data);
+                    keybind_editing::update_keybinds(self);
                 }
             }
             WindowMessage::RevertConfig => {
@@ -634,6 +640,7 @@ impl Application for MainWindow {
                 self.edit_data.is_dirty = false;
                 clean_script_selection(&mut self.window_state.cursor_script);
                 update_config_cache(&mut self.app_config, &self.edit_data);
+                keybind_editing::update_keybinds(self);
             }
             WindowMessage::OpenScriptConfigEditing(script_idx) => {
                 select_edited_script(self, script_idx);
@@ -1284,13 +1291,29 @@ impl Application for MainWindow {
                 }
 
                 // if we're not in keybind editing, then try to process keybinds
-                let action = self.keybinds.get_keybind_copy(iced_key, iced_modifiers);
+                let keybind_associated_data =
+                    self.keybinds.get_keybind_copy(iced_key, iced_modifiers);
 
-                let Some(action) = action else {
+                let Some(keybind_associated_data) = keybind_associated_data else {
                     return Command::none();
                 };
 
-                let message = get_window_message_from_app_action(action);
+                let message = match keybind_associated_data {
+                    KeybindAssociatedData::AppAction(action) => {
+                        Some(get_window_message_from_app_action(action))
+                    }
+                    KeybindAssociatedData::Script(guid) => {
+                        if self.edit_data.window_edit_data.is_none() {
+                            get_run_script_window_message_from_guid(&self.app_config, &guid)
+                        } else {
+                            None
+                        }
+                    }
+                };
+
+                let Some(message) = message else {
+                    return Command::none();
+                };
 
                 // avoid infinite recursion
                 match message {
@@ -2531,6 +2554,18 @@ fn produce_script_edit_content<'a>(
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
+            if let Some(window_edit) = &edit_data.window_edit_data {
+                keybind_editing::populate_keybind_editing_content(
+                    &mut parameters,
+                    &window_edit,
+                    visual_caches,
+                    "Keybind to schedule:",
+                    keybind_editing::KeybindAssociatedData::Script(script.uid.clone()),
+                );
+            }
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+
             if currently_edited_script.script_type == EditScriptType::ScriptConfig {
                 parameters.push(
                     edit_button(
@@ -2576,6 +2611,17 @@ fn produce_script_edit_content<'a>(
             );
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            if let Some(window_edit) = &edit_data.window_edit_data {
+                keybind_editing::populate_keybind_editing_content(
+                    &mut parameters,
+                    &window_edit,
+                    visual_caches,
+                    "Keybind to schedule:",
+                    keybind_editing::KeybindAssociatedData::Script(reference.uid.clone()),
+                );
+            }
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             if currently_edited_script.script_type == EditScriptType::ScriptConfig {
                 parameters.push(
                     edit_button(
@@ -2615,6 +2661,18 @@ fn produce_script_edit_content<'a>(
                 |path| WindowMessage::EditScriptIconPath(path),
                 |val| WindowMessage::EditScriptIconPathRelativeToScripter(val),
             );
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+
+            if let Some(window_edit) = &edit_data.window_edit_data {
+                keybind_editing::populate_keybind_editing_content(
+                    &mut parameters,
+                    &window_edit,
+                    visual_caches,
+                    "Keybind to schedule:",
+                    keybind_editing::KeybindAssociatedData::Script(preset.uid.clone()),
+                );
+            }
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
@@ -3967,6 +4025,7 @@ fn remove_script(app: &mut MainWindow, script_id: &EditScriptId) {
         }
     }
     clean_script_selection(&mut app.window_state.cursor_script);
+    keybind_editing::prune_unused_keybinds(app);
 }
 
 fn maximize_pane(
@@ -4287,6 +4346,20 @@ pub fn get_window_message_from_app_action(app_action: config::AppAction) -> Wind
         config::AppAction::MoveCursorUp => WindowMessage::MoveCursorUp,
         config::AppAction::RemoveCursorScript => WindowMessage::RemoveCursorScript,
     }
+}
+
+fn get_run_script_window_message_from_guid(
+    app_config: &config::AppConfig,
+    script_uid: &config::Guid,
+) -> Option<WindowMessage> {
+    let original_script =
+        config::get_original_script_definition_by_uid(app_config, script_uid.clone());
+    if original_script.is_some() {
+        return Some(WindowMessage::AddScriptToExecutionWithoutRunning(
+            script_uid.clone(),
+        ));
+    }
+    return None;
 }
 
 fn format_keybind_hint(caches: &VisualCaches, hint: &str, action: config::AppAction) -> String {

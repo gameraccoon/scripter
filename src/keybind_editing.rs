@@ -12,7 +12,7 @@ use crate::main_window;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum KeybindAssociatedData {
     AppAction(config::AppAction),
-    _Script(config::Guid),
+    Script(config::Guid),
 }
 
 #[derive(Debug, Clone)]
@@ -51,37 +51,35 @@ pub fn process_key_press(
                 KeybindAssociatedData::AppAction(app_action) => {
                     clear_app_action_keybind(app, &app_action);
                 }
-                KeybindAssociatedData::_Script(_uuid) => {
-                    panic!("Script keybind editing not implemented");
+                KeybindAssociatedData::Script(guid) => {
+                    clear_script_keybind(app, &guid);
                 }
             }
             app.edit_data.is_dirty = true;
         } else {
+            if let Some(old_keybind) = app.keybinds.get_keybind(iced_key, iced_modifiers) {
+                if *old_keybind != keybind {
+                    if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
+                        window_edit_data.keybind_editing.edited_keybind_error =
+                            Some((keybind, "Error: Keybind already in use".to_string()));
+                    }
+                    return true;
+                }
+            }
+
             let key = key_mapping::get_custom_key_code_from_iced_key_code(iced_key);
             let modifiers = key_mapping::get_custom_modifiers_from_iced_modifiers(iced_modifiers);
 
             match keybind {
                 KeybindAssociatedData::AppAction(app_action) => {
-                    if let Some(old_keybind) = app.keybinds.get_keybind(iced_key, iced_modifiers) {
-                        if *old_keybind != app_action {
-                            if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
-                                window_edit_data.keybind_editing.edited_keybind_error = Some((
-                                    KeybindAssociatedData::AppAction(app_action),
-                                    "Error: Keybind already in use".to_string(),
-                                ));
-                            }
-                            return true;
-                        }
-                    }
-
                     set_app_action_keybind(
                         app,
                         &app_action,
                         config::CustomKeybind { key, modifiers },
                     );
                 }
-                KeybindAssociatedData::_Script(_uuid) => {
-                    panic!("Script keybind editing not implemented");
+                KeybindAssociatedData::Script(guid) => {
+                    set_script_keybind(app, &guid, config::CustomKeybind { key, modifiers });
                 }
             }
 
@@ -131,6 +129,43 @@ fn set_app_action_keybind(
     update_keybinds(app);
 }
 
+fn clear_script_keybind(app: &mut main_window::MainWindow, guid: &config::Guid) {
+    let rewritable_config = main_window::get_rewritable_config_mut(
+        &mut app.app_config,
+        &app.edit_data.window_edit_data,
+    );
+    // remove all keybinds with the same action
+    rewritable_config
+        .script_keybinds
+        .retain(|x| x.script_uid != *guid);
+
+    update_keybinds(app);
+}
+
+fn set_script_keybind(
+    app: &mut main_window::MainWindow,
+    guid: &config::Guid,
+    keybind: config::CustomKeybind,
+) {
+    let rewritable_config = main_window::get_rewritable_config_mut(
+        &mut app.app_config,
+        &app.edit_data.window_edit_data,
+    );
+    // remove all keybinds with the same action
+    rewritable_config
+        .script_keybinds
+        .retain(|x| x.script_uid != *guid);
+    // add new keybind
+    rewritable_config
+        .script_keybinds
+        .push(config::ScriptKeybind {
+            script_uid: guid.clone(),
+            keybind,
+        });
+
+    update_keybinds(app);
+}
+
 pub fn update_keybinds(app: &mut main_window::MainWindow) {
     app.keybinds = custom_keybinds::CustomKeybinds::new();
     app.visual_caches.keybind_hints.clear();
@@ -151,8 +186,11 @@ pub fn update_keybinds(app: &mut main_window::MainWindow) {
             continue;
         }
 
-        app.keybinds
-            .add_keybind(key, modifiers, app_action_bind.action);
+        app.keybinds.add_keybind(
+            key,
+            modifiers,
+            KeybindAssociatedData::AppAction(app_action_bind.action),
+        );
 
         app.visual_caches.keybind_hints.insert(
             KeybindAssociatedData::AppAction(app_action_bind.action),
@@ -165,6 +203,62 @@ pub fn update_keybinds(app: &mut main_window::MainWindow) {
             ),
         );
     }
+
+    for script_bind in &rewritable_config.script_keybinds {
+        let key = key_mapping::get_iced_key_code_from_custom_key_code(script_bind.keybind.key);
+        let modifiers =
+            key_mapping::get_iced_modifiers_from_custom_modifiers(script_bind.keybind.modifiers);
+        if app.keybinds.has_keybind(key, modifiers) {
+            eprintln!(
+                "Keybind is used for multiple actions, skipping: {}",
+                key_mapping::get_readable_keybind_name(
+                    script_bind.keybind.key,
+                    script_bind.keybind.modifiers
+                )
+            );
+            continue;
+        }
+
+        app.keybinds.add_keybind(
+            key,
+            modifiers,
+            KeybindAssociatedData::Script(script_bind.script_uid.clone()),
+        );
+
+        app.visual_caches.keybind_hints.insert(
+            KeybindAssociatedData::Script(script_bind.script_uid.clone()),
+            format!(
+                "{}",
+                key_mapping::get_readable_keybind_name(
+                    script_bind.keybind.key,
+                    script_bind.keybind.modifiers
+                ),
+            ),
+        );
+    }
+}
+
+pub fn prune_unused_keybinds(app: &mut main_window::MainWindow) {
+    // collect uids used in keybinds
+    let mut used_script_uids = std::collections::HashSet::new();
+    let rewritable_config = config::get_current_rewritable_config(&app.app_config);
+    for script_bind in &rewritable_config.script_keybinds {
+        used_script_uids.insert(script_bind.script_uid.clone());
+    }
+
+    // find those that are not used
+    used_script_uids.retain(|uid| {
+        config::get_original_script_definition_by_uid(&app.app_config, uid.clone()).is_some()
+    });
+
+    // remove those that are not used
+    let rewritable_config = main_window::get_rewritable_config_mut(
+        &mut app.app_config,
+        &app.edit_data.window_edit_data,
+    );
+    rewritable_config
+        .script_keybinds
+        .retain(|x| used_script_uids.contains(&x.script_uid));
 }
 
 pub fn populate_keybind_editing_content(
@@ -176,16 +270,14 @@ pub fn populate_keybind_editing_content(
 ) {
     edit_content.push(text(caption).into());
 
-    if window_edit_data.is_editing_config {
-        if let Some(edited_keybind) = &window_edit_data.keybind_editing.edited_keybind {
-            if *edited_keybind == data {
-                edit_content.push(
-                    button("<recording> Esc to clear")
-                        .on_press(main_window::WindowMessage::StopRecordingKeybind)
-                        .into(),
-                );
-                return;
-            }
+    if let Some(edited_keybind) = &window_edit_data.keybind_editing.edited_keybind {
+        if *edited_keybind == data {
+            edit_content.push(
+                button("<recording> Esc to clear")
+                    .on_press(main_window::WindowMessage::StopRecordingKeybind)
+                    .into(),
+            );
+            return;
         }
     }
 

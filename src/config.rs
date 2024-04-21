@@ -55,6 +55,7 @@ pub struct RewritableConfig {
     pub config_version_update_behavior: ConfigUpdateBehavior,
     pub custom_theme: Option<CustomTheme>,
     pub app_actions_keybinds: Vec<AppActionKeybind>,
+    pub script_keybinds: Vec<ScriptKeybind>,
 }
 
 #[derive(Clone)]
@@ -280,6 +281,12 @@ pub struct AppActionKeybind {
     pub keybind: CustomKeybind,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScriptKeybind {
+    pub script_uid: Guid,
+    pub keybind: CustomKeybind,
+}
+
 pub fn get_app_config_copy() -> AppConfig {
     GLOBAL_CONFIG.with(|config| config.clone())
 }
@@ -367,6 +374,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             config_version_update_behavior: ConfigUpdateBehavior::OnStartup,
             custom_theme: Some(CustomTheme::default()),
             app_actions_keybinds: get_default_app_action_keybinds(),
+            script_keybinds: Vec::new(),
         },
         script_definitions: Vec::new(),
         is_read_only: !has_write_permission(&config_path),
