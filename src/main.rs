@@ -11,6 +11,7 @@ mod custom_keybinds;
 mod execution;
 mod execution_lists;
 mod file_utils;
+mod git_support;
 mod json_file_updater;
 mod key_mapping;
 mod keybind_editing;

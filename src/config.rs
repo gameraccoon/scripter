@@ -56,6 +56,7 @@ pub struct RewritableConfig {
     pub custom_theme: Option<CustomTheme>,
     pub app_actions_keybinds: Vec<AppActionKeybind>,
     pub script_keybinds: Vec<ScriptKeybind>,
+    pub show_current_git_branch: bool,
 }
 
 #[derive(Clone)]
@@ -375,6 +376,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             custom_theme: Some(CustomTheme::default()),
             app_actions_keybinds: get_default_app_action_keybinds(),
             script_keybinds: Vec::new(),
+            show_current_git_branch: false,
         },
         script_definitions: Vec::new(),
         is_read_only: !has_write_permission(&config_path),

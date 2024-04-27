@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.14.2";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.14.2";
+pub static LATEST_CONFIG_VERSION: &str = "0.14.3";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.14.3";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -121,6 +121,7 @@ fn register_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.14.0", v0_14_0_added_config_version_update_field);
     json_config_updater.add_update_function("0.14.1", v0_14_1_added_app_action_keybinds);
     json_config_updater.add_update_function("0.14.2", v0_14_2_added_script_keybinds);
+    json_config_updater.add_update_function("0.14.3", v0_14_3_added_show_current_git_branch);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -184,6 +185,7 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.14.0", v0_14_0_added_config_version_update_field);
     json_config_updater.add_update_function("0.14.1", v0_14_1_added_app_action_keybinds);
     json_config_updater.add_update_function("0.14.2", v0_14_2_added_script_keybinds);
+    json_config_updater.add_update_function("0.14.3", v0_14_3_added_show_current_git_branch);
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
 
@@ -386,5 +388,11 @@ fn v0_14_1_added_app_action_keybinds(config_json: &mut JsonValue) {
 fn v0_14_2_added_script_keybinds(config_json: &mut JsonValue) {
     if let Some(rewritable) = config_json["rewritable"].as_object_mut() {
         rewritable.insert("script_keybinds".to_string(), json!([]));
+    }
+}
+
+fn v0_14_3_added_show_current_git_branch(config_json: &mut JsonValue) {
+    if let Some(rewritable) = config_json["rewritable"].as_object_mut() {
+        rewritable.insert("show_current_git_branch".to_string(), json!(false));
     }
 }

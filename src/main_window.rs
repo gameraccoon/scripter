@@ -25,10 +25,12 @@ use std::time::{Duration, Instant};
 
 use crate::color_utils;
 use crate::config;
+use crate::config::get_current_rewritable_config;
 use crate::custom_keybinds;
 use crate::execution;
 use crate::execution_lists;
 use crate::file_utils;
+use crate::git_support;
 use crate::keybind_editing;
 use crate::keybind_editing::KeybindAssociatedData;
 use crate::style;
@@ -38,6 +40,7 @@ const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: u32 = 30;
 const ONE_TITLE_LINE_HEIGHT: u32 = 16;
 const EMPTY_EXECUTION_LIST_HEIGHT: u32 = 150;
 const EXTRA_EDIT_CONTENT_HEIGHT: u32 = 40;
+static EMPTY_STRING: String = String::new();
 
 const PATH_TYPE_PICK_LIST: &[config::PathType] = &[
     config::PathType::WorkingDirRelative,
@@ -85,6 +88,7 @@ pub struct VisualCaches {
     recent_logs: Vec<String>,
     icons: ui_icons::IconCaches,
     pub keybind_hints: HashMap<keybind_editing::KeybindAssociatedData, String>,
+    git_branch_fetcher: Option<git_support::GitCurrentBranchFetcher>,
 }
 
 pub struct MainWindow {
@@ -229,6 +233,7 @@ pub enum WindowMessage {
     ConfigToggleScriptFiltering(bool),
     ConfigToggleTitleEditing(bool),
     ConfigUpdateBehaviorChanged(config::ConfigUpdateBehavior),
+    ConfigToggleShowCustomGitBranch(bool),
     ConfigToggleUseCustomTheme(bool),
     ConfigEditThemeBackground(String),
     ConfigEditThemeText(String),
@@ -299,6 +304,8 @@ impl Application for MainWindow {
         }
 
         let app_config = config::get_app_config_copy();
+        let show_current_git_branch =
+            get_current_rewritable_config(&app_config).show_current_git_branch;
 
         let mut main_window = MainWindow {
             panes,
@@ -312,6 +319,11 @@ impl Application for MainWindow {
                 recent_logs: Vec::new(),
                 icons: ui_icons::IconCaches::new(),
                 keybind_hints: HashMap::new(),
+                git_branch_fetcher: if show_current_git_branch {
+                    Some(git_support::GitCurrentBranchFetcher::new())
+                } else {
+                    None
+                },
             },
             edit_data: EditData {
                 script_filter: String::new(),
@@ -445,6 +457,10 @@ impl Application for MainWindow {
                     {
                         return request_user_attention(Some(window::UserAttention::Informational));
                     }
+                }
+
+                if let Some(git_branch_fetcher) = &mut self.visual_caches.git_branch_fetcher {
+                    git_branch_fetcher.update();
                 }
             }
             WindowMessage::OpenScriptEditing(script_idx) => {
@@ -698,6 +714,20 @@ impl Application for MainWindow {
             WindowMessage::ConfigUpdateBehaviorChanged(value) => {
                 get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
                     .config_version_update_behavior = value;
+                self.edit_data.is_dirty = true;
+            }
+            WindowMessage::ConfigToggleShowCustomGitBranch(is_checked) => {
+                get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
+                    .show_current_git_branch = is_checked;
+
+                if is_checked {
+                    if self.visual_caches.git_branch_fetcher.is_none() {
+                        self.visual_caches.git_branch_fetcher =
+                            Some(git_support::GitCurrentBranchFetcher::new());
+                    }
+                } else {
+                    self.visual_caches.git_branch_fetcher = None;
+                }
                 self.edit_data.is_dirty = true;
             }
             WindowMessage::ConfigToggleUseCustomTheme(is_checked) => {
@@ -1877,6 +1907,11 @@ fn produce_execution_list_content<'a>(
     };
 
     let icons = &visual_caches.icons;
+    let git_branch_name = if let Some(git_branch_fetcher) = &visual_caches.git_branch_fetcher {
+        git_branch_fetcher.get_current_branch_ref()
+    } else {
+        &EMPTY_STRING
+    };
 
     let title_widget = if visual_caches.is_custom_title_editing {
         row![
@@ -1917,6 +1952,10 @@ fn produce_execution_list_content<'a>(
 
     let title = column![
         text(path_caches.work_path.to_str().unwrap_or_default())
+            .size(16)
+            .horizontal_alignment(alignment::Horizontal::Center)
+            .width(Length::Fill),
+        text(git_branch_name)
             .size(16)
             .horizontal_alignment(alignment::Horizontal::Center)
             .width(Length::Fill),
@@ -2775,6 +2814,15 @@ fn produce_config_edit_content<'a>(
             CONFIG_UPDATE_BEHAVIOR_PICK_LIST,
             Some(rewritable_config.config_version_update_behavior),
             WindowMessage::ConfigUpdateBehaviorChanged,
+        )
+        .into(),
+    );
+    list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    list_elements.push(
+        checkbox(
+            "Show current git branch",
+            rewritable_config.show_current_git_branch,
+            move |val| WindowMessage::ConfigToggleShowCustomGitBranch(val),
         )
         .into(),
     );
