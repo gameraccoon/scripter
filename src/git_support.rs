@@ -2,8 +2,8 @@
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+use std::os::windows::process::CommandExt;
 use std::path::Path;
-use std::process::Command;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
@@ -47,43 +47,13 @@ impl GitCurrentBranchFetcher {
             let (tx, rx) = channel();
             self.rx_branch = Some(rx);
             thread::spawn(move || {
-                let output = Command::new("git")
-                    .arg("branch")
-                    .arg("--show-current")
-                    .output();
-
-                if let Err(_) = output {
-                    tx.send(String::new()).unwrap();
-                    return;
-                }
-                let output = output.unwrap();
-
-                let output = String::from_utf8_lossy(&output.stdout);
-                let mut current_branch_or_hash = String::new();
-                for line in output.lines() {
-                    current_branch_or_hash = line.to_string();
-                    break;
-                }
+                let mut current_branch_or_hash =
+                    run_command(vec!["git", "branch", "--show-current"]);
 
                 if current_branch_or_hash.is_empty() {
                     // git rev-parse --short HEAD will return the short hash of the current commit
-                    let output = Command::new("git")
-                        .arg("rev-parse")
-                        .arg("--short")
-                        .arg("HEAD")
-                        .output();
-
-                    if let Err(_) = output {
-                        tx.send(String::new()).unwrap();
-                        return;
-                    }
-
-                    let output = output.unwrap();
-                    let output = String::from_utf8_lossy(&output.stdout);
-                    for line in output.lines() {
-                        current_branch_or_hash = line.to_string();
-                        break;
-                    }
+                    current_branch_or_hash =
+                        run_command(vec!["git", "rev-parse", "--short", "HEAD"]);
                 }
 
                 let _ = tx.send(current_branch_or_hash);
@@ -151,25 +121,42 @@ impl GitCurrentBranchFetcher {
 
         thread::spawn(move || {
             // git rev-parse --git-dir will return the directory where HEAD is located
-            let output = Command::new("git")
-                .arg("rev-parse")
-                .arg("--git-dir")
-                .output();
-
-            if let Err(_) = output {
-                tx.send(String::new()).unwrap();
-                return;
-            }
-            let output = output.unwrap();
-
-            let output = String::from_utf8_lossy(&output.stdout);
-            let mut head = String::new();
-            for line in output.lines() {
-                head = line.to_string();
-                break;
-            }
+            let head = run_command(vec!["git", "rev-parse", "--git-dir"]);
 
             let _ = tx.send(head);
         });
     }
+}
+
+fn run_command(args: Vec<&str>) -> String {
+    #[cfg(target_os = "windows")]
+    let mut command = std::process::Command::new("cmd");
+
+    #[cfg(target_os = "windows")]
+    {
+        command
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .arg("/C");
+    }
+    #[cfg(not(target_os = "windows"))]
+    let mut command = std::process::Command::new("sh");
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        command.arg("-c");
+    }
+
+    let result = command.args(args).output();
+
+    match result {
+        Ok(output) => {
+            let output = String::from_utf8_lossy(&output.stdout);
+            for line in output.lines() {
+                return line.to_string();
+            }
+        }
+        Err(_) => {}
+    }
+
+    String::new()
 }
