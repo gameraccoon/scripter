@@ -50,12 +50,12 @@ impl GitCurrentBranchFetcher {
             self.rx_branch = Some(rx);
             thread::spawn(move || {
                 let mut current_branch_or_hash =
-                    run_command(vec!["git", "branch", "--show-current"]);
+                    run_command("git", vec!["branch", "--show-current"]);
 
                 if current_branch_or_hash.is_empty() {
                     // git rev-parse --short HEAD will return the short hash of the current commit
                     current_branch_or_hash =
-                        run_command(vec!["git", "rev-parse", "--short", "HEAD"]);
+                        run_command("git", vec!["rev-parse", "--short", "HEAD"]);
                 }
 
                 let _ = tx.send(current_branch_or_hash);
@@ -123,29 +123,19 @@ impl GitCurrentBranchFetcher {
 
         thread::spawn(move || {
             // git rev-parse --git-dir will return the directory where HEAD is located
-            let head = run_command(vec!["git", "rev-parse", "--git-dir"]);
+            let head = run_command("git", vec!["rev-parse", "--git-dir"]);
 
             let _ = tx.send(head);
         });
     }
 }
 
-fn run_command(args: Vec<&str>) -> String {
-    #[cfg(target_os = "windows")]
-    let mut command = std::process::Command::new("cmd");
+fn run_command(command: &str, args: Vec<&str>) -> String {
+    let mut command = std::process::Command::new(command);
 
     #[cfg(target_os = "windows")]
     {
-        command
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .arg("/C");
-    }
-    #[cfg(not(target_os = "windows"))]
-    let mut command = std::process::Command::new("sh");
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        command.arg("-c");
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
 
     let result = command.args(args).output();
