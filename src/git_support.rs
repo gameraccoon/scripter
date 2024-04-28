@@ -2,12 +2,14 @@
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
-use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 use std::thread;
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 pub struct GitCurrentBranchFetcher {
     current_branch: String,
