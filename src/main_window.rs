@@ -1,9 +1,6 @@
 // Copyright (C) Pavel Grebnev 2023-2024
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
-
 use iced::alignment::{self, Alignment};
 use iced::theme::{self, Theme};
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
@@ -4101,11 +4098,15 @@ fn maximize_pane(
         let scheduled_elements_count =
             app.execution_data.get_scheduled_execution_list().len() as u32;
         let edited_elements_count = app.execution_data.get_edited_execution_list().len() as u32;
-        let title_lines = if let Some(custom_title) = app.app_config.custom_title.as_ref() {
+        let mut title_lines = if let Some(custom_title) = app.app_config.custom_title.as_ref() {
             custom_title.lines().count() as u32
         } else {
             0
         };
+
+        if app.visual_caches.git_branch_fetcher.is_some() {
+            title_lines += 1;
+        }
 
         return resize(
             size.width as u32,
