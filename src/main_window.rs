@@ -230,7 +230,7 @@ pub enum WindowMessage {
     ConfigToggleScriptFiltering(bool),
     ConfigToggleTitleEditing(bool),
     ConfigUpdateBehaviorChanged(config::ConfigUpdateBehavior),
-    ConfigToggleShowCustomGitBranch(bool),
+    ConfigToggleShowCurrentGitBranch(bool),
     ConfigToggleUseCustomTheme(bool),
     ConfigEditThemeBackground(String),
     ConfigEditThemeText(String),
@@ -715,19 +715,11 @@ impl Application for MainWindow {
                     .config_version_update_behavior = value;
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigToggleShowCustomGitBranch(is_checked) => {
+            WindowMessage::ConfigToggleShowCurrentGitBranch(is_checked) => {
                 get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
                     .show_current_git_branch = is_checked;
-
-                if is_checked {
-                    if self.visual_caches.git_branch_fetcher.is_none() {
-                        self.visual_caches.git_branch_fetcher =
-                            Some(git_support::GitCurrentBranchFetcher::new());
-                    }
-                } else {
-                    self.visual_caches.git_branch_fetcher = None;
-                }
                 self.edit_data.is_dirty = true;
+                update_git_branch_visibility(self);
             }
             WindowMessage::ConfigToggleUseCustomTheme(is_checked) => {
                 get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
@@ -2823,7 +2815,7 @@ fn produce_config_edit_content<'a>(
         checkbox(
             "Show current git branch",
             rewritable_config.show_current_git_branch,
-            move |val| WindowMessage::ConfigToggleShowCustomGitBranch(val),
+            move |val| WindowMessage::ConfigToggleShowCurrentGitBranch(val),
         )
         .into(),
     );
@@ -3704,6 +3696,7 @@ fn exit_window_edit_mode(app: &mut MainWindow) {
     clean_script_selection(&mut app.window_state.cursor_script);
     apply_theme(app);
     update_config_cache(&mut app.app_config, &app.edit_data);
+    update_git_branch_visibility(app);
 }
 
 fn run_scheduled_scripts(app: &mut MainWindow) {
@@ -4423,4 +4416,15 @@ fn format_keybind_hint(caches: &VisualCaches, hint: &str, action: config::AppAct
         return format!("{} ({})", hint, keybind_hint);
     }
     return hint.to_string();
+}
+
+fn update_git_branch_visibility(app: &mut MainWindow) {
+    if get_current_rewritable_config(&app.app_config).show_current_git_branch {
+        if app.visual_caches.git_branch_fetcher.is_none() {
+            app.visual_caches.git_branch_fetcher =
+                Some(git_support::GitCurrentBranchFetcher::new());
+        }
+    } else {
+        app.visual_caches.git_branch_fetcher = None;
+    }
 }
