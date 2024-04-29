@@ -218,8 +218,8 @@ pub enum WindowMessage {
     EnterWindowEditMode,
     ExitWindowEditMode,
     TrySwitchWindowEditMode,
-    SaveConfig,
-    RevertConfig,
+    SaveConfigAndExitEditing,
+    RevertConfigAndExitEditing,
     OpenScriptConfigEditing(usize),
     MoveConfigScriptUp(usize),
     MoveConfigScriptDown(usize),
@@ -626,16 +626,17 @@ impl Application for MainWindow {
                     }
                 }
             }
-            WindowMessage::SaveConfig => {
+            WindowMessage::SaveConfigAndExitEditing => {
                 let has_saved = config::save_config_to_file(&self.app_config);
                 if has_saved {
                     self.app_config = config::read_config();
                     self.edit_data.is_dirty = false;
                     update_config_cache(&mut self.app_config, &self.edit_data);
                     keybind_editing::update_keybinds(self);
+                    exit_window_edit_mode(self);
                 }
             }
-            WindowMessage::RevertConfig => {
+            WindowMessage::RevertConfigAndExitEditing => {
                 self.app_config = config::read_config();
                 self.edit_data.window_edit_data = Some(WindowEditData::from_config(
                     &self.app_config,
@@ -654,6 +655,7 @@ impl Application for MainWindow {
                 clean_script_selection(&mut self.window_state.cursor_script);
                 update_config_cache(&mut self.app_config, &self.edit_data);
                 keybind_editing::update_keybinds(self);
+                exit_window_edit_mode(self);
             }
             WindowMessage::OpenScriptConfigEditing(script_idx) => {
                 select_edited_script(self, script_idx);
@@ -1635,7 +1637,6 @@ fn main_button(label: &str, message: WindowMessage) -> Button<WindowMessage> {
 fn edit_mode_button<'a>(
     icon_handle: Handle,
     message: WindowMessage,
-    is_dirty: bool,
     window_state: &WindowState,
     visual_caches: &VisualCaches,
 ) -> Button<'a, WindowMessage> {
@@ -1657,11 +1658,7 @@ fn edit_mode_button<'a>(
     } else {
         row![icon]
     })
-    .style(if is_dirty {
-        theme::Button::Positive
-    } else {
-        theme::Button::Secondary
-    })
+    .style(theme::Button::Secondary)
     .width(Length::Shrink)
     .padding(4)
     .on_press(message)
@@ -1765,40 +1762,32 @@ fn produce_script_list_content<'a>(
     .width(Length::Fill)
     .into();
 
-    let data_column = if let Some(window_edit_data) = &edit_data.window_edit_data {
+    let edit_controls = if let Some(window_edit_data) = &edit_data.window_edit_data {
         column![
             if edit_data.is_dirty {
                 column![row![
-                    main_icon_button(
-                        visual_caches.icons.themed.back.clone(),
-                        "Exit editing mode",
-                        Some(WindowMessage::ExitWindowEditMode)
-                    ),
-                    horizontal_space(Length::Fixed(4.0)),
                     button(text("Save").size(16))
                         .style(theme::Button::Positive)
-                        .on_press(WindowMessage::SaveConfig),
+                        .on_press(WindowMessage::SaveConfigAndExitEditing),
                     horizontal_space(Length::Fixed(4.0)),
-                    button(text("Revert").size(16))
+                    button(text("Cancel").size(16))
                         .style(theme::Button::Destructive)
-                        .on_press(WindowMessage::RevertConfig),
+                        .on_press(WindowMessage::RevertConfigAndExitEditing),
+                    horizontal_space(Length::Fixed(4.0)),
+                    button(text("Preview").size(16)).on_press(WindowMessage::ExitWindowEditMode),
                 ]]
             } else {
-                column![main_icon_button(
-                    visual_caches.icons.themed.back.clone(),
-                    "Exit editing mode",
-                    Some(WindowMessage::ExitWindowEditMode)
-                ),]
+                column![button(text("Back").size(16)).on_press(WindowMessage::ExitWindowEditMode),]
             },
             vertical_space(Length::Fixed(4.0)),
             if config.local_config_body.is_some() {
                 match window_edit_data.edit_type {
                     ConfigEditType::Local => {
-                        column![button(text("Edit shared config").size(16))
+                        column![button(text("Switch to shared config").size(16))
                             .on_press(WindowMessage::SwitchToSharedConfig)]
                     }
                     ConfigEditType::Shared => {
-                        column![button(text("Edit local config").size(16))
+                        column![button(text("Switch to local config").size(16))
                             .on_press(WindowMessage::SwitchToLocalConfig)]
                     }
                 }
@@ -1820,10 +1809,24 @@ fn produce_script_list_content<'a>(
                 ),
             ],
             vertical_space(Length::Fixed(4.0)),
-            scrollable(data),
+        ]
+    } else if edit_data.is_dirty {
+        column![
+            row![
+                button(text("Save").size(16))
+                    .style(theme::Button::Positive)
+                    .on_press(WindowMessage::SaveConfigAndExitEditing),
+                horizontal_space(Length::Fixed(4.0)),
+                button(text("Cancel").size(16))
+                    .style(theme::Button::Destructive)
+                    .on_press(WindowMessage::RevertConfigAndExitEditing),
+                horizontal_space(Length::Fixed(4.0)),
+                button(text("Back to edit").size(16)).on_press(WindowMessage::EnterWindowEditMode),
+            ],
+            vertical_space(Length::Fixed(4.0)),
         ]
     } else {
-        column![scrollable(data)]
+        column![]
     };
 
     let filter_field =
@@ -1871,7 +1874,7 @@ fn produce_script_list_content<'a>(
             row![]
         };
 
-    column![filter_field, data_column,]
+    column![edit_controls, filter_field, scrollable(data),]
         .width(Length::Fill)
         .height(Length::Fill)
         .align_items(Alignment::Start)
@@ -3062,6 +3065,7 @@ fn view_controls<'a>(
 
     if *variant == PaneVariant::ScriptList
         && !config.is_read_only
+        && !edit_data.is_dirty
         && !edit_data.window_edit_data.is_some()
         && !execution_lists.has_started_execution()
     {
@@ -3070,7 +3074,6 @@ fn view_controls<'a>(
                 edit_mode_button(
                     visual_caches.icons.themed.edit.clone(),
                     WindowMessage::EnterWindowEditMode,
-                    edit_data.is_dirty,
                     window_state,
                     visual_caches,
                 ),
