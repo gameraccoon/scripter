@@ -3083,12 +3083,12 @@ fn view_controls<'a>(
         row = row.push(
             tooltip(
                 edit_mode_button(
-                    visual_caches.icons.themed.edit.clone(),
+                    visual_caches.icons.themed.settings.clone(),
                     WindowMessage::EnterWindowEditMode,
                     window_state,
                     visual_caches,
                 ),
-                "Enter editing mode",
+                "Edit configuration",
                 tooltip::Position::Left,
             )
             .style(theme::Container::Box),
