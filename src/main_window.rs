@@ -1767,7 +1767,44 @@ fn produce_script_list_content<'a>(
 
     let data_column = if let Some(window_edit_data) = &edit_data.window_edit_data {
         column![
-            data,
+            if edit_data.is_dirty {
+                column![row![
+                    main_icon_button(
+                        visual_caches.icons.themed.back.clone(),
+                        "Exit editing mode",
+                        Some(WindowMessage::ExitWindowEditMode)
+                    ),
+                    horizontal_space(Length::Fixed(4.0)),
+                    button(text("Save").size(16))
+                        .style(theme::Button::Positive)
+                        .on_press(WindowMessage::SaveConfig),
+                    horizontal_space(Length::Fixed(4.0)),
+                    button(text("Revert").size(16))
+                        .style(theme::Button::Destructive)
+                        .on_press(WindowMessage::RevertConfig),
+                ]]
+            } else {
+                column![main_icon_button(
+                    visual_caches.icons.themed.back.clone(),
+                    "Exit editing mode",
+                    Some(WindowMessage::ExitWindowEditMode)
+                ),]
+            },
+            vertical_space(Length::Fixed(4.0)),
+            if config.local_config_body.is_some() {
+                match window_edit_data.edit_type {
+                    ConfigEditType::Local => {
+                        column![button(text("Edit shared config").size(16))
+                            .on_press(WindowMessage::SwitchToSharedConfig)]
+                    }
+                    ConfigEditType::Shared => {
+                        column![button(text("Edit local config").size(16))
+                            .on_press(WindowMessage::SwitchToLocalConfig)]
+                    }
+                }
+            } else {
+                column![]
+            },
             vertical_space(Length::Fixed(4.0)),
             row![
                 main_icon_button(
@@ -1782,58 +1819,11 @@ fn produce_script_list_content<'a>(
                     Some(WindowMessage::ToggleConfigEditing)
                 ),
             ],
-            if config.local_config_body.is_some() {
-                match window_edit_data.edit_type {
-                    ConfigEditType::Local => {
-                        column![
-                            vertical_space(Length::Fixed(4.0)),
-                            button(text("Edit shared config").size(16))
-                                .on_press(WindowMessage::SwitchToSharedConfig)
-                        ]
-                    }
-                    ConfigEditType::Shared => {
-                        column![
-                            vertical_space(Length::Fixed(4.0)),
-                            button(text("Edit local config").size(16))
-                                .on_press(WindowMessage::SwitchToLocalConfig)
-                        ]
-                    }
-                }
-            } else {
-                column![]
-            },
-            if edit_data.is_dirty {
-                column![
-                    vertical_space(Length::Fixed(4.0)),
-                    row![
-                        main_icon_button(
-                            visual_caches.icons.themed.back.clone(),
-                            "Exit editing mode",
-                            Some(WindowMessage::ExitWindowEditMode)
-                        ),
-                        horizontal_space(Length::Fixed(4.0)),
-                        button(text("Save").size(16))
-                            .style(theme::Button::Positive)
-                            .on_press(WindowMessage::SaveConfig),
-                        horizontal_space(Length::Fixed(4.0)),
-                        button(text("Revert").size(16))
-                            .style(theme::Button::Destructive)
-                            .on_press(WindowMessage::RevertConfig),
-                    ]
-                ]
-            } else {
-                column![
-                    vertical_space(Length::Fixed(4.0)),
-                    main_icon_button(
-                        visual_caches.icons.themed.back.clone(),
-                        "Exit editing mode",
-                        Some(WindowMessage::ExitWindowEditMode)
-                    ),
-                ]
-            }
+            vertical_space(Length::Fixed(4.0)),
+            scrollable(data),
         ]
     } else {
-        column![data]
+        column![scrollable(data)]
     };
 
     let filter_field =
@@ -1881,7 +1871,7 @@ fn produce_script_list_content<'a>(
             row![]
         };
 
-    column![filter_field, scrollable(data_column),]
+    column![filter_field, data_column,]
         .width(Length::Fill)
         .height(Length::Fill)
         .align_items(Alignment::Start)
