@@ -1764,6 +1764,17 @@ fn produce_script_list_content<'a>(
 
     let edit_controls = if let Some(window_edit_data) = &edit_data.window_edit_data {
         column![
+            if window_edit_data.edit_type == ConfigEditType::Local {
+                text("Editing local config")
+            } else if config.local_config_body.is_some() {
+                text("Editing shared config")
+            } else {
+                text("Editing config")
+            }
+            .horizontal_alignment(alignment::Horizontal::Center)
+            .width(Length::Fill)
+            .size(16),
+            vertical_space(Length::Fixed(4.0)),
             if edit_data.is_dirty {
                 column![row![
                     button(text("Save").size(16))
