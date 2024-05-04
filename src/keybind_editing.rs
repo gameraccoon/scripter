@@ -35,7 +35,7 @@ impl KeybindEditData {
 
 pub fn process_key_press(
     app: &mut main_window::MainWindow,
-    iced_key: keyboard::KeyCode,
+    iced_key: keyboard::Key,
     iced_modifiers: keyboard::Modifiers,
 ) -> bool {
     // check keybind editing first
@@ -49,7 +49,7 @@ pub fn process_key_press(
     };
 
     if let Some(keybind) = edited_keybind {
-        if iced_key == keyboard::KeyCode::Escape {
+        if iced_key == keyboard::Key::Named(keyboard::key::Named::Escape) {
             match keybind {
                 KeybindAssociatedData::AppAction(app_action) => {
                     clear_app_action_keybind(app, &app_action);
@@ -60,7 +60,7 @@ pub fn process_key_press(
             }
             app.edit_data.is_dirty = true;
         } else {
-            if let Some(old_keybind) = app.keybinds.get_keybind(iced_key, iced_modifiers) {
+            if let Some(old_keybind) = app.keybinds.get_keybind(iced_key.clone(), iced_modifiers) {
                 if *old_keybind != keybind {
                     if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
                         window_edit_data.keybind_editing.edited_keybind_error =
@@ -178,7 +178,7 @@ pub fn update_keybinds(app: &mut main_window::MainWindow) {
         let modifiers = key_mapping::get_iced_modifiers_from_custom_modifiers(
             app_action_bind.keybind.modifiers,
         );
-        if app.keybinds.has_keybind(key, modifiers) {
+        if app.keybinds.has_keybind(key.clone(), modifiers) {
             eprintln!(
                 "Keybind is used for multiple actions, skipping: {}",
                 key_mapping::get_readable_keybind_name(
@@ -211,7 +211,7 @@ pub fn update_keybinds(app: &mut main_window::MainWindow) {
         let key = key_mapping::get_iced_key_code_from_custom_key_code(script_bind.keybind.key);
         let modifiers =
             key_mapping::get_iced_modifiers_from_custom_modifiers(script_bind.keybind.modifiers);
-        if app.keybinds.has_keybind(key, modifiers) {
+        if app.keybinds.has_keybind(key.clone(), modifiers) {
             eprintln!(
                 "Keybind is used for multiple actions, skipping: {}",
                 key_mapping::get_readable_keybind_name(
@@ -265,7 +265,7 @@ pub fn prune_unused_keybinds(app: &mut main_window::MainWindow) {
 }
 
 pub fn populate_keybind_editing_content(
-    edit_content: &mut Vec<Element<'_, main_window::WindowMessage, iced::Renderer>>,
+    edit_content: &mut Vec<Element<'_, main_window::WindowMessage, iced::Theme, iced::Renderer>>,
     window_edit_data: &main_window::WindowEditData,
     visual_caches: &main_window::VisualCaches,
     caption: &str,

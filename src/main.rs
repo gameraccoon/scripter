@@ -34,6 +34,5 @@ pub fn main() -> iced::Result {
         settings.window.icon = Some(icon);
     }
     settings.window.position = iced::window::Position::Centered;
-    //settings.window.always_on_top = config::is_always_on_top();
     main_window::MainWindow::run(settings)
 }

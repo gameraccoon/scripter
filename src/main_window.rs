@@ -2,15 +2,17 @@
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use iced::alignment::{self, Alignment};
+use iced::event::listen_with;
+use iced::keyboard::key::Named;
+use iced::keyboard::Key;
 use iced::theme::{self, Theme};
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{
     button, checkbox, column, container, horizontal_rule, horizontal_space, image, image::Handle,
-    pick_list, responsive, row, scrollable, text, text_input, tooltip, vertical_space, Button,
-    Column,
+    pick_list, responsive, row, scrollable, text, text_input, tooltip, Button, Column, Space,
 };
 use iced::window::{self, request_user_attention, resize};
-use iced::{event, executor, keyboard, ContentFit, Event};
+use iced::{executor, keyboard, ContentFit};
 use iced::{time, Size};
 use iced::{Application, Command, Element, Length, Subscription};
 use once_cell::sync::Lazy;
@@ -33,10 +35,10 @@ use crate::keybind_editing::KeybindAssociatedData;
 use crate::style;
 use crate::ui_icons;
 
-const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: u32 = 30;
-const ONE_TITLE_LINE_HEIGHT: u32 = 16;
-const EMPTY_EXECUTION_LIST_HEIGHT: u32 = 150;
-const EXTRA_EDIT_CONTENT_HEIGHT: u32 = 40;
+const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
+const ONE_TITLE_LINE_HEIGHT: f32 = 16.0;
+const EMPTY_EXECUTION_LIST_HEIGHT: f32 = 150.0;
+const EXTRA_EDIT_CONTENT_HEIGHT: f32 = 40.0;
 static EMPTY_STRING: String = String::new();
 
 const PATH_TYPE_PICK_LIST: &[config::PathType] = &[
@@ -183,7 +185,7 @@ struct WindowState {
 
 #[derive(Debug, Clone)]
 pub enum WindowMessage {
-    WindowResized(Size),
+    WindowResized(window::Id, Size),
     Clicked(pane_grid::Pane),
     Dragged(pane_grid::DragEvent),
     Resized(pane_grid::ResizeEvent),
@@ -263,7 +265,7 @@ pub enum WindowMessage {
     OpenWithDefaultApplication(PathBuf),
     OpenUrl(String),
     SwitchToOriginalSharedScript(EditScriptId),
-    ProcessKeyPress(keyboard::KeyCode, keyboard::Modifiers),
+    ProcessKeyPress(keyboard::Key, keyboard::Modifiers),
     StartRecordingKeybind(keybind_editing::KeybindAssociatedData),
     StopRecordingKeybind,
 }
@@ -374,7 +376,7 @@ impl Application for MainWindow {
 
     fn update(&mut self, message: WindowMessage) -> Command<WindowMessage> {
         match message {
-            WindowMessage::WindowResized(size) => {
+            WindowMessage::WindowResized(_window_id, size) => {
                 if !self.window_state.has_maximized_pane {
                     self.window_state.full_window_size = size;
                 }
@@ -383,7 +385,7 @@ impl Application for MainWindow {
                 self.window_state.pane_focus = Some(pane);
             }
             WindowMessage::Resized(pane_grid::ResizeEvent { split, ratio }) => {
-                self.panes.resize(&split, ratio);
+                self.panes.resize(split, ratio);
             }
             WindowMessage::Dragged(pane_grid::DragEvent::Picked { pane: _pane }) => {
                 self.visual_caches.pane_drag_start_time = Instant::now();
@@ -397,7 +399,7 @@ impl Application for MainWindow {
                     .as_millis()
                     > 200
                 {
-                    self.panes.drop(&pane, target);
+                    self.panes.drop(pane, target);
                 }
             }
             WindowMessage::Dragged(pane_grid::DragEvent::Canceled { pane: _ }) => {}
@@ -465,7 +467,10 @@ impl Application for MainWindow {
                     if get_rewritable_config_opt(&self.app_config, &self.edit_data.window_edit_data)
                         .window_status_reactions
                     {
-                        return request_user_attention(Some(window::UserAttention::Informational));
+                        return request_user_attention(
+                            window::Id::MAIN,
+                            Some(window::UserAttention::Informational),
+                        );
                     }
                 }
 
@@ -1315,7 +1320,7 @@ impl Application for MainWindow {
                 update_config_cache(&mut self.app_config, &self.edit_data);
             }
             WindowMessage::ProcessKeyPress(iced_key, iced_modifiers) => {
-                if keybind_editing::process_key_press(self, iced_key, iced_modifiers) {
+                if keybind_editing::process_key_press(self, iced_key.clone(), iced_modifiers) {
                     return Command::none();
                 }
 
@@ -1449,66 +1454,41 @@ impl Application for MainWindow {
     }
 
     fn subscription(&self) -> Subscription<WindowMessage> {
-        use keyboard::KeyCode;
+        use keyboard::Key;
 
         Subscription::batch([
-            iced::subscription::events_with(|event, status| {
-                let is_command_key = |key_code: KeyCode| {
-                    #[cfg(target_os = "macos")]
-                    {
-                        key_code.eq(&KeyCode::LWin) || key_code.eq(&KeyCode::RWin)
-                    }
-                    #[cfg(not(target_os = "macos"))]
-                    {
-                        key_code.eq(&KeyCode::LControl) || key_code.eq(&KeyCode::RControl)
-                    }
-                };
-
-                match event {
-                    Event::Window(window::Event::Resized { width, height }) => {
-                        Some(WindowMessage::WindowResized(Size {
+            listen_with(move |event, _status| match event {
+                iced::event::Event::Window(id, window::Event::Resized { width, height }) => {
+                    Some(WindowMessage::WindowResized(
+                        id,
+                        Size {
                             width: width as f32,
                             height: height as f32,
-                        }))
-                    }
-                    Event::Keyboard(keyboard::Event::KeyPressed {
-                        modifiers,
-                        key_code,
-                    }) => {
-                        if is_command_key(key_code) {
-                            return Some(WindowMessage::OnCommandKeyStateChanged(true));
-                        }
+                        },
+                    ))
+                }
+                _ => None,
+            }),
+            keyboard::on_key_press(|key, modifiers| {
+                if is_command_key(&key) {
+                    return Some(WindowMessage::OnCommandKeyStateChanged(true));
+                }
 
-                        if key_code == KeyCode::LControl
-                            || key_code == KeyCode::RControl
-                            || key_code == KeyCode::LShift
-                            || key_code == KeyCode::RShift
-                            || key_code == KeyCode::LAlt
-                            || key_code == KeyCode::RAlt
-                            || key_code == KeyCode::LWin
-                            || key_code == KeyCode::RWin
-                        {
-                            return None;
-                        }
+                if key == Key::Named(Named::Control)
+                    || key == Key::Named(Named::Shift)
+                    || key == Key::Named(Named::Alt)
+                    || key == Key::Named(Named::Super)
+                {
+                    return None;
+                }
 
-                        // avoid registering any key presses when we're inputing text
-                        if status == event::Status::Captured && key_code != KeyCode::Enter {
-                            return None;
-                        }
-
-                        Some(WindowMessage::ProcessKeyPress(key_code, modifiers))
-                    }
-                    Event::Keyboard(keyboard::Event::KeyReleased {
-                        modifiers: _modifiers,
-                        key_code,
-                    }) => {
-                        if is_command_key(key_code) {
-                            Some(WindowMessage::OnCommandKeyStateChanged(false))
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
+                Some(WindowMessage::ProcessKeyPress(key, modifiers))
+            }),
+            keyboard::on_key_release(|key, _modifiers| {
+                if is_command_key(&key) {
+                    Some(WindowMessage::OnCommandKeyStateChanged(false))
+                } else {
+                    None
                 }
             }),
             time::every(Duration::from_millis(100)).map(WindowMessage::Tick),
@@ -1592,7 +1572,7 @@ fn main_icon_button(
         image(icon_handle)
             .width(Length::Fixed(16.0))
             .height(Length::Fixed(16.0)),
-        horizontal_space(4),
+        Space::with_width(4),
         text(label).width(Length::Shrink).size(16),
     ])
     .width(Length::Shrink)
@@ -1614,7 +1594,7 @@ fn main_icon_button_string(
         image(icon_handle)
             .width(Length::Fixed(16.0))
             .height(Length::Fixed(16.0)),
-        horizontal_space(4),
+        Space::with_width(4),
         text(label.to_string()).width(Length::Shrink).size(16),
     ])
     .width(Length::Shrink)
@@ -1652,7 +1632,7 @@ fn edit_mode_button<'a>(
                 config::AppAction::TrySwitchWindowEditMode
             ))
             .size(12),
-            horizontal_space(4),
+            Space::with_width(4),
             icon
         ]
     } else {
@@ -1700,12 +1680,12 @@ fn produce_script_list_content<'a>(
                             visual_caches.icons.themed.up.clone(),
                             WindowMessage::MoveConfigScriptUp(i)
                         ),
-                        horizontal_space(5),
+                        Space::with_width(5),
                         inline_icon_button(
                             visual_caches.icons.themed.down.clone(),
                             WindowMessage::MoveConfigScriptDown(i)
                         ),
-                        horizontal_space(5),
+                        Space::with_width(5),
                     ]
                 } else {
                     row![]
@@ -1713,13 +1693,13 @@ fn produce_script_list_content<'a>(
 
                 let icon = if will_run_on_click {
                     row![
-                        horizontal_space(6),
+                        Space::with_width(6),
                         image(visual_caches.icons.themed.quick_launch.clone())
                             .width(22)
                             .height(22),
                     ]
                 } else if let Some(icon_path) = &script.full_icon_path {
-                    row![horizontal_space(6), image(icon_path).width(22).height(22),]
+                    row![Space::with_width(6), image(icon_path).width(22).height(22),]
                 } else {
                     row![]
                 };
@@ -1736,9 +1716,9 @@ fn produce_script_list_content<'a>(
                 let item_button = button(
                     row![
                         icon,
-                        horizontal_space(6),
+                        Space::with_width(6),
                         text(&name_text).height(22),
-                        horizontal_space(Length::Fill),
+                        horizontal_space(),
                         edit_buttons,
                     ]
                     .height(22),
@@ -1757,7 +1737,7 @@ fn produce_script_list_content<'a>(
 
                 row![item_button].into()
             })
-            .collect(),
+            .collect::<Vec<_>>(),
     )
     .width(Length::Fill)
     .into();
@@ -1774,23 +1754,23 @@ fn produce_script_list_content<'a>(
             .horizontal_alignment(alignment::Horizontal::Center)
             .width(Length::Fill)
             .size(16),
-            vertical_space(Length::Fixed(4.0)),
+            Space::with_height(4.0),
             if edit_data.is_dirty {
                 column![row![
                     button(text("Save").size(16))
                         .style(theme::Button::Positive)
                         .on_press(WindowMessage::SaveConfigAndExitEditing),
-                    horizontal_space(Length::Fixed(4.0)),
+                    Space::with_width(4.0),
                     button(text("Cancel").size(16))
                         .style(theme::Button::Destructive)
                         .on_press(WindowMessage::RevertConfigAndExitEditing),
-                    horizontal_space(Length::Fixed(4.0)),
+                    Space::with_width(4.0),
                     button(text("Preview").size(16)).on_press(WindowMessage::ExitWindowEditMode),
                 ]]
             } else {
                 column![button(text("Back").size(16)).on_press(WindowMessage::ExitWindowEditMode),]
             },
-            vertical_space(Length::Fixed(4.0)),
+            Space::with_height(4.0),
             if config.local_config_body.is_some() {
                 match window_edit_data.edit_type {
                     ConfigEditType::Local => {
@@ -1805,21 +1785,21 @@ fn produce_script_list_content<'a>(
             } else {
                 column![]
             },
-            vertical_space(Length::Fixed(4.0)),
+            Space::with_height(4.0),
             row![
                 main_icon_button(
                     visual_caches.icons.themed.plus.clone(),
                     "Add script",
                     Some(WindowMessage::AddScriptToConfig)
                 ),
-                horizontal_space(Length::Fixed(4.0)),
+                Space::with_width(4.0),
                 main_icon_button(
                     visual_caches.icons.themed.settings.clone(),
                     "Settings",
                     Some(WindowMessage::ToggleConfigEditing)
                 ),
             ],
-            vertical_space(Length::Fixed(4.0)),
+            Space::with_height(4.0),
         ]
     } else if edit_data.is_dirty {
         column![
@@ -1827,14 +1807,14 @@ fn produce_script_list_content<'a>(
                 button(text("Save").size(16))
                     .style(theme::Button::Positive)
                     .on_press(WindowMessage::SaveConfigAndExitEditing),
-                horizontal_space(Length::Fixed(4.0)),
+                Space::with_width(4.0),
                 button(text("Cancel").size(16))
                     .style(theme::Button::Destructive)
                     .on_press(WindowMessage::RevertConfigAndExitEditing),
-                horizontal_space(Length::Fixed(4.0)),
+                Space::with_width(4.0),
                 button(text("Back to edit").size(16)).on_press(WindowMessage::EnterWindowEditMode),
             ],
-            vertical_space(Length::Fixed(4.0)),
+            Space::with_height(4.0),
         ]
     } else {
         column![]
@@ -1843,7 +1823,7 @@ fn produce_script_list_content<'a>(
     let filter_field =
         if rewritable_config.enable_script_filtering && edit_data.window_edit_data.is_none() {
             row![
-                horizontal_space(5),
+                Space::with_width(5),
                 if window_state.is_command_key_down {
                     text_input(
                         &format_keybind_hint(
@@ -1859,10 +1839,10 @@ fn produce_script_list_content<'a>(
                 .id(FILTER_INPUT_ID.clone())
                 .on_input(WindowMessage::ScriptFilterChanged)
                 .width(Length::Fill),
-                horizontal_space(4),
+                Space::with_width(4),
                 if !edit_data.script_filter.is_empty() {
                     column![
-                        vertical_space(Length::Fixed(4.0)),
+                        Space::with_height(4.0),
                         button(image(
                             (if theme.extended_palette().danger.base.text.r > 0.5 {
                                 &visual_caches.icons.bright
@@ -1879,7 +1859,7 @@ fn produce_script_list_content<'a>(
                 } else {
                     column![]
                 },
-                horizontal_space(1),
+                Space::with_width(1),
             ]
         } else {
             row![]
@@ -1924,7 +1904,7 @@ fn produce_execution_list_content<'a>(
         ]
     } else if rewritable_config.enable_title_editing && edit_data.window_edit_data.is_none() {
         row![
-            horizontal_space(iced::Length::Fill),
+            horizontal_space(),
             text(custom_title)
                 .size(16)
                 .horizontal_alignment(alignment::Horizontal::Center)
@@ -1940,7 +1920,7 @@ fn produce_execution_list_content<'a>(
                 "Edit title",
                 tooltip::Position::Right
             ),
-            horizontal_space(iced::Length::Fill),
+            horizontal_space(),
         ]
         .align_items(Alignment::Center)
     } else {
@@ -2048,7 +2028,8 @@ fn produce_execution_list_content<'a>(
                     progress = text("").style(style);
                 };
 
-                let mut row_data: Vec<Element<'_, WindowMessage, iced::Renderer>> = Vec::new();
+                let mut row_data: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
+                    Vec::new();
                 row_data.push(
                     tooltip(
                         status.width(22).height(22).content_fit(ContentFit::None),
@@ -2058,7 +2039,7 @@ fn produce_execution_list_content<'a>(
                     .style(theme::Container::Box)
                     .into(),
                 );
-                row_data.push(horizontal_space(4).into());
+                row_data.push(Space::with_width(4).into());
                 if !script.icon.path.is_empty() {
                     row_data.push(
                         image(config::get_full_path(path_caches, &script.icon))
@@ -2066,13 +2047,13 @@ fn produce_execution_list_content<'a>(
                             .height(22)
                             .into(),
                     );
-                    row_data.push(horizontal_space(4).into());
+                    row_data.push(Space::with_width(4).into());
                 }
                 row_data.push(text(script_name).style(style).into());
                 row_data.push(progress.into());
 
                 if execution::has_script_started(&script_status) {
-                    row_data.push(horizontal_space(8).into());
+                    row_data.push(Space::with_width(8).into());
                     if script_status.retry_count > 0 {
                         let log_dir_path = execution_lists.get_log_path();
                         row_data.push(
@@ -2110,7 +2091,7 @@ fn produce_execution_list_content<'a>(
                 }
                 row(row_data).height(30).into()
             })
-            .collect(),
+            .collect::<Vec<_>>(),
     )
     .width(Length::Fill)
     .align_items(Alignment::Start)
@@ -2141,9 +2122,10 @@ fn produce_execution_list_content<'a>(
                     theme.extended_palette().background.strong.text
                 };
 
-                let mut row_data: Vec<Element<'_, WindowMessage, iced::Renderer>> = Vec::new();
+                let mut row_data: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
+                    Vec::new();
 
-                row_data.push(horizontal_space(4).into());
+                row_data.push(Space::with_width(4).into());
                 if !script.icon.path.is_empty() {
                     row_data.push(
                         image(config::get_full_path(path_caches, &script.icon))
@@ -2151,12 +2133,12 @@ fn produce_execution_list_content<'a>(
                             .height(22)
                             .into(),
                     );
-                    row_data.push(horizontal_space(4).into());
+                    row_data.push(Space::with_width(4).into());
                 }
                 row_data.push(text(script_name).style(style).into());
 
                 if is_selected {
-                    row_data.push(horizontal_space(Length::Fill).into());
+                    row_data.push(horizontal_space().into());
                     if i > 0 {
                         row_data.push(
                             inline_icon_button(
@@ -2177,9 +2159,9 @@ fn produce_execution_list_content<'a>(
                             .into(),
                         );
                     } else {
-                        row_data.push(horizontal_space(22).into());
+                        row_data.push(Space::with_width(22).into());
                     }
-                    row_data.push(horizontal_space(8).into());
+                    row_data.push(Space::with_width(8).into());
                     row_data.push(
                         tooltip(
                             inline_icon_button(
@@ -2223,7 +2205,7 @@ fn produce_execution_list_content<'a>(
 
                 list_item.height(30).into()
             })
-            .collect(),
+            .collect::<Vec<_>>(),
     )
     .width(Length::Fill)
     .align_items(Alignment::Start)
@@ -2354,16 +2336,16 @@ fn produce_execution_list_content<'a>(
 
     let scheduled_block = column![
         scheduled_data,
-        vertical_space(8),
+        Space::with_height(8),
         execution_controls,
-        vertical_space(8),
+        Space::with_height(8),
     ];
 
     let edited_block = column![
         edited_data,
-        vertical_space(8),
+        Space::with_height(8),
         edit_controls,
-        vertical_space(8),
+        Space::with_height(8),
     ];
 
     return column![
@@ -2396,7 +2378,7 @@ fn produce_log_output_content<'a>(
         return Column::new();
     }
 
-    let mut data_lines: Vec<Element<'_, WindowMessage, iced::Renderer>> = Vec::new();
+    let mut data_lines: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
     if let Ok(logs) = execution_lists.get_recent_logs().try_lock() {
         if !logs.is_empty() {
             let (caption_color, error_color) =
@@ -2481,7 +2463,7 @@ fn produce_script_edit_content<'a>(
         &execution_lists.get_edited_execution_list()[currently_edited_script.idx]
     };
 
-    let mut parameters: Vec<Element<'_, WindowMessage, iced::Renderer>> = Vec::new();
+    let mut parameters: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
 
     match script {
         config::ScriptDefinition::Original(script) => {
@@ -2555,12 +2537,9 @@ fn produce_script_edit_content<'a>(
             );
             if currently_edited_script.script_type == EditScriptType::ScriptConfig {
                 parameters.push(
-                    checkbox(
-                        "Arguments are required",
-                        script.requires_arguments,
-                        move |val| WindowMessage::ToggleRequiresArguments(val),
-                    )
-                    .into(),
+                    checkbox("Arguments are required", script.requires_arguments)
+                        .on_toggle(move |val| WindowMessage::ToggleRequiresArguments(val))
+                        .into(),
                 );
 
                 parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -2584,12 +2563,9 @@ fn produce_script_edit_content<'a>(
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
-                checkbox(
-                    "Ignore previous failures",
-                    script.ignore_previous_failures,
-                    move |val| WindowMessage::ToggleIgnoreFailures(val),
-                )
-                .into(),
+                checkbox("Ignore previous failures", script.ignore_previous_failures)
+                    .on_toggle(move |val| WindowMessage::ToggleIgnoreFailures(val))
+                    .into(),
             );
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -2644,10 +2620,9 @@ fn produce_script_edit_content<'a>(
         config::ScriptDefinition::ReferenceToShared(reference) => {
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
-                checkbox("Is script hidden", reference.is_hidden, move |val| {
-                    WindowMessage::ToggleScriptHidden(val)
-                })
-                .into(),
+                checkbox("Is script hidden", reference.is_hidden)
+                    .on_toggle(move |val| WindowMessage::ToggleScriptHidden(val))
+                    .into(),
             );
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -2759,7 +2734,7 @@ fn produce_config_edit_content<'a>(
 ) -> Column<'a, WindowMessage> {
     let rewritable_config = get_rewritable_config(&config, &window_edit.edit_type);
 
-    let mut list_elements: Vec<Element<'_, WindowMessage, iced::Renderer>> = Vec::new();
+    let mut list_elements: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
 
     const SEPARATOR_HEIGHT: u16 = 8;
 
@@ -2769,26 +2744,23 @@ fn produce_config_edit_content<'a>(
         checkbox(
             "Window status reactions",
             rewritable_config.window_status_reactions,
-            move |val| WindowMessage::ConfigToggleWindowStatusReactions(val),
         )
+        .on_toggle(move |val| WindowMessage::ConfigToggleWindowStatusReactions(val))
         .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
-        checkbox(
-            "Keep window size",
-            rewritable_config.keep_window_size,
-            move |val| WindowMessage::ConfigToggleKeepWindowSize(val),
-        )
-        .into(),
+        checkbox("Keep window size", rewritable_config.keep_window_size)
+            .on_toggle(move |val| WindowMessage::ConfigToggleKeepWindowSize(val))
+            .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
         checkbox(
             "Show script filter",
             rewritable_config.enable_script_filtering,
-            move |val| WindowMessage::ConfigToggleScriptFiltering(val),
         )
+        .on_toggle(move |val| WindowMessage::ConfigToggleScriptFiltering(val))
         .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -2796,8 +2768,8 @@ fn produce_config_edit_content<'a>(
         checkbox(
             "Allow edit custom title",
             rewritable_config.enable_title_editing,
-            move |val| WindowMessage::ConfigToggleTitleEditing(val),
         )
+        .on_toggle(move |val| WindowMessage::ConfigToggleTitleEditing(val))
         .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -2815,18 +2787,15 @@ fn produce_config_edit_content<'a>(
         checkbox(
             "Show current git branch",
             rewritable_config.show_current_git_branch,
-            move |val| WindowMessage::ConfigToggleShowCurrentGitBranch(val),
         )
+        .on_toggle(move |val| WindowMessage::ConfigToggleShowCurrentGitBranch(val))
         .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
-        checkbox(
-            "Use custom theme",
-            rewritable_config.custom_theme.is_some(),
-            move |val| WindowMessage::ConfigToggleUseCustomTheme(val),
-        )
-        .into(),
+        checkbox("Use custom theme", rewritable_config.custom_theme.is_some())
+            .on_toggle(move |val| WindowMessage::ConfigToggleUseCustomTheme(val))
+            .into(),
     );
 
     if let Some(_theme) = &rewritable_config.custom_theme {
@@ -3404,7 +3373,7 @@ fn populate_path_editing_content(
     caption: &str,
     hint: &str,
     path: &config::PathConfig,
-    edit_content: &mut Vec<Element<'_, WindowMessage, iced::Renderer>>,
+    edit_content: &mut Vec<Element<'_, WindowMessage, Theme, iced::Renderer>>,
     on_path_changed: impl Fn(String) -> WindowMessage + 'static,
     on_path_type_changed: impl Fn(config::PathType) -> WindowMessage + 'static,
 ) {
@@ -4079,7 +4048,7 @@ fn maximize_pane(
         clean_script_selection(&mut app.window_state.cursor_script);
     }
     app.window_state.pane_focus = Some(pane);
-    app.panes.maximize(&pane);
+    app.panes.maximize(pane);
     app.window_state.has_maximized_pane = true;
     if !get_rewritable_config_opt(&app.app_config, &app.edit_data.window_edit_data).keep_window_size
     {
@@ -4105,21 +4074,24 @@ fn maximize_pane(
             title_lines += 1;
         }
 
-        return resize(iced::Size {
-            width: size.width as u32,
-            height: std::cmp::min(
-                size.height as u32,
-                EMPTY_EXECUTION_LIST_HEIGHT
-                    + edited_elements_count * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
-                    + scheduled_elements_count * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
-                    + title_lines * ONE_TITLE_LINE_HEIGHT
-                    + if edited_elements_count > 0 {
-                        EXTRA_EDIT_CONTENT_HEIGHT
-                    } else {
-                        0
-                    },
-            ),
-        });
+        return resize(
+            window::Id::MAIN,
+            Size {
+                width: size.width,
+                height: f32::min(
+                    size.height,
+                    EMPTY_EXECUTION_LIST_HEIGHT
+                        + edited_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+                        + scheduled_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+                        + title_lines as f32 * ONE_TITLE_LINE_HEIGHT
+                        + if edited_elements_count > 0 {
+                            EXTRA_EDIT_CONTENT_HEIGHT
+                        } else {
+                            0.0
+                        },
+                ),
+            },
+        );
     }
 
     return Command::none();
@@ -4130,10 +4102,13 @@ fn restore_window(app: &mut MainWindow) -> Command<WindowMessage> {
     app.panes.restore();
     if !get_rewritable_config_opt(&app.app_config, &app.edit_data.window_edit_data).keep_window_size
     {
-        return resize(iced::Size {
-            width: app.window_state.full_window_size.width as u32,
-            height: app.window_state.full_window_size.height as u32,
-        });
+        return resize(
+            window::Id::MAIN,
+            iced::Size {
+                width: app.window_state.full_window_size.width,
+                height: app.window_state.full_window_size.height,
+            },
+        );
     }
     return Command::none();
 }
@@ -4426,5 +4401,16 @@ fn update_git_branch_visibility(app: &mut MainWindow) {
         }
     } else {
         app.visual_caches.git_branch_fetcher = None;
+    }
+}
+
+fn is_command_key(key: &Key) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        key.eq(&Key::Named(Named::Super))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        key.eq(&Key::Named(Named::Control))
     }
 }
