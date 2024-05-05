@@ -6,6 +6,7 @@ use iced::event::listen_with;
 use iced::keyboard::key::Named;
 use iced::keyboard::Key;
 use iced::theme::{self, Theme};
+use iced::widget::image::FilterMethod;
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::{
     button, checkbox, column, container, horizontal_rule, horizontal_space, image, image::Handle,
@@ -1562,8 +1563,9 @@ impl AppPane {
 fn inline_icon_button<'a, Message>(icon_handle: Handle, message: Message) -> Button<'a, Message> {
     button(
         image(icon_handle)
-            .width(Length::Fixed(14.0))
-            .height(Length::Fixed(14.0)),
+            .width(Length::Fixed(15.0))
+            .height(Length::Fixed(15.0))
+            .filter_method(FilterMethod::Nearest),
     )
     .padding(4)
     .on_press(message)
@@ -1576,8 +1578,9 @@ fn main_icon_button(
 ) -> Button<WindowMessage> {
     let new_button = button(row![
         image(icon_handle)
-            .width(Length::Fixed(16.0))
-            .height(Length::Fixed(16.0)),
+            .width(Length::Fixed(15.0))
+            .height(Length::Fixed(15.0))
+            .filter_method(FilterMethod::Nearest),
         Space::with_width(4),
         text(label).width(Length::Shrink).size(16),
     ])
@@ -1598,8 +1601,9 @@ fn main_icon_button_string(
 ) -> Button<'static, WindowMessage> {
     let new_button = button(row![
         image(icon_handle)
-            .width(Length::Fixed(16.0))
-            .height(Length::Fixed(16.0)),
+            .width(Length::Fixed(15.0))
+            .height(Length::Fixed(15.0))
+            .filter_method(FilterMethod::Nearest),
         Space::with_width(4),
         text(label.to_string()).width(Length::Shrink).size(16),
     ])
@@ -1627,8 +1631,9 @@ fn edit_mode_button<'a>(
     visual_caches: &VisualCaches,
 ) -> Button<'a, WindowMessage> {
     let icon = image(icon_handle)
-        .width(Length::Fixed(12.0))
-        .height(Length::Fixed(12.0));
+        .width(Length::Fixed(15.0))
+        .height(Length::Fixed(15.0))
+        .filter_method(FilterMethod::Nearest);
 
     button(if window_state.is_command_key_down {
         row![
@@ -1637,7 +1642,7 @@ fn edit_mode_button<'a>(
                 "Edit",
                 config::AppAction::TrySwitchWindowEditMode
             ))
-            .size(12),
+            .size(8),
             Space::with_width(4),
             icon
         ]
@@ -1701,11 +1706,18 @@ fn produce_script_list_content<'a>(
                     row![
                         Space::with_width(6),
                         image(visual_caches.icons.themed.quick_launch.clone())
-                            .width(22)
-                            .height(22),
-                    ]
+                            .width(15.0)
+                            .height(15.0)
+                            .filter_method(FilterMethod::Nearest),
+                    ].align_items(Alignment::Center)
                 } else if let Some(icon_path) = &script.full_icon_path {
-                    row![Space::with_width(6), image(icon_path).width(22).height(22),]
+                    row![
+                        Space::with_width(6),
+                        image(icon_path)
+                            .width(22.0)
+                            .height(22.0)
+                            .filter_method(FilterMethod::Nearest),
+                    ].align_items(Alignment::Center)
                 } else {
                     row![]
                 };
@@ -1849,17 +1861,21 @@ fn produce_script_list_content<'a>(
                 if !edit_data.script_filter.is_empty() {
                     column![
                         Space::with_height(4.0),
-                        button(image(
-                            (if theme.extended_palette().danger.base.text.r > 0.5 {
-                                &visual_caches.icons.bright
-                            } else {
-                                &visual_caches.icons.dark
-                            })
-                            .remove
-                            .clone()
-                        ))
+                        button(
+                            image(
+                                (if theme.extended_palette().danger.base.text.r > 0.5 {
+                                    &visual_caches.icons.bright
+                                } else {
+                                    &visual_caches.icons.dark
+                                })
+                                .remove
+                                .clone()
+                            )
+                        .height(15.0)
+                        .width(15.0)
+                            .filter_method(FilterMethod::Nearest)
+                        )
                         .style(theme::Button::Destructive)
-                        .height(Length::Fixed(22.0))
                         .on_press(WindowMessage::ScriptFilterChanged("".to_string())),
                     ]
                 } else {
@@ -1918,8 +1934,9 @@ fn produce_execution_list_content<'a>(
             tooltip(
                 button(
                     image(icons.themed.edit.clone())
-                        .width(Length::Fixed(8.0))
-                        .height(Length::Fixed(8.0))
+                        .width(Length::Fixed(11.0))
+                        .height(Length::Fixed(11.0))
+                        .filter_method(FilterMethod::Nearest)
                 )
                 .style(theme::Button::Secondary)
                 .on_press(WindowMessage::SetExecutionListTitleEditing(true)),
@@ -1989,9 +2006,15 @@ fn produce_execution_list_content<'a>(
 
                 if execution::has_script_finished(script_status) {
                     status = match script_status.result {
-                        execution::ScriptResultStatus::Failed => image(icons.failed.clone()),
-                        execution::ScriptResultStatus::Success => image(icons.succeeded.clone()),
-                        execution::ScriptResultStatus::Skipped => image(icons.skipped.clone()),
+                        execution::ScriptResultStatus::Failed => {
+                            image(icons.failed.clone()).width(19.0).height(19.0).filter_method(FilterMethod::Nearest)
+                        }
+                        execution::ScriptResultStatus::Success => {
+                            image(icons.succeeded.clone()).width(19.0).height(19.0).filter_method(FilterMethod::Nearest)
+                        }
+                        execution::ScriptResultStatus::Skipped => {
+                            image(icons.skipped.clone()).width(19.0).height(19.0).filter_method(FilterMethod::Nearest)
+                        }
                     };
                     status_tooltip = match script_status.result {
                         execution::ScriptResultStatus::Failed => "Failed",
@@ -2018,7 +2041,7 @@ fn produce_execution_list_content<'a>(
                     let time_taken_sec = Instant::now()
                         .duration_since(script_status.start_time.unwrap_or(Instant::now()))
                         .as_secs();
-                    status = image(icons.in_progress.clone());
+                    status = image(icons.in_progress.clone()).width(19.0).height(19.0).filter_method(FilterMethod::Nearest);
                     status_tooltip = "In progress";
 
                     progress = text(format!(
@@ -2029,7 +2052,7 @@ fn produce_execution_list_content<'a>(
                     ))
                     .style(style);
                 } else {
-                    status = image(icons.idle.clone());
+                    status = image(icons.idle.clone()).width(19.0).height(19.0).filter_method(FilterMethod::Nearest);
                     status_tooltip = "Idle";
                     progress = text("").style(style);
                 };
@@ -2051,6 +2074,7 @@ fn produce_execution_list_content<'a>(
                         image(config::get_full_path(path_caches, &script.icon))
                             .width(22)
                             .height(22)
+                            .filter_method(FilterMethod::Nearest)
                             .into(),
                     );
                     row_data.push(Space::with_width(4).into());
@@ -2137,6 +2161,7 @@ fn produce_execution_list_content<'a>(
                         image(config::get_full_path(path_caches, &script.icon))
                             .width(22)
                             .height(22)
+                            .filter_method(FilterMethod::Nearest)
                             .into(),
                     );
                     row_data.push(Space::with_width(4).into());
