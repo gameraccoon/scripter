@@ -8,20 +8,35 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use smol_str::SmolStr;
 
-// this is pretty stupid code, but it solves a few problems:
-// 1. we can serialize the keybinds
-// 2. we can make sure if the keybinds enum changes the app won't
-//    compile, so we can maake an updater for the old condifg
+// We map all supported keys to an enum, there are several reasons for doing this:
+// 1. we can easily serialize and deserialize the keybinds to a more readable format
+// 2. when iced changes supported keybinds (e.g. happened in iced 0.12.0), we can
+//    detect that and update the serialized keybinds accordingly
 // 3. configs don't need to know about iced
-// 4. we can give keybinds user friendly names
-
-// UPD: Iced updated the Keybinds somewhere between 0.10 and 0.12.1, so this was actually
-// helpful at that point to keep backward compatibility.
-// Now unknown keys can be removed but the config needs to be updated for that
-// new keys can be added at will without updating the config
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CustomKeyCode {
+
+    Key1,
+    /// The '2' key over the letters.
+    Key2,
+    /// The '3' key over the letters.
+    Key3,
+    /// The '4' key over the letters.
+    Key4,
+    /// The '5' key over the letters.
+    Key5,
+    /// The '6' key over the letters.
+    Key6,
+    /// The '7' key over the letters.
+    Key7,
+    /// The '8' key over the letters.
+    Key8,
+    /// The '9' key over the letters.
+    Key9,
+    /// The '0' key over the 'O' and 'P' keys.
+    Key0,
+
     A,
     B,
     C,
@@ -49,9 +64,6 @@ pub enum CustomKeyCode {
     Y,
     Z,
 
-    /// The Escape key, next to F1.
-    Escape,
-
     F1,
     F2,
     F3,
@@ -77,11 +89,24 @@ pub enum CustomKeyCode {
     F23,
     F24,
 
-    /// Print Screen/SysRq.
-    Snapshot,
-    /// Scroll Lock.
-    Scroll,
-    /// Pause/Break key, next to Scroll lock.
+    Left,  // ArrowLeft
+    Up,    // ArrowUp
+    Right, // ArrowRight
+    Down,  // ArrowDown
+
+    /// The Escape key, next to F1
+    Escape,
+
+    /// The Backspace key, right over Enter.
+    Backspace,
+    /// The Enter key.
+    Enter,
+    /// The space bar.
+    Space,
+
+    /// Print Screen/SysRq
+    PrintScreen,
+    /// Pause/Break key, next to Scroll lock
     Pause,
 
     /// `Insert`, next to Backspace.
@@ -92,34 +117,27 @@ pub enum CustomKeyCode {
     PageDown,
     PageUp,
 
-    Left,
-    Up,
-    Right,
-    Down,
-
-    /// The Backspace key, right over Enter.
-    Backspace,
-    /// The Enter key.
-    Enter,
-    /// The space bar.
-    Space,
+    Alt,
+    Control,
+    Shift,
+    Win,
+    Fn,
 
     /// The "Compose" key on Linux.
     Compose,
 
+    Numlock,
+    CapsLock,
+    ScrollLock,
+    FnLock,
+
     Caret,
 
-    Numlock,
-
-    AbntC1,
-    AbntC2,
     Apostrophe,
     Apps,
     Asterisk,
     At,
-    Ax,
     Backslash,
-    Capital,
     Colon,
     Comma,
     Convert,
@@ -127,11 +145,10 @@ pub enum CustomKeyCode {
     Grave,
     Kana,
     Kanji,
-    LAlt,
     LBracket,
-    LControl,
-    LShift,
-    LWin,
+    RBracket,
+    LAngleBracket,
+    RAngleBracket,
     Mail,
     MediaSelect,
     MediaStop,
@@ -146,15 +163,11 @@ pub enum CustomKeyCode {
     Plus,
     Power,
     PrevTrack,
-    RAlt,
-    RBracket,
-    RControl,
-    RShift,
-    RWin,
     Semicolon,
     Slash,
     Stop,
     Tab,
+    Tilde,
     Underline,
     VolumeDown,
     VolumeUp,
@@ -170,54 +183,7 @@ pub enum CustomKeyCode {
     Paste,
     Cut,
 
-    // Keys to rename
-    /// The '1' key over the letters.
-    Key1,
-    /// The '2' key over the letters.
-    Key2,
-    /// The '3' key over the letters.
-    Key3,
-    /// The '4' key over the letters.
-    Key4,
-    /// The '5' key over the letters.
-    Key5,
-    /// The '6' key over the letters.
-    Key6,
-    /// The '7' key over the letters.
-    Key7,
-    /// The '8' key over the letters.
-    Key8,
-    /// The '9' key over the letters.
-    Key9,
-    /// The '0' key over the 'O' and 'P' keys.
-    Key0,
-    Unlabeled,
-
-    // Keys to remove
-    Numpad0,
-    Numpad1,
-    Numpad2,
-    Numpad3,
-    Numpad4,
-    Numpad5,
-    Numpad6,
-    Numpad7,
-    Numpad8,
-    Numpad9,
-    NumpadAdd,
-    NumpadDivide,
-    NumpadDecimal,
-    NumpadComma,
-    NumpadEnter,
-    NumpadEquals,
-    NumpadMultiply,
-    NumpadSubtract,
-    Calculator,
-    MyComputer,
-    OEM102,
-    Sleep,
-    Sysrq,
-    Wake,
+    Unknown,
 }
 
 bitflags! {
@@ -435,7 +401,6 @@ pub fn get_iced_key_code_from_custom_key_code(key: CustomKeyCode) -> Key {
         CustomKeyCode::X => Key::Character(SmolStr::new_static("x")),
         CustomKeyCode::Y => Key::Character(SmolStr::new_static("y")),
         CustomKeyCode::Z => Key::Character(SmolStr::new_static("z")),
-        CustomKeyCode::Escape => Key::Named(Named::Escape),
         CustomKeyCode::F1 => Key::Named(Named::F1),
         CustomKeyCode::F2 => Key::Named(Named::F2),
         CustomKeyCode::F3 => Key::Named(Named::F3),
@@ -460,8 +425,15 @@ pub fn get_iced_key_code_from_custom_key_code(key: CustomKeyCode) -> Key {
         CustomKeyCode::F22 => Key::Named(Named::F22),
         CustomKeyCode::F23 => Key::Named(Named::F23),
         CustomKeyCode::F24 => Key::Named(Named::F24),
-        CustomKeyCode::Snapshot => Key::Named(Named::PrintScreen),
-        CustomKeyCode::Scroll => Key::Named(Named::ScrollLock),
+        CustomKeyCode::Left => Key::Named(Named::ArrowLeft),
+        CustomKeyCode::Up => Key::Named(Named::ArrowUp),
+        CustomKeyCode::Right => Key::Named(Named::ArrowRight),
+        CustomKeyCode::Down => Key::Named(Named::ArrowDown),
+        CustomKeyCode::Escape => Key::Named(Named::Escape),
+        CustomKeyCode::Backspace => Key::Named(Named::Backspace),
+        CustomKeyCode::Enter => Key::Named(Named::Enter),
+        CustomKeyCode::Space => Key::Named(Named::Space),
+        CustomKeyCode::PrintScreen => Key::Named(Named::PrintScreen),
         CustomKeyCode::Pause => Key::Named(Named::Pause),
         CustomKeyCode::Insert => Key::Named(Named::Insert),
         CustomKeyCode::Home => Key::Named(Named::Home),
@@ -469,24 +441,23 @@ pub fn get_iced_key_code_from_custom_key_code(key: CustomKeyCode) -> Key {
         CustomKeyCode::End => Key::Named(Named::End),
         CustomKeyCode::PageDown => Key::Named(Named::PageDown),
         CustomKeyCode::PageUp => Key::Named(Named::PageUp),
-        CustomKeyCode::Left => Key::Named(Named::ArrowLeft),
-        CustomKeyCode::Up => Key::Named(Named::ArrowUp),
-        CustomKeyCode::Right => Key::Named(Named::ArrowRight),
-        CustomKeyCode::Down => Key::Named(Named::ArrowDown),
-        CustomKeyCode::Backspace => Key::Named(Named::Backspace),
-        CustomKeyCode::Enter => Key::Named(Named::Enter),
-        CustomKeyCode::Space => Key::Named(Named::Space),
+        CustomKeyCode::Alt => Key::Named(Named::Alt),
+        CustomKeyCode::Control => Key::Named(Named::Control),
+        CustomKeyCode::Shift => Key::Named(Named::Shift),
+        CustomKeyCode::Win => Key::Named(Named::Meta),
+        CustomKeyCode::Fn => Key::Named(Named::Fn),
         CustomKeyCode::Compose => Key::Named(Named::Compose),
+        CustomKeyCode::Numlock => Key::Named(Named::NumLock),
+        CustomKeyCode::CapsLock => Key::Named(Named::CapsLock),
+        CustomKeyCode::ScrollLock => Key::Named(Named::ScrollLock),
+        CustomKeyCode::FnLock => Key::Named(Named::FnLock),
         CustomKeyCode::Caret => Key::Character(SmolStr::new_static("^")),
-        CustomKeyCode::AbntC1 => Key::Character(SmolStr::new_static("`")),
-        CustomKeyCode::AbntC2 => Key::Character(SmolStr::new_static("~")),
-        CustomKeyCode::Apostrophe => Key::Character(SmolStr::new_static("\'")),
+        CustomKeyCode::Tilde => Key::Character(SmolStr::new_static("~")),
+        CustomKeyCode::Apostrophe => Key::Character(SmolStr::new_static("'")),
         CustomKeyCode::Apps => Key::Named(Named::ContextMenu),
         CustomKeyCode::Asterisk => Key::Character(SmolStr::new_static("*")),
         CustomKeyCode::At => Key::Character(SmolStr::new_static("@")),
-        CustomKeyCode::Ax => Key::Character(SmolStr::new_static("`")),
         CustomKeyCode::Backslash => Key::Character(SmolStr::new_static("\\")),
-        CustomKeyCode::Capital => Key::Named(Named::CapsLock),
         CustomKeyCode::Colon => Key::Character(SmolStr::new_static(":")),
         CustomKeyCode::Comma => Key::Character(SmolStr::new_static(",")),
         CustomKeyCode::Convert => Key::Named(Named::Convert),
@@ -494,11 +465,10 @@ pub fn get_iced_key_code_from_custom_key_code(key: CustomKeyCode) -> Key {
         CustomKeyCode::Grave => Key::Character(SmolStr::new_static("`")),
         CustomKeyCode::Kana => Key::Named(Named::KanaMode),
         CustomKeyCode::Kanji => Key::Named(Named::KanjiMode),
-        CustomKeyCode::LAlt => Key::Named(Named::Alt),
         CustomKeyCode::LBracket => Key::Character(SmolStr::new_static("[")),
-        CustomKeyCode::LControl => Key::Named(Named::Control),
-        CustomKeyCode::LShift => Key::Named(Named::Shift),
-        CustomKeyCode::LWin => Key::Named(Named::Meta),
+        CustomKeyCode::RBracket => Key::Character(SmolStr::new_static("]")),
+        CustomKeyCode::LAngleBracket => Key::Character(SmolStr::new_static("<")),
+        CustomKeyCode::RAngleBracket => Key::Character(SmolStr::new_static(">")),
         CustomKeyCode::Mail => Key::Named(Named::LaunchMail),
         CustomKeyCode::MediaSelect => Key::Named(Named::LaunchMediaPlayer),
         CustomKeyCode::MediaStop => Key::Named(Named::MediaStop),
@@ -513,11 +483,6 @@ pub fn get_iced_key_code_from_custom_key_code(key: CustomKeyCode) -> Key {
         CustomKeyCode::Plus => Key::Character(SmolStr::new_static("+")),
         CustomKeyCode::Power => Key::Named(Named::Power),
         CustomKeyCode::PrevTrack => Key::Named(Named::MediaTrackPrevious),
-        CustomKeyCode::RAlt => Key::Named(Named::Alt),
-        CustomKeyCode::RBracket => Key::Character(SmolStr::new_static("]")),
-        CustomKeyCode::RControl => Key::Named(Named::Control),
-        CustomKeyCode::RShift => Key::Named(Named::Shift),
-        CustomKeyCode::RWin => Key::Named(Named::Meta),
         CustomKeyCode::Semicolon => Key::Character(SmolStr::new_static(";")),
         CustomKeyCode::Slash => Key::Character(SmolStr::new_static("/")),
         CustomKeyCode::Stop => Key::Named(Named::MediaStop),
@@ -537,33 +502,7 @@ pub fn get_iced_key_code_from_custom_key_code(key: CustomKeyCode) -> Key {
         CustomKeyCode::Paste => Key::Named(Named::Paste),
         CustomKeyCode::Cut => Key::Named(Named::Cut),
 
-        CustomKeyCode::Unlabeled => Key::Unidentified,
-
-        CustomKeyCode::Numlock => Key::Named(Named::NumLock),
-        CustomKeyCode::Numpad0 => Key::Character(SmolStr::new_static("0")),
-        CustomKeyCode::Numpad1 => Key::Character(SmolStr::new_static("1")),
-        CustomKeyCode::Numpad2 => Key::Character(SmolStr::new_static("2")),
-        CustomKeyCode::Numpad3 => Key::Character(SmolStr::new_static("3")),
-        CustomKeyCode::Numpad4 => Key::Character(SmolStr::new_static("4")),
-        CustomKeyCode::Numpad5 => Key::Character(SmolStr::new_static("5")),
-        CustomKeyCode::Numpad6 => Key::Character(SmolStr::new_static("6")),
-        CustomKeyCode::Numpad7 => Key::Character(SmolStr::new_static("7")),
-        CustomKeyCode::Numpad8 => Key::Character(SmolStr::new_static("8")),
-        CustomKeyCode::Numpad9 => Key::Character(SmolStr::new_static("9")),
-        CustomKeyCode::NumpadAdd => Key::Character(SmolStr::new_static("+")),
-        CustomKeyCode::NumpadDivide => Key::Character(SmolStr::new_static("/")),
-        CustomKeyCode::NumpadDecimal => Key::Character(SmolStr::new_static(".")),
-        CustomKeyCode::NumpadComma => Key::Character(SmolStr::new_static(",")),
-        CustomKeyCode::NumpadEnter => Key::Named(Named::Enter),
-        CustomKeyCode::NumpadEquals => Key::Character(SmolStr::new_static("=")),
-        CustomKeyCode::NumpadMultiply => Key::Character(SmolStr::new_static("*")),
-        CustomKeyCode::NumpadSubtract => Key::Character(SmolStr::new_static("-")),
-        CustomKeyCode::Calculator => Key::Unidentified,
-        CustomKeyCode::MyComputer => Key::Unidentified,
-        CustomKeyCode::OEM102 => Key::Unidentified,
-        CustomKeyCode::Sleep => Key::Unidentified,
-        CustomKeyCode::Sysrq => Key::Unidentified,
-        CustomKeyCode::Wake => Key::Unidentified,
+        CustomKeyCode::Unknown => Key::Unidentified,
     }
 }
 
@@ -615,22 +554,25 @@ pub fn get_custom_key_code_from_iced_key_code(key: Key) -> CustomKeyCode {
             "/" => CustomKeyCode::Slash,
             "*" => CustomKeyCode::Asterisk,
             "=" => CustomKeyCode::Equals,
+            "[" => CustomKeyCode::LBracket,
+            "]" => CustomKeyCode::RBracket,
+            "<" => CustomKeyCode::LAngleBracket,
+            ">" => CustomKeyCode::RAngleBracket,
             ";" => CustomKeyCode::Semicolon,
             ":" => CustomKeyCode::Colon,
             "_" => CustomKeyCode::Underline,
             "\\" => CustomKeyCode::Backslash,
             "@" => CustomKeyCode::At,
-            "`" => CustomKeyCode::AbntC1,
-            "~" => CustomKeyCode::AbntC2,
+            "`" => CustomKeyCode::Grave,
+            "~" => CustomKeyCode::Tilde,
             "'" => CustomKeyCode::Apostrophe,
             "¥" => CustomKeyCode::Yen,
             _ => {
-                println!("Unknown key: {}", char);
-                CustomKeyCode::Unlabeled
-            }
+                println!("Unknown char: {}", char);
+                CustomKeyCode::Unknown
+            },
         },
         Key::Named(named) => match named {
-            Named::Escape => CustomKeyCode::Escape,
             Named::F1 => CustomKeyCode::F1,
             Named::F2 => CustomKeyCode::F2,
             Named::F3 => CustomKeyCode::F3,
@@ -655,8 +597,15 @@ pub fn get_custom_key_code_from_iced_key_code(key: Key) -> CustomKeyCode {
             Named::F22 => CustomKeyCode::F22,
             Named::F23 => CustomKeyCode::F23,
             Named::F24 => CustomKeyCode::F24,
-            Named::PrintScreen => CustomKeyCode::Snapshot,
-            Named::ScrollLock => CustomKeyCode::Scroll,
+            Named::ArrowLeft => CustomKeyCode::Left,
+            Named::ArrowUp => CustomKeyCode::Up,
+            Named::ArrowRight => CustomKeyCode::Right,
+            Named::ArrowDown => CustomKeyCode::Down,
+            Named::Escape => CustomKeyCode::Escape,
+            Named::Backspace => CustomKeyCode::Backspace,
+            Named::Enter => CustomKeyCode::Enter,
+            Named::Space => CustomKeyCode::Space,
+            Named::PrintScreen => CustomKeyCode::PrintScreen,
             Named::Pause => CustomKeyCode::Pause,
             Named::Insert => CustomKeyCode::Insert,
             Named::Home => CustomKeyCode::Home,
@@ -664,23 +613,19 @@ pub fn get_custom_key_code_from_iced_key_code(key: Key) -> CustomKeyCode {
             Named::End => CustomKeyCode::End,
             Named::PageDown => CustomKeyCode::PageDown,
             Named::PageUp => CustomKeyCode::PageUp,
-            Named::ArrowLeft => CustomKeyCode::Left,
-            Named::ArrowUp => CustomKeyCode::Up,
-            Named::ArrowRight => CustomKeyCode::Right,
-            Named::ArrowDown => CustomKeyCode::Down,
-            Named::Backspace => CustomKeyCode::Backspace,
-            Named::Enter => CustomKeyCode::Enter,
-            Named::Space => CustomKeyCode::Space,
+            Named::Alt => CustomKeyCode::Alt,
+            Named::Control => CustomKeyCode::Control,
+            Named::Shift => CustomKeyCode::Shift,
+            Named::Meta => CustomKeyCode::Win,
+            Named::Fn => CustomKeyCode::Fn,
             Named::Compose => CustomKeyCode::Compose,
             Named::NumLock => CustomKeyCode::Numlock,
+            Named::CapsLock => CustomKeyCode::CapsLock,
+            Named::ScrollLock => CustomKeyCode::ScrollLock,
+            Named::FnLock => CustomKeyCode::FnLock,
             Named::ContextMenu => CustomKeyCode::Apps,
-            Named::CapsLock => CustomKeyCode::Capital,
             Named::KanaMode => CustomKeyCode::Kana,
             Named::KanjiMode => CustomKeyCode::Kanji,
-            Named::Alt => CustomKeyCode::LAlt,
-            Named::Control => CustomKeyCode::LControl,
-            Named::Shift => CustomKeyCode::LShift,
-            Named::Meta => CustomKeyCode::LWin,
             Named::LaunchMail => CustomKeyCode::Mail,
             Named::LaunchMediaPlayer => CustomKeyCode::MediaSelect,
             Named::MediaStop => CustomKeyCode::MediaStop,
@@ -702,9 +647,9 @@ pub fn get_custom_key_code_from_iced_key_code(key: Key) -> CustomKeyCode {
             Named::Copy => CustomKeyCode::Copy,
             Named::Paste => CustomKeyCode::Paste,
             Named::Cut => CustomKeyCode::Cut,
-            _ => CustomKeyCode::Unlabeled,
+            _ => CustomKeyCode::Unknown,
         },
-        _ => CustomKeyCode::Unlabeled,
+        _ => CustomKeyCode::Unknown,
     }
 }
 

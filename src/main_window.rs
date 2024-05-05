@@ -1478,6 +1478,8 @@ impl Application for MainWindow {
                     || key == Key::Named(Named::Shift)
                     || key == Key::Named(Named::Alt)
                     || key == Key::Named(Named::Super)
+                    || key == Key::Named(Named::Fn)
+                    || key == Key::Unidentified
                 {
                     return None;
                 }

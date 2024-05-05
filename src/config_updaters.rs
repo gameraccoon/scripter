@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.15.0";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.15.0";
+pub static LATEST_CONFIG_VERSION: &str = "0.15.1";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.15.1";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -123,6 +123,7 @@ fn register_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.14.2", v0_14_2_added_script_keybinds);
     json_config_updater.add_update_function("0.14.3", v0_14_3_added_show_current_git_branch);
     json_config_updater.add_update_function("0.15.0", v0_15_0_remove_always_on_top);
+    json_config_updater.add_update_function("0.15.1", v0_15_1_update_keybinds_for_iced_12);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -188,6 +189,7 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.14.2", v0_14_2_added_script_keybinds);
     json_config_updater.add_update_function("0.14.3", v0_14_3_added_show_current_git_branch);
     json_config_updater.add_update_function("0.15.0", v0_15_0_remove_always_on_top);
+    json_config_updater.add_update_function("0.15.1", v0_15_1_update_keybinds_for_iced_12);
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
 
@@ -402,5 +404,60 @@ fn v0_14_3_added_show_current_git_branch(config_json: &mut JsonValue) {
 fn v0_15_0_remove_always_on_top(config_json: &mut JsonValue) {
     if let Some(rewritable) = config_json["rewritable"].as_object_mut() {
         rewritable.remove("always_on_top");
+    }
+}
+
+fn v0_15_1_update_keybinds_for_iced_12(config_json: &mut JsonValue) {
+    let update_keybind_key = |key: &mut JsonValue| {
+        // remove keys starting with Numpad
+        if key
+            .as_str()
+            .map(|s| s.starts_with("Numpad"))
+            .unwrap_or(false)
+        {
+            *key = json!("Unknown");
+        }
+
+        match key.as_str().unwrap_or_default() {
+            // Rename for better names
+            "Untitled" => *key = json!("Unknown"),
+            "AbntC2" => *key = json!("Tilde"),
+            "Snapshot" => *key = json!("PrintScreen"),
+            "Capital" => *key = json!("CapsLock"),
+            "Scroll" => *key = json!("ScrollLock"),
+            // Reduce duplication
+            "AbntC1" => *key = json!("Grave"),
+            "Ax" => *key = json!("Grave"),
+            // No Left/Right distinction anymore :'(
+            "LAlt" => *key = json!("Alt"),
+            "LControl" => *key = json!("Control"),
+            "LShift" => *key = json!("Shift"),
+            "LWin" => *key = json!("Win"),
+            "RAlt" => *key = json!("Alt"),
+            "RControl" => *key = json!("Control"),
+            "RShift" => *key = json!("Shift"),
+            "RWin" => *key = json!("Win"),
+            // Not supported at all with iced 0.12
+            "Calculator" => *key = json!("Unknown"),
+            "MyComputer" => *key = json!("Unknown"),
+            "OEM102" => *key = json!("Unknown"),
+            "Sleep" => *key = json!("Unknown"),
+            "Sysrq" => *key = json!("Unknown"),
+            "Wake" => *key = json!("Unknown"),
+            _ => {}
+        }
+    };
+
+    if let Some(rewritable) = config_json["rewritable"].as_object_mut() {
+        if let Some(app_actions_keybinds) = rewritable["app_actions_keybinds"].as_array_mut() {
+            for keybind in app_actions_keybinds {
+                update_keybind_key(&mut keybind["keybind"]["key"]);
+            }
+        }
+        if let Some(script_keybinds) = rewritable["script_keybinds"].as_array_mut() {
+            for keybind in script_keybinds {
+                update_keybind_key(&mut keybind["keybind"]["key"]);
+            }
+        }
     }
 }
