@@ -196,6 +196,8 @@ pub enum WindowMessage {
     AddScriptToExecutionWithoutRunning(config::Guid),
     RunScripts,
     StopScripts,
+    ClearEditedExecutionScripts,
+    ClearFinishedExecutionScripts,
     ClearExecutionScripts,
     RescheduleScripts,
     Tick(Instant),
@@ -446,8 +448,10 @@ impl Application for MainWindow {
                     self.execution_data.request_stop_execution();
                 }
             }
+            WindowMessage::ClearEditedExecutionScripts => clear_edited_scripts(self),
+            WindowMessage::ClearFinishedExecutionScripts => clear_execution_scripts(self),
             WindowMessage::ClearExecutionScripts => {
-                if !self.execution_data.has_started_execution() {
+                if !self.execution_data.get_edited_execution_list().is_empty() {
                     clear_edited_scripts(self)
                 } else {
                     clear_execution_scripts(self)
@@ -2213,16 +2217,6 @@ fn produce_execution_list_content<'a>(
     .align_items(Alignment::Start)
     .into();
 
-    let clear_name = if window_state.is_command_key_down {
-        format_keybind_hint(
-            visual_caches,
-            "Clear",
-            config::AppAction::ClearExecutionScripts,
-        )
-    } else {
-        "Clear".to_string()
-    };
-
     let execution_controls = column![if execution_lists.has_finished_execution() {
         if !execution_lists.is_waiting_execution_to_finish() {
             row![
@@ -2245,8 +2239,18 @@ fn produce_execution_list_content<'a>(
                 },
                 main_icon_button_string(
                     icons.themed.remove.clone(),
-                    clear_name.clone(),
-                    Some(WindowMessage::ClearExecutionScripts)
+                    if window_state.is_command_key_down
+                        && execution_lists.get_edited_execution_list().is_empty()
+                    {
+                        format_keybind_hint(
+                            visual_caches,
+                            "Clear",
+                            config::AppAction::ClearExecutionScripts,
+                        )
+                    } else {
+                        "Clear".to_string()
+                    },
+                    Some(WindowMessage::ClearFinishedExecutionScripts)
                 ),
             ]
             .align_items(Alignment::Center)
@@ -2323,8 +2327,16 @@ fn produce_execution_list_content<'a>(
             run_button,
             main_icon_button_string(
                 icons.themed.remove.clone(),
-                clear_name,
-                Some(WindowMessage::ClearExecutionScripts)
+                if window_state.is_command_key_down {
+                    format_keybind_hint(
+                        visual_caches,
+                        "Clear",
+                        config::AppAction::ClearExecutionScripts,
+                    )
+                } else {
+                    "Clear".to_string()
+                },
+                Some(WindowMessage::ClearEditedExecutionScripts)
             ),
         ]
         .align_items(Alignment::Center)
@@ -3776,9 +3788,6 @@ fn focus_filter(app: &mut MainWindow) -> Command<WindowMessage> {
 }
 
 fn clear_edited_scripts(app: &mut MainWindow) {
-    if app.execution_data.has_started_execution() {
-        return;
-    }
     app.execution_data.clear_edited_scripts();
     clean_script_selection(&mut app.window_state.cursor_script);
 }
