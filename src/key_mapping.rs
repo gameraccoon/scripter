@@ -16,7 +16,6 @@ use smol_str::SmolStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CustomKeyCode {
-
     Key1,
     /// The '2' key over the letters.
     Key2,
@@ -570,7 +569,7 @@ pub fn get_custom_key_code_from_iced_key_code(key: Key) -> CustomKeyCode {
             _ => {
                 println!("Unknown char: {}", char);
                 CustomKeyCode::Unknown
-            },
+            }
         },
         Key::Named(named) => match named {
             Named::F1 => CustomKeyCode::F1,

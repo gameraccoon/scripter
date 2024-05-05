@@ -49,8 +49,8 @@ impl<T: Clone> CustomKeybinds<T> {
 
 #[cfg(test)]
 mod tests {
-    use iced::keyboard::key::Named;
     use super::*;
+    use iced::keyboard::key::Named;
 
     #[test]
     fn custom_keybinds_can_be_added_and_removed() {
@@ -124,12 +124,18 @@ mod tests {
             keybinds.has_keybind(Key::Named(Named::ArrowLeft), Modifiers::empty()),
             true
         );
-        assert_eq!(keybinds.has_keybind(Key::Named(Named::ArrowLeft), Modifiers::SHIFT), false);
+        assert_eq!(
+            keybinds.has_keybind(Key::Named(Named::ArrowLeft), Modifiers::SHIFT),
+            false
+        );
         assert_eq!(
             keybinds.get_keybind(Key::Named(Named::ArrowLeft), Modifiers::empty()),
             Some(&"Left")
         );
-        assert_eq!(keybinds.get_keybind(Key::Named(Named::ArrowLeft), Modifiers::SHIFT), None);
+        assert_eq!(
+            keybinds.get_keybind(Key::Named(Named::ArrowLeft), Modifiers::SHIFT),
+            None
+        );
 
         keybinds.add_keybind(Key::Named(Named::ArrowLeft), Modifiers::SHIFT, "Right");
 
@@ -137,7 +143,10 @@ mod tests {
             keybinds.has_keybind(Key::Named(Named::ArrowLeft), Modifiers::empty()),
             true
         );
-        assert_eq!(keybinds.has_keybind(Key::Named(Named::ArrowLeft), Modifiers::SHIFT), true);
+        assert_eq!(
+            keybinds.has_keybind(Key::Named(Named::ArrowLeft), Modifiers::SHIFT),
+            true
+        );
         assert_eq!(
             keybinds.get_keybind(Key::Named(Named::ArrowLeft), Modifiers::empty()),
             Some(&"Left")
