@@ -7,6 +7,7 @@ use iced::keyboard::key::Named;
 use iced::keyboard::Key;
 use iced::theme::{self, Theme};
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
+use iced::widget::text::LineHeight;
 use iced::widget::{
     button, checkbox, column, container, horizontal_rule, horizontal_space, image, image::Handle,
     pick_list, responsive, row, scrollable, text, text_input, tooltip, Button, Column, Space,
@@ -76,7 +77,7 @@ impl std::fmt::Display for config::ConfigUpdateBehavior {
     }
 }
 
-// these should be static not just const
+// these should be const not just static
 static FILTER_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 static ARGUMENTS_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 
@@ -1574,13 +1575,16 @@ fn main_icon_button(
     label: &str,
     message: Option<WindowMessage>,
 ) -> Button<WindowMessage> {
-    let new_button = button(row![
-        image(icon_handle)
-            .width(Length::Fixed(16.0))
-            .height(Length::Fixed(16.0)),
-        Space::with_width(4),
-        text(label).width(Length::Shrink).size(16),
-    ])
+    let new_button = button(
+        row![
+            image(icon_handle)
+                .width(Length::Fixed(16.0))
+                .height(Length::Fixed(16.0)),
+            Space::with_width(4),
+            text(label).width(Length::Shrink).size(16),
+        ]
+        .align_items(Alignment::Center),
+    )
     .width(Length::Shrink)
     .padding(8);
 
@@ -1596,13 +1600,16 @@ fn main_icon_button_string(
     label: String,
     message: Option<WindowMessage>,
 ) -> Button<'static, WindowMessage> {
-    let new_button = button(row![
-        image(icon_handle)
-            .width(Length::Fixed(16.0))
-            .height(Length::Fixed(16.0)),
-        Space::with_width(4),
-        text(label.to_string()).width(Length::Shrink).size(16),
-    ])
+    let new_button = button(
+        row![
+            image(icon_handle)
+                .width(Length::Fixed(16.0))
+                .height(Length::Fixed(16.0)),
+            Space::with_width(4),
+            text(label.to_string()).width(Length::Shrink).size(16),
+        ]
+        .align_items(Alignment::Center),
+    )
     .width(Length::Shrink)
     .padding(8);
 
@@ -1637,10 +1644,12 @@ fn edit_mode_button<'a>(
                 "Edit",
                 config::AppAction::TrySwitchWindowEditMode
             ))
-            .size(12),
+            .size(12)
+            .line_height(LineHeight::Absolute(iced::Pixels(12.0))),
             Space::with_width(4),
             icon
         ]
+        .align_items(Alignment::Center)
     } else {
         row![icon]
     })
@@ -3110,10 +3119,14 @@ fn view_controls<'a>(
                     WindowMessage::Maximize(pane, window_size),
                 )
             };
-            button(text(content).size(14))
-                .style(theme::Button::Secondary)
-                .padding(3)
-                .on_press(message)
+            button(
+                text(content)
+                    .size(14)
+                    .line_height(LineHeight::Absolute(iced::Pixels(14.0))),
+            )
+            .style(theme::Button::Secondary)
+            .padding(3)
+            .on_press(message)
         };
 
         row = row.push(toggle);
