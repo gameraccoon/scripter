@@ -4077,13 +4077,14 @@ fn maximize_pane(
     if !get_rewritable_config_opt(&app.app_config, &app.edit_data.window_edit_data).keep_window_size
     {
         app.window_state.full_window_size = window_size.clone();
-        let size = app
+        let regions = app
             .panes
             .layout()
-            .pane_regions(1.0, Size::new(window_size.width, window_size.height))
-            .get(&pane)
-            .unwrap() // tried to get an non-existing pane, this should never happen, so panic
-            .clone();
+            .pane_regions(1.0, Size::new(window_size.width, window_size.height));
+        let size = regions.get(&pane);
+        let Some(size) = size else {
+            return Command::none();
+        };
 
         let scheduled_elements_count =
             app.execution_data.get_scheduled_execution_list().len() as u32;
