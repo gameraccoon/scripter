@@ -416,8 +416,9 @@ impl Application for MainWindow {
                 if self.window_state.has_maximized_pane {
                     return restore_window(self);
                 } else {
-                    if self.execution_data.has_started_execution()
-                        || !self.execution_data.get_edited_execution_list().is_empty()
+                    if (self.execution_data.has_started_execution()
+                        || !self.execution_data.get_edited_execution_list().is_empty())
+                        && self.edit_data.window_edit_data.is_none()
                     {
                         return maximize_pane(
                             self,
@@ -3083,7 +3084,8 @@ fn view_controls<'a>(
         && (is_maximized
             || (*variant == PaneVariant::ExecutionList
                 && (execution_lists.has_started_execution()
-                    || !execution_lists.get_edited_execution_list().is_empty())))
+                    || !execution_lists.get_edited_execution_list().is_empty())
+                && edit_data.window_edit_data.is_none()))
     {
         let toggle = {
             let (content, message) = if is_maximized {
