@@ -38,8 +38,8 @@ use crate::ui_icons;
 
 const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
 const ONE_TITLE_LINE_HEIGHT: f32 = 16.0;
-const EMPTY_EXECUTION_LIST_HEIGHT: f32 = 150.0;
-const EXTRA_EDIT_CONTENT_HEIGHT: f32 = 40.0;
+const EMPTY_EXECUTION_LIST_HEIGHT: f32 = 100.0;
+const EDIT_BUTTONS_HEIGHT: f32 = 50.0;
 static EMPTY_STRING: String = String::new();
 
 const PATH_TYPE_PICK_LIST: &[config::PathType] = &[
@@ -1897,31 +1897,21 @@ fn produce_execution_list_content<'a>(
     rewritable_config: &config::RewritableConfig,
     window_state: &WindowState,
 ) -> Column<'a, WindowMessage> {
-    let custom_title: String = if let Some(custom_title) = custom_title {
-        custom_title.to_string()
-    } else {
-        "".to_string()
-    };
-
     let icons = &visual_caches.icons;
-    let git_branch_name = if let Some(git_branch_fetcher) = &visual_caches.git_branch_fetcher {
-        git_branch_fetcher.get_current_branch_ref()
-    } else {
-        &EMPTY_STRING
-    };
 
     let title_widget = if visual_caches.is_custom_title_editing {
-        row![
-            text_input("Write a note for this execution here", &custom_title)
-                .on_input(WindowMessage::EditExecutionListTitle)
-                .on_submit(WindowMessage::SetExecutionListTitleEditing(false))
-                .size(16)
-                .width(Length::Fill),
-        ]
+        row![text_input(
+            "Write a note for this execution here",
+            &custom_title.as_ref().unwrap_or(&EMPTY_STRING)
+        )
+        .on_input(WindowMessage::EditExecutionListTitle)
+        .on_submit(WindowMessage::SetExecutionListTitleEditing(false))
+        .size(16)
+        .width(Length::Fill),]
     } else if rewritable_config.enable_title_editing && edit_data.window_edit_data.is_none() {
         row![
             horizontal_space(),
-            text(custom_title)
+            text(custom_title.as_ref().unwrap_or(&EMPTY_STRING))
                 .size(16)
                 .horizontal_alignment(alignment::Horizontal::Center)
                 .width(Length::Shrink),
@@ -1939,25 +1929,41 @@ fn produce_execution_list_content<'a>(
             horizontal_space(),
         ]
         .align_items(Alignment::Center)
+    } else if let Some(custom_title) = custom_title {
+        if !custom_title.is_empty() {
+            row![text(custom_title)
+                .size(16)
+                .horizontal_alignment(alignment::Horizontal::Center)
+                .width(Length::Fill),]
+            .align_items(Alignment::Center)
+        } else {
+            row![]
+        }
     } else {
-        row![text(custom_title)
-            .size(16)
-            .horizontal_alignment(alignment::Horizontal::Center)
-            .width(Length::Fill),]
-        .align_items(Alignment::Center)
+        row![]
     };
 
-    let title = column![
-        text(path_caches.work_path.to_str().unwrap_or_default())
-            .size(16)
-            .horizontal_alignment(alignment::Horizontal::Center)
-            .width(Length::Fill),
-        text(git_branch_name)
-            .size(16)
-            .horizontal_alignment(alignment::Horizontal::Center)
-            .width(Length::Fill),
-        title_widget,
-    ];
+    let title = if let Some(git_branch_fetcher) = &visual_caches.git_branch_fetcher {
+        column![
+            text(path_caches.work_path.to_str().unwrap_or_default())
+                .size(16)
+                .horizontal_alignment(alignment::Horizontal::Center)
+                .width(Length::Fill),
+            text(git_branch_fetcher.get_current_branch_ref())
+                .size(16)
+                .horizontal_alignment(alignment::Horizontal::Center)
+                .width(Length::Fill),
+            title_widget,
+        ]
+    } else {
+        column![
+            text(path_caches.work_path.to_str().unwrap_or_default())
+                .size(16)
+                .horizontal_alignment(alignment::Horizontal::Center)
+                .width(Length::Fill),
+            title_widget,
+        ]
+    };
 
     let scheduled_data: Element<_> = column(
         execution_lists
@@ -4076,8 +4082,7 @@ fn maximize_pane(
     app.window_state.pane_focus = Some(pane);
     app.panes.maximize(pane);
     app.window_state.has_maximized_pane = true;
-    if !get_rewritable_config_opt(&app.app_config, &app.edit_data.window_edit_data).keep_window_size
-    {
+    if !get_current_rewritable_config(&app.app_config).keep_window_size {
         app.window_state.full_window_size = window_size.clone();
         let regions = app
             .panes
@@ -4091,11 +4096,19 @@ fn maximize_pane(
         let scheduled_elements_count =
             app.execution_data.get_scheduled_execution_list().len() as u32;
         let edited_elements_count = app.execution_data.get_edited_execution_list().len() as u32;
-        let mut title_lines = if let Some(custom_title) = app.app_config.custom_title.as_ref() {
+        let mut title_lines = if app.visual_caches.is_custom_title_editing {
+            // for now the edit field is only one line high
+            1
+        } else if let Some(custom_title) = app.app_config.custom_title.as_ref() {
             custom_title.lines().count() as u32
         } else {
             0
         };
+
+        // if title editing enabled, we can't be less than 1 line
+        if title_lines == 0 && get_current_rewritable_config(&app.app_config).enable_title_editing {
+            title_lines = 1;
+        }
 
         if app.visual_caches.git_branch_fetcher.is_some() {
             title_lines += 1;
@@ -4108,11 +4121,13 @@ fn maximize_pane(
                 height: f32::min(
                     size.height,
                     EMPTY_EXECUTION_LIST_HEIGHT
+                        + EDIT_BUTTONS_HEIGHT
                         + edited_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
                         + scheduled_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
                         + title_lines as f32 * ONE_TITLE_LINE_HEIGHT
-                        + if edited_elements_count > 0 {
-                            EXTRA_EDIT_CONTENT_HEIGHT
+                        + if edited_elements_count > 0 && scheduled_elements_count > 0 {
+                            // if we show two rows of edit buttons
+                            EDIT_BUTTONS_HEIGHT
                         } else {
                             0.0
                         },
