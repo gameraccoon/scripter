@@ -404,6 +404,12 @@ impl Application for MainWindow {
                 {
                     self.panes.drop(pane, target);
                 }
+
+                self.pane_by_pane_type = HashMap::new();
+                for pane in self.panes.panes.iter() {
+                    self.pane_by_pane_type
+                        .insert(pane.1.variant.clone(), *pane.0);
+                }
             }
             WindowMessage::Dragged(pane_grid::DragEvent::Canceled { pane: _ }) => {}
             WindowMessage::Maximize(pane, window_size) => {
