@@ -92,6 +92,13 @@ pub struct VisualCaches {
     pane_drag_start_time: Instant,
 }
 
+pub struct ScriptListCacheRecord {
+    name: String,
+    full_icon_path: Option<PathBuf>,
+    is_hidden: bool,
+    original_script_uid: config::Guid,
+}
+
 pub struct MainWindow {
     panes: pane_grid::State<AppPane>,
     pane_by_pane_type: HashMap<PaneVariant, pane_grid::Pane>,
@@ -102,6 +109,7 @@ pub struct MainWindow {
     pub edit_data: EditData,
     window_state: WindowState,
     pub keybinds: custom_keybinds::CustomKeybinds<keybind_editing::KeybindAssociatedData>,
+    pub displayed_configs_list_cache: Vec<ScriptListCacheRecord>,
 }
 
 #[derive(Debug, Clone)]
@@ -341,10 +349,11 @@ impl Application for MainWindow {
                 has_maximized_pane: false,
             },
             keybinds: custom_keybinds::CustomKeybinds::new(),
+            displayed_configs_list_cache: Vec::new(),
         };
 
         update_theme_icons(&mut main_window);
-        update_config_cache(&mut main_window.app_config, &main_window.edit_data);
+        update_config_cache(&mut main_window);
         keybind_editing::update_keybinds(&mut main_window);
 
         return (main_window, Command::none());
@@ -527,7 +536,7 @@ impl Application for MainWindow {
                     script.idx = script_id.idx + 1;
                     script.script_type = script_id.script_type;
                 }
-                update_config_cache(&mut self.app_config, &self.edit_data);
+                update_config_cache(self);
             }
             WindowMessage::RemoveScript(script_id) => remove_script(self, &script_id),
             WindowMessage::AddScriptToConfig => {
@@ -548,7 +557,7 @@ impl Application for MainWindow {
                 };
                 add_script_to_config(self, config::ScriptDefinition::Original(script));
 
-                update_config_cache(&mut self.app_config, &self.edit_data);
+                update_config_cache(self);
             }
             WindowMessage::MoveExecutionScriptUp(script_idx) => {
                 self.execution_data
@@ -568,7 +577,7 @@ impl Application for MainWindow {
                 {
                     preset.name = new_name;
                     self.edit_data.is_dirty = true;
-                    update_config_cache(&mut self.app_config, &self.edit_data);
+                    update_config_cache(self);
                 } else {
                     apply_script_edit(self, move |script| script.name = new_name);
                 }
@@ -593,7 +602,7 @@ impl Application for MainWindow {
                 {
                     preset.icon.path = new_icon_path;
                     self.edit_data.is_dirty = true;
-                    update_config_cache(&mut self.app_config, &self.edit_data);
+                    update_config_cache(self);
                 } else {
                     apply_script_edit(self, move |script| script.icon.path = new_icon_path);
                 }
@@ -604,7 +613,7 @@ impl Application for MainWindow {
                 {
                     preset.icon.path_type = new_path_type;
                     self.edit_data.is_dirty = true;
-                    update_config_cache(&mut self.app_config, &self.edit_data);
+                    update_config_cache(self);
                 } else {
                     apply_script_edit(self, move |script| {
                         script.icon.path_type = new_path_type;
@@ -661,7 +670,7 @@ impl Application for MainWindow {
                 if has_saved {
                     self.app_config = config::read_config();
                     self.edit_data.is_dirty = false;
-                    update_config_cache(&mut self.app_config, &self.edit_data);
+                    update_config_cache(self);
                     keybind_editing::update_keybinds(self);
                     exit_window_edit_mode(self);
                 }
@@ -683,7 +692,7 @@ impl Application for MainWindow {
                 apply_theme(self);
                 self.edit_data.is_dirty = false;
                 clean_script_selection(&mut self.window_state.cursor_script);
-                update_config_cache(&mut self.app_config, &self.edit_data);
+                update_config_cache(self);
                 keybind_editing::update_keybinds(self);
                 exit_window_edit_mode(self);
             }
@@ -884,7 +893,7 @@ impl Application for MainWindow {
                 clean_script_selection(&mut self.window_state.cursor_script);
                 switch_config_edit_mode(self, ConfigEditType::Local);
                 apply_theme(self);
-                update_config_cache(&mut self.app_config, &self.edit_data);
+                update_config_cache(self);
             }
             WindowMessage::ToggleScriptHidden(is_hidden) => {
                 let Some(script_id) = &mut self.window_state.cursor_script else {
@@ -904,7 +913,7 @@ impl Application for MainWindow {
                         _ => {}
                     }
                 }
-                update_config_cache(&mut self.app_config, &self.edit_data);
+                update_config_cache(self);
             }
             WindowMessage::CreateCopyOfSharedScript(script_id) => {
                 let script = if let Some(config) = &self.app_config.local_config_body {
@@ -950,7 +959,7 @@ impl Application for MainWindow {
                     select_edited_script(self, script_id.idx + 1);
                     self.edit_data.is_dirty = true;
                 }
-                update_config_cache(&mut self.app_config, &self.edit_data);
+                update_config_cache(self);
             }
             WindowMessage::MoveToShared(script_id) => {
                 if let Some(config) = &mut self.app_config.local_config_body {
@@ -1095,7 +1104,7 @@ impl Application for MainWindow {
             }
             WindowMessage::ScriptFilterChanged(new_filter_value) => {
                 self.edit_data.script_filter = new_filter_value;
-                update_config_cache(&mut self.app_config, &self.edit_data);
+                update_config_cache(self);
                 clean_script_selection(&mut self.window_state.cursor_script);
             }
             WindowMessage::RequestCloseApp => {
@@ -1200,7 +1209,7 @@ impl Application for MainWindow {
 
                 if let Some(focus) = self.window_state.pane_focus {
                     if &self.panes.panes[&focus].variant == &PaneVariant::ScriptList {
-                        let scripts = &self.app_config.displayed_configs_list_cache;
+                        let scripts = &self.displayed_configs_list_cache;
 
                         if let Some(script) = scripts.get(cursor_script_id) {
                             let is_added = add_script_to_execution(
@@ -1329,7 +1338,7 @@ impl Application for MainWindow {
                 switch_config_edit_mode(self, ConfigEditType::Shared);
                 select_edited_script(self, original_script_idx);
 
-                update_config_cache(&mut self.app_config, &self.edit_data);
+                update_config_cache(self);
             }
             WindowMessage::ProcessKeyPress(iced_key, iced_modifiers) => {
                 if keybind_editing::process_key_press(self, iced_key.clone(), iced_modifiers) {
@@ -1431,6 +1440,7 @@ impl Application for MainWindow {
                         &self.execution_data,
                         variant,
                         &self.theme,
+                        &self.displayed_configs_list_cache,
                         &self.app_config.paths,
                         &self.visual_caches,
                         &self.app_config,
@@ -1669,6 +1679,7 @@ fn edit_mode_button<'a>(
 fn produce_script_list_content<'a>(
     config: &config::AppConfig,
     rewritable_config: &config::RewritableConfig,
+    displayed_configs_list_cache: &Vec<ScriptListCacheRecord>,
     edit_data: &EditData,
     visual_caches: &VisualCaches,
     window_state: &WindowState,
@@ -1679,8 +1690,7 @@ fn produce_script_list_content<'a>(
     }
 
     let data: Element<_> = column(
-        config
-            .displayed_configs_list_cache
+        displayed_configs_list_cache
             .iter()
             .enumerate()
             .map(|(i, script)| {
@@ -3005,6 +3015,7 @@ fn view_content<'a>(
     execution_lists: &execution_lists::ExecutionLists,
     variant: &PaneVariant,
     theme: &Theme,
+    displayed_configs_list_cache: &Vec<ScriptListCacheRecord>,
     paths: &config::PathCaches,
     visual_caches: &VisualCaches,
     config: &config::AppConfig,
@@ -3017,6 +3028,7 @@ fn view_content<'a>(
         PaneVariant::ScriptList => produce_script_list_content(
             config,
             rewritable_config,
+            displayed_configs_list_cache,
             edit_data,
             &visual_caches,
             window_state,
@@ -3171,7 +3183,7 @@ fn apply_script_edit(
                             config::ScriptDefinition::Original(script) => {
                                 edit_fn(script);
                                 app.edit_data.is_dirty = true;
-                                update_config_cache(&mut app.app_config, &app.edit_data);
+                                update_config_cache(app);
                             }
                             _ => {}
                         }
@@ -3181,7 +3193,7 @@ fn apply_script_edit(
                     config::ScriptDefinition::Original(script) => {
                         edit_fn(script);
                         app.edit_data.is_dirty = true;
-                        update_config_cache(&mut app.app_config, &app.edit_data);
+                        update_config_cache(app);
                     }
                     _ => {}
                 },
@@ -3380,19 +3392,18 @@ fn add_script_to_shared_config(
 }
 
 fn add_script_to_local_config(
-    app_config: &mut config::AppConfig,
-    edit_data: &EditData,
+    app: &mut MainWindow,
     script: config::ScriptDefinition,
 ) -> Option<usize> {
-    if let Some(config) = &mut app_config.local_config_body {
+    if let Some(config) = &mut app.app_config.local_config_body {
         config.script_definitions.push(script);
     } else {
         return None;
     }
 
-    update_config_cache(app_config, edit_data);
+    update_config_cache(app);
 
-    return if let Some(config) = &mut app_config.local_config_body {
+    return if let Some(config) = &mut app.app_config.local_config_body {
         Some(config.script_definitions.len() - 1)
     } else {
         None
@@ -3455,17 +3466,17 @@ fn make_script_copy(script: config::ScriptDefinition) -> config::ScriptDefinitio
     }
 }
 
-fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData) {
-    let is_looking_at_local_config = if let Some(window_edit_data) = &edit_data.window_edit_data {
+fn update_config_cache(app: &mut MainWindow) {
+    let is_looking_at_local_config = if let Some(window_edit_data) = &app.edit_data.window_edit_data {
         window_edit_data.edit_type == ConfigEditType::Local
     } else {
-        app_config.local_config_body.is_some()
+        app.app_config.local_config_body.is_some()
     };
 
-    let binding = edit_data.script_filter.to_lowercase();
+    let binding = app.edit_data.script_filter.to_lowercase();
     let search_words = binding.split_whitespace().collect::<Vec<&str>>();
 
-    let is_full_list = edit_data.window_edit_data.is_some();
+    let is_full_list = app.edit_data.window_edit_data.is_some();
 
     let is_script_filtered_out = |name: &str| -> bool {
         !search_words.is_empty() && {
@@ -3481,11 +3492,11 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
         }
     };
 
-    let result_list = &mut app_config.displayed_configs_list_cache;
-    let paths = &app_config.paths;
+    let result_list = &mut app.displayed_configs_list_cache;
+    let paths = &app.app_config.paths;
     if is_looking_at_local_config {
-        let local_config = app_config.local_config_body.as_ref().unwrap();
-        let shared_script_definitions = &app_config.script_definitions;
+        let local_config = app.app_config.local_config_body.as_ref().unwrap();
+        let shared_script_definitions = &app.app_config.script_definitions;
 
         result_list.clear();
         for script_definition in &local_config.script_definitions {
@@ -3522,7 +3533,7 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
                             let is_script_hidden =
                                 reference.is_hidden || is_script_filtered_out(&name);
                             if is_full_list || !is_script_hidden {
-                                result_list.push(config::ScriptListCacheRecord {
+                                result_list.push(ScriptListCacheRecord {
                                     name,
                                     full_icon_path: config::get_full_optional_path(paths, &icon),
                                     is_hidden: is_script_hidden,
@@ -3541,7 +3552,7 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
                 config::ScriptDefinition::Original(script) => {
                     let is_script_hidden = is_script_filtered_out(&script.name);
                     if is_full_list || !is_script_hidden {
-                        result_list.push(config::ScriptListCacheRecord {
+                        result_list.push(ScriptListCacheRecord {
                             name: script.name.clone(),
                             full_icon_path: config::get_full_optional_path(paths, &script.icon),
                             is_hidden: is_script_hidden,
@@ -3553,7 +3564,7 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
                     let is_script_hidden = is_script_filtered_out(&preset.name);
 
                     if is_full_list || !is_script_hidden {
-                        result_list.push(config::ScriptListCacheRecord {
+                        result_list.push(ScriptListCacheRecord {
                             name: preset.name.clone(),
                             full_icon_path: config::get_full_optional_path(paths, &preset.icon),
                             is_hidden: is_script_hidden,
@@ -3564,7 +3575,7 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
             }
         }
     } else {
-        let script_definitions = &app_config.script_definitions;
+        let script_definitions = &app.app_config.script_definitions;
 
         result_list.clear();
         for script_definition in script_definitions {
@@ -3573,7 +3584,7 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
                 config::ScriptDefinition::Original(script) => {
                     let is_script_hidden = is_script_filtered_out(&script.name);
                     if is_full_list || !is_script_hidden {
-                        result_list.push(config::ScriptListCacheRecord {
+                        result_list.push(ScriptListCacheRecord {
                             name: script.name.clone(),
                             full_icon_path: config::get_full_optional_path(paths, &script.icon),
                             is_hidden: is_script_hidden,
@@ -3584,7 +3595,7 @@ fn update_config_cache(app_config: &mut config::AppConfig, edit_data: &EditData)
                 config::ScriptDefinition::Preset(preset) => {
                     let is_script_hidden = is_script_filtered_out(&preset.name);
                     if is_full_list || !is_script_hidden {
-                        result_list.push(config::ScriptListCacheRecord {
+                        result_list.push(ScriptListCacheRecord {
                             name: preset.name.clone(),
                             full_icon_path: config::get_full_optional_path(paths, &preset.icon),
                             is_hidden: is_script_hidden,
@@ -3648,7 +3659,7 @@ fn add_script_to_config(app: &mut MainWindow, script: config::ScriptDefinition) 
                 Some(add_script_to_shared_config(&mut app.app_config, script))
             }
             ConfigEditType::Local => {
-                add_script_to_local_config(&mut app.app_config, &app.edit_data, script)
+                add_script_to_local_config(app, script)
             }
         };
 
@@ -3697,7 +3708,7 @@ fn enter_window_edit_mode(app: &mut MainWindow) {
     ));
     app.edit_data.script_filter = String::new();
     clean_script_selection(&mut app.window_state.cursor_script);
-    update_config_cache(&mut app.app_config, &app.edit_data);
+    update_config_cache(app);
     app.visual_caches.is_custom_title_editing = false;
 }
 
@@ -3705,7 +3716,7 @@ fn exit_window_edit_mode(app: &mut MainWindow) {
     app.edit_data.window_edit_data = None;
     clean_script_selection(&mut app.window_state.cursor_script);
     apply_theme(app);
-    update_config_cache(&mut app.app_config, &app.edit_data);
+    update_config_cache(app);
     update_git_branch_visibility(app);
 }
 
@@ -3730,7 +3741,7 @@ fn run_scheduled_scripts(app: &mut MainWindow) {
     app.execution_data.start_execution(&app.app_config);
 
     app.edit_data.script_filter = String::new();
-    update_config_cache(&mut app.app_config, &app.edit_data);
+    update_config_cache(app);
 }
 
 fn add_script_to_execution(
@@ -3889,7 +3900,7 @@ fn move_config_script_up(app: &mut MainWindow, index: usize) {
         }
     }
 
-    update_config_cache(&mut app.app_config, &app.edit_data);
+    update_config_cache(app);
 }
 
 fn move_config_script_down(app: &mut MainWindow, index: usize) {
@@ -3914,13 +3925,13 @@ fn move_config_script_down(app: &mut MainWindow, index: usize) {
 
     if let Some(edited_script) = &app.window_state.cursor_script {
         if edited_script.idx == index
-            && index + 1 < app.app_config.displayed_configs_list_cache.len()
+            && index + 1 < app.displayed_configs_list_cache.len()
         {
             select_edited_script(app, index + 1);
         }
     }
 
-    update_config_cache(&mut app.app_config, &app.edit_data);
+    update_config_cache(app);
 }
 
 fn move_cursor(app: &mut MainWindow, is_up: bool) {
@@ -3938,7 +3949,7 @@ fn move_cursor(app: &mut MainWindow, is_up: bool) {
         };
 
         let scripts_count = match focused_pane {
-            PaneVariant::ScriptList => app.app_config.displayed_configs_list_cache.len(),
+            PaneVariant::ScriptList => app.displayed_configs_list_cache.len(),
             PaneVariant::ExecutionList => app.execution_data.get_edited_execution_list().len(),
             _ => unreachable!(),
         };
@@ -4067,7 +4078,7 @@ fn remove_script(app: &mut MainWindow, script_id: &EditScriptId) {
             }
 
             config::populate_shared_scripts_from_config(&mut app.app_config);
-            update_config_cache(&mut app.app_config, &app.edit_data);
+            update_config_cache(app);
         }
         EditScriptType::ExecutionList => {
             app.execution_data.remove_script(script_id.idx);
@@ -4239,7 +4250,7 @@ fn switch_to_editing_shared_config(app: &mut MainWindow) {
     clean_script_selection(&mut app.window_state.cursor_script);
     switch_config_edit_mode(app, ConfigEditType::Shared);
     apply_theme(app);
-    update_config_cache(&mut app.app_config, &app.edit_data);
+    update_config_cache(app);
 }
 
 fn get_config_error_content<'a>(

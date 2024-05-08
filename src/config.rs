@@ -106,16 +106,6 @@ pub struct AppConfig {
     pub local_config_body: Option<Box<LocalConfig>>,
     #[serde(skip)]
     pub arguments_read_error: Option<String>,
-    #[serde(skip)]
-    pub displayed_configs_list_cache: Vec<ScriptListCacheRecord>,
-}
-
-#[derive(Clone, Deserialize, Serialize)]
-pub struct ScriptListCacheRecord {
-    pub name: String,
-    pub full_icon_path: Option<PathBuf>,
-    pub is_hidden: bool,
-    pub original_script_uid: Guid,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -394,7 +384,6 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
         config_read_error: None,
         local_config_body: None,
         arguments_read_error: app_arguments.read_error,
-        displayed_configs_list_cache: Vec::new(),
     }
 }
 
