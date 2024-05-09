@@ -3467,7 +3467,8 @@ fn make_script_copy(script: config::ScriptDefinition) -> config::ScriptDefinitio
 }
 
 fn update_config_cache(app: &mut MainWindow) {
-    let is_looking_at_local_config = if let Some(window_edit_data) = &app.edit_data.window_edit_data {
+    let is_looking_at_local_config = if let Some(window_edit_data) = &app.edit_data.window_edit_data
+    {
         window_edit_data.edit_type == ConfigEditType::Local
     } else {
         app.app_config.local_config_body.is_some()
@@ -3658,9 +3659,7 @@ fn add_script_to_config(app: &mut MainWindow, script: config::ScriptDefinition) 
             ConfigEditType::Shared => {
                 Some(add_script_to_shared_config(&mut app.app_config, script))
             }
-            ConfigEditType::Local => {
-                add_script_to_local_config(app, script)
-            }
+            ConfigEditType::Local => add_script_to_local_config(app, script),
         };
 
         app.edit_data
@@ -3924,9 +3923,7 @@ fn move_config_script_down(app: &mut MainWindow, index: usize) {
     }
 
     if let Some(edited_script) = &app.window_state.cursor_script {
-        if edited_script.idx == index
-            && index + 1 < app.displayed_configs_list_cache.len()
-        {
+        if edited_script.idx == index && index + 1 < app.displayed_configs_list_cache.len() {
             select_edited_script(app, index + 1);
         }
     }
