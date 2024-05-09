@@ -88,7 +88,7 @@ pub struct VisualCaches {
     recent_logs: Vec<String>,
     icons: ui_icons::IconCaches,
     pub keybind_hints: HashMap<keybind_editing::KeybindAssociatedData, String>,
-    git_branch_fetcher: Option<git_support::GitCurrentBranchFetcher>,
+    git_branch_requester: Option<git_support::GitCurrentBranchRequester>,
     pane_drag_start_time: Instant,
 }
 
@@ -329,8 +329,8 @@ impl Application for MainWindow {
                 recent_logs: Vec::new(),
                 icons: ui_icons::IconCaches::new(),
                 keybind_hints: HashMap::new(),
-                git_branch_fetcher: if show_current_git_branch {
-                    Some(git_support::GitCurrentBranchFetcher::new())
+                git_branch_requester: if show_current_git_branch {
+                    Some(git_support::GitCurrentBranchRequester::new())
                 } else {
                     None
                 },
@@ -495,8 +495,8 @@ impl Application for MainWindow {
                     }
                 }
 
-                if let Some(git_branch_fetcher) = &mut self.visual_caches.git_branch_fetcher {
-                    git_branch_fetcher.update();
+                if let Some(git_branch_requester) = &mut self.visual_caches.git_branch_requester {
+                    git_branch_requester.update();
                 }
             }
             WindowMessage::OpenScriptEditing(script_idx) => {
@@ -1959,13 +1959,13 @@ fn produce_execution_list_content<'a>(
         row![]
     };
 
-    let title = if let Some(git_branch_fetcher) = &visual_caches.git_branch_fetcher {
+    let title = if let Some(git_branch_requester) = &visual_caches.git_branch_requester {
         column![
             text(path_caches.work_path.to_str().unwrap_or_default())
                 .size(16)
                 .horizontal_alignment(alignment::Horizontal::Center)
                 .width(Length::Fill),
-            text(git_branch_fetcher.get_current_branch_ref())
+            text(git_branch_requester.get_current_branch_ref())
                 .size(16)
                 .horizontal_alignment(alignment::Horizontal::Center)
                 .width(Length::Fill),
@@ -4127,7 +4127,7 @@ fn maximize_pane(
             title_lines = 1;
         }
 
-        if app.visual_caches.git_branch_fetcher.is_some() {
+        if app.visual_caches.git_branch_requester.is_some() {
             title_lines += 1;
         }
 
@@ -4454,12 +4454,12 @@ fn format_keybind_hint(caches: &VisualCaches, hint: &str, action: config::AppAct
 
 fn update_git_branch_visibility(app: &mut MainWindow) {
     if get_current_rewritable_config(&app.app_config).show_current_git_branch {
-        if app.visual_caches.git_branch_fetcher.is_none() {
-            app.visual_caches.git_branch_fetcher =
-                Some(git_support::GitCurrentBranchFetcher::new());
+        if app.visual_caches.git_branch_requester.is_none() {
+            app.visual_caches.git_branch_requester =
+                Some(git_support::GitCurrentBranchRequester::new());
         }
     } else {
-        app.visual_caches.git_branch_fetcher = None;
+        app.visual_caches.git_branch_requester = None;
     }
 }
 
