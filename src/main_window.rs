@@ -37,7 +37,7 @@ use crate::style;
 use crate::ui_icons;
 
 const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
-const ONE_TITLE_LINE_HEIGHT: f32 = 16.0;
+const ONE_TITLE_LINE_HEIGHT: f32 = 18.0;
 const EMPTY_EXECUTION_LIST_HEIGHT: f32 = 100.0;
 const EDIT_BUTTONS_HEIGHT: f32 = 50.0;
 static EMPTY_STRING: String = String::new();
