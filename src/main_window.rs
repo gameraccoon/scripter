@@ -1637,11 +1637,16 @@ fn main_icon_button_string(
     }
 }
 
-fn main_button(label: &str, message: WindowMessage) -> Button<WindowMessage> {
-    button(row![text(label).width(Length::Shrink).size(16),])
+fn main_button(label: &str, message: Option<WindowMessage>) -> Button<WindowMessage> {
+    let new_button = button(row![text(label).width(Length::Shrink).size(16)])
         .width(Length::Shrink)
-        .padding(8)
-        .on_press(message)
+        .padding(8);
+
+    if let Some(message) = message {
+        new_button.on_press(message)
+    } else {
+        new_button
+    }
 }
 
 fn edit_mode_button<'a>(
@@ -2322,13 +2327,16 @@ fn produce_execution_list_content<'a>(
     .align_items(Alignment::Center);
 
     let edit_controls = column![if edit_data.window_edit_data.is_some() {
-        if !execution_lists.get_edited_execution_list().is_empty() {
-            row![main_button("Save as preset", WindowMessage::SaveAsPreset)]
-                .align_items(Alignment::Center)
-                .spacing(5)
-        } else {
-            row![]
-        }
+        row![main_button(
+            "Save as preset",
+            if !execution_lists.get_edited_execution_list().is_empty() {
+                Some(WindowMessage::SaveAsPreset)
+            } else {
+                None
+            }
+        )]
+        .align_items(Alignment::Center)
+        .spacing(5)
     } else if !execution_lists.get_edited_execution_list().is_empty() {
         let has_scripts_missing_arguments = execution_lists
             .get_edited_execution_list()
@@ -2402,7 +2410,9 @@ fn produce_execution_list_content<'a>(
             } else {
                 column![]
             },
-            if !execution_lists.get_edited_execution_list().is_empty() {
+            if !execution_lists.get_edited_execution_list().is_empty()
+                || edit_data.window_edit_data.is_some()
+            {
                 edited_block
             } else {
                 column![]
