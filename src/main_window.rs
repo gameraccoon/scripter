@@ -2262,7 +2262,7 @@ fn produce_execution_list_content<'a>(
                         icons.themed.retry.clone(),
                         format_keybind_hint(
                             visual_caches,
-                            "Reschedulte",
+                            "Reschedule",
                             config::AppAction::RescheduleScripts,
                         ),
                         Some(WindowMessage::RescheduleScripts),
