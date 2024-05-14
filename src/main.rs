@@ -17,6 +17,7 @@ mod key_mapping;
 mod keybind_editing;
 mod main_window;
 mod ring_buffer;
+mod sparse_set;
 mod style;
 mod ui_icons;
 
