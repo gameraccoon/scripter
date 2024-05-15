@@ -12,13 +12,13 @@ use serde_json::Value as JsonValue;
 /// The update function are executed in a chain from an old version to the latest version, meaning
 /// that there's only one possible update path from any previous version to the latest version.
 /// The rest of the code can assume that the json file is always in the latest format and doesn't
-/// need to perform any additional ckecks, handle missing fields, etc.
+/// need to perform any additional checks, handle missing fields or old formats.
 ///
 /// Usage:
 ///  - Create a new JsonFileUpdater with a version field name.
 ///  - Register all update functions with add_update_function.
 ///  - Call update_json with a mutable reference to the json file.
-///  - Save the json file if needed.
+///  - Use the resulting json file in the rest of the app code (and save if needed).
 ///
 /// Prerequisites:
 ///  - The root of the json file is an object.
@@ -40,14 +40,15 @@ use serde_json::Value as JsonValue;
 ///  - Updater functions should only be added and not changed, the only exception described in
 ///    Q&A section below.
 ///  - Updater functions should be self-contained, and should not call any of the app code that can
-///    potentially change in the future. Otherwise this will invalidate the whole purpose of the
-///    updater and the app code would need to be versioned as well.
+///    potentially change in the future. Otherwise, this will invalidate the whole purpose of the
+///    updater and the app code would need to be versioned as well. This is not the place for DRY.
 ///
 /// Limitations:
 ///  - If no update functions are provided, the json file is not changed
 ///
 /// Q&A:
 ///  - Q: How long I should keep the old update functions?
+///
 ///    A: Ideally forever to ensure that the app can update from any version, in practice it depends
 ///       on your app policy of supporting old versions. If you want to drop support for updating
 ///       from some very old versions, you can remove the corresponding update functions. You can
@@ -55,24 +56,45 @@ use serde_json::Value as JsonValue;
 ///       from a very old version, if that's possible.
 ///
 ///  - Q: I've introduced a bug in one of the update functions, I want to change it, what should I do?
-///    A: Changing update function can lead to branching of the update path, which is a huge pain to
+///
+///    A: Changing update functions can lead to branching of the update path, which is a huge pain to
 ///       deal with generally. If your bug doesn't introduce a data loss, just create a new version
 ///       of the app with a new update function that fixes the format. Don't change the buggy update
 ///       function.
 ///
 ///       If your bug introduces a data loss, then you need to apply this process:
-///        - if the app version with the bug was never and will never be shipped to users, QA, or
-///          other developers, you can of course fix the bug in the update function, but leave
-///          a comment for a future reference
-///        - otherwise what you would usually want to do is to:
-///          a. comment out the code of the buggy update function (for future reference of anyone who
-///           is going to deal with new bugs that may be introduced along the way, when there's one
-///           bug, there's usually more)
-///        b. create a new version that branches on the indication and either runs the proper update
-///           with the bug fixed, or does data recovery if the buggy version was run
-///        c. document what happened for the future reference
+///      - If the app version with the bug was never and will never be shipped to users, QA, or
+///        other developers, you can of course fix the bug in the update function, but leave
+///        a comment for a future reference
+///      - Otherwise what you would usually want to do is:
+///        1. Comment out the code of the buggy update function in the state that was shipped.
+///           This is needed for future reference of anyone who is going to deal with new bugs that
+///           may be introduced by branching of the update path.
+///           When there's one bug, there are usually more.
+///        2. Instead of that function body, set an indication that the non-buggy version was run.
+///           This can be as simple as setting a boolean flag in the root of the json file. But you
+///           may introduce something more structured if you want to keep it for a longer time.
+///        3. Create a new version that branches on the indication and either runs the proper update
+///           with the bug fixed, or does data recovery in case the buggy version was already run.
+///           Remove the indication/flag that you've set on the previous step, unless you decided to
+///           keep it for a longer time.
+///        4. Document what happened for the future reference. Don't rely on people going through
+///           VCS history to learn about a past branch in the update path.
+///
 ///       This way you can limit the damage and make sure to merge the update paths as soon as
-///       possible
+///       possible.
+///
+///       Now your update history would look like this, where B is the buggy version, B* is the
+///       version that sets the flag, and C is the version that brings the users taking both paths
+///       to the same state.
+///
+///
+///       A
+///       | \
+///       B  B*
+///       | /
+///       C
+///
 pub struct JsonFileUpdater {
     latest_version: String,
     version_field_name: String,
