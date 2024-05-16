@@ -95,18 +95,21 @@ impl<T> SparseSet<T> {
         index
     }
 
-    pub fn remove_swap(&mut self, index: &Index) {
+    pub fn remove_swap(&mut self, index: &Index) -> Option<T> {
         // this can happen only if the index is from another SparseSet
         // in this case nothing is guaranteed anymore, we should panic
         assert!(index.sparse_index < self.sparse.len());
 
-        match self.sparse[index.sparse_index].clone() {
+        return match self.sparse[index.sparse_index].clone() {
             SparseEntry::AliveEntry(entry) if entry.epoch == index.epoch => {
-                self.dense.swap_remove(entry.dense_index);
+                let removed_value = self.dense.swap_remove(entry.dense_index);
                 let swapped_sparse_index = self.dense_index_to_sparse_index[self.dense.len()];
-                self.dense_index_to_sparse_index.swap_remove(entry.dense_index);
+                self.dense_index_to_sparse_index
+                    .swap_remove(entry.dense_index);
 
-                if let SparseEntry::AliveEntry(swapped_entry) = &mut self.sparse[swapped_sparse_index] {
+                if let SparseEntry::AliveEntry(swapped_entry) =
+                    &mut self.sparse[swapped_sparse_index]
+                {
                     swapped_entry.dense_index = entry.dense_index;
                 } else {
                     unreachable!();
@@ -121,18 +124,20 @@ impl<T> SparseSet<T> {
                 if index.epoch < usize::MAX {
                     self.next_free_sparse_entry = index.sparse_index;
                 }
+
+                Some(removed_value)
             }
             // the element was already removed (either there's nothing, or a newer element)
-            _ => {}
-        }
+            _ => None,
+        };
     }
 
-    pub fn remove_stable(&mut self, index: &Index) {
+    pub fn remove_stable(&mut self, index: &Index) -> Option<T> {
         // this can happen only if the index is from another SparseSet
         // in this case nothing is guaranteed anymore, we should panic
         assert!(index.sparse_index < self.sparse.len());
 
-        match self.sparse[index.sparse_index].clone() {
+        return match self.sparse[index.sparse_index].clone() {
             SparseEntry::AliveEntry(entry) if entry.epoch == index.epoch => {
                 for i in entry.dense_index + 1..self.dense.len() {
                     let sparse_index = self.dense_index_to_sparse_index[i];
@@ -142,7 +147,7 @@ impl<T> SparseSet<T> {
                         unreachable!();
                     }
                 }
-                self.dense.remove(entry.dense_index);
+                let removed_value = self.dense.remove(entry.dense_index);
                 self.dense_index_to_sparse_index.remove(entry.dense_index);
 
                 self.sparse[index.sparse_index] = SparseEntry::FreeEntry(FreeSparseEntry {
@@ -154,10 +159,11 @@ impl<T> SparseSet<T> {
                 if index.epoch < usize::MAX {
                     self.next_free_sparse_entry = index.sparse_index;
                 }
+                Some(removed_value)
             }
             // the element was already removed (either there's nothing, or a newer element)
-            _ => {}
-        }
+            _ => None,
+        };
     }
 
     pub fn swap(&mut self, index1: &Index, index2: &Index) {
@@ -166,10 +172,16 @@ impl<T> SparseSet<T> {
         assert!(index1.sparse_index < self.sparse.len());
         assert!(index2.sparse_index < self.sparse.len());
 
-        match (self.sparse[index1.sparse_index].clone(), self.sparse[index2.sparse_index].clone()) {
-            (SparseEntry::AliveEntry(entry1), SparseEntry::AliveEntry(entry2)) if entry1.epoch == index1.epoch && entry2.epoch == index2.epoch => {
+        match (
+            self.sparse[index1.sparse_index].clone(),
+            self.sparse[index2.sparse_index].clone(),
+        ) {
+            (SparseEntry::AliveEntry(entry1), SparseEntry::AliveEntry(entry2))
+                if entry1.epoch == index1.epoch && entry2.epoch == index2.epoch =>
+            {
                 self.dense.swap(entry1.dense_index, entry2.dense_index);
-                self.dense_index_to_sparse_index.swap(entry1.dense_index, entry2.dense_index);
+                self.dense_index_to_sparse_index
+                    .swap(entry1.dense_index, entry2.dense_index);
 
                 // swap the references in the sparse array
                 self.sparse[index1.sparse_index] = SparseEntry::AliveEntry(AliveSparseEntry {
@@ -202,6 +214,20 @@ impl<T> SparseSet<T> {
         }
     }
 
+    pub fn get_mut(&mut self, index: &Index) -> Option<&mut T> {
+        // this can happen only if the index is from another SparseSet
+        // in this case nothing is guaranteed anymore, we should panic
+        assert!(index.sparse_index < self.sparse.len());
+
+        match &mut self.sparse[index.sparse_index] {
+            SparseEntry::AliveEntry(entry) if entry.epoch == index.epoch => {
+                Some(&mut self.dense[entry.dense_index])
+            }
+            // either there's no element, or there's a newer element the value points to
+            _ => None,
+        }
+    }
+
     pub fn is_element_alive(&self, index: Index) -> bool {
         if index.sparse_index >= self.sparse.len() {
             return false;
@@ -217,19 +243,30 @@ impl<T> SparseSet<T> {
         self.dense.len()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
+    pub fn is_empty(&self) -> bool {
+        self.dense.is_empty()
+    }
+
+    pub fn values(&self) -> impl DoubleEndedIterator<Item = &T> {
         self.dense.iter()
     }
 
-    pub fn enumerate(&self) -> impl Iterator<Item = (Index, &T)> {
+    pub fn values_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut T> {
+        self.dense.iter_mut()
+    }
+
+    pub fn key_values(&self) -> impl DoubleEndedIterator<Item = (Index, &T)> {
         self.dense.iter().enumerate().map(move |(i, value)| {
-            (Index {
-                sparse_index: self.dense_index_to_sparse_index[i],
-                epoch: match &self.sparse[self.dense_index_to_sparse_index[i]] {
-                    SparseEntry::AliveEntry(entry) => entry.epoch,
-                    SparseEntry::FreeEntry(_) => unreachable!(),
+            (
+                Index {
+                    sparse_index: self.dense_index_to_sparse_index[i],
+                    epoch: match &self.sparse[self.dense_index_to_sparse_index[i]] {
+                        SparseEntry::AliveEntry(entry) => entry.epoch,
+                        SparseEntry::FreeEntry(_) => unreachable!(),
+                    },
                 },
-            }, value)
+                value,
+            )
         })
     }
 }
@@ -244,7 +281,7 @@ mod tests {
         let sparse_set: SparseSet<i32> = SparseSet::new();
 
         assert_eq!(sparse_set.size(), 0);
-        for _ in sparse_set.iter() {
+        for _ in sparse_set.values() {
             assert!(false);
         }
     }
@@ -402,7 +439,7 @@ mod tests {
         sparse_set.push(43);
         sparse_set.push(44);
 
-        for (i, value) in sparse_set.iter().enumerate() {
+        for (i, value) in sparse_set.key_values().enumerate() {
             if i == 0 {
                 assert_eq!(value, &42);
             } else if i == 1 {
@@ -421,7 +458,7 @@ mod tests {
         let index2 = sparse_set.push(43);
         let index3 = sparse_set.push(44);
 
-        for (i, (index, value)) in sparse_set.enumerate().enumerate() {
+        for (i, (index, value)) in sparse_set.key_values().enumerate() {
             if i == 0 {
                 assert_eq!(index, index1);
                 assert_eq!(value, &42);
@@ -445,7 +482,7 @@ mod tests {
         sparse_set.swap(&index1, &index2);
 
         assert_eq!(sparse_set.size(), 2);
-        for (i, value) in sparse_set.iter().enumerate() {
+        for (i, value) in sparse_set.key_values().enumerate() {
             if i == 0 {
                 assert_eq!(value, &43);
             } else {
