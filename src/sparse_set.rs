@@ -45,6 +45,7 @@ struct FreeSparseEntry {
     next_epoch: usize,
 }
 
+#[allow(dead_code)]
 impl<T> SparseSet<T> {
     pub fn new() -> Self {
         Self {
@@ -297,6 +298,18 @@ mod tests {
         assert_eq!(sparse_set.get(&index), Some(&42));
     }
 
+    // sparse set with one item => mutate the item => the item is changed
+    #[test]
+    fn sparse_set_with_one_item_mutate_the_item_the_item_is_changed() {
+        let mut sparse_set: SparseSet<i32> = SparseSet::new();
+        let index = sparse_set.push(42);
+
+        *sparse_set.get_mut(&index).unwrap() = 43;
+
+        assert_eq!(sparse_set.size(), 1);
+        assert_eq!(sparse_set.get(&index), Some(&43));
+    }
+
     // sparse set with one item => remove_stable item => no items
     #[test]
     fn sparse_set_with_one_item_remove_stable_item_no_items() {
@@ -431,9 +444,9 @@ mod tests {
         assert_eq!(sparse_set.get(&index), None);
     }
 
-    // sparse set with three items => iterate over the items => the items are iterated in order
+    // sparse set with three items => iterate over values => the values are iterated in order
     #[test]
-    fn sparse_set_with_three_items_iterate_over_the_items_the_items_are_iterated_in_order() {
+    fn sparse_set_with_three_items_iterate_over_values_the_values_are_iterated_in_order() {
         let mut sparse_set: SparseSet<i32> = SparseSet::new();
         sparse_set.push(42);
         sparse_set.push(43);
@@ -450,9 +463,9 @@ mod tests {
         }
     }
 
-    // sparse set with three items => enumerate over the items => the items are enumerated in order
+    // sparse set with three items => iterate over key-values => the key-values are iterated in order
     #[test]
-    fn sparse_set_with_three_items_enumerate_over_the_items_the_items_are_enumerated_in_order() {
+    fn sparse_set_with_three_items_iterate_over_key_values_the_key_values_are_iterated_in_order() {
         let mut sparse_set: SparseSet<i32> = SparseSet::new();
         let index1 = sparse_set.push(42);
         let index2 = sparse_set.push(43);
@@ -460,16 +473,30 @@ mod tests {
 
         for (i, (index, value)) in sparse_set.key_values().enumerate() {
             if i == 0 {
-                assert_eq!(index, index1);
                 assert_eq!(value, &42);
+                assert_eq!(index, index1);
             } else if i == 1 {
-                assert_eq!(index, index2);
                 assert_eq!(value, &43);
+                assert_eq!(index, index2);
             } else {
-                assert_eq!(index, index3);
                 assert_eq!(value, &44);
+                assert_eq!(index, index3);
             }
         }
+    }
+
+    // sparse set with one item => iterate over values and mutate => the value is changed
+    #[test]
+    fn sparse_set_with_one_item_iterate_over_values_and_mutate_the_value_is_changed() {
+        let mut sparse_set: SparseSet<i32> = SparseSet::new();
+        let index = sparse_set.push(42);
+
+        for value in sparse_set.values_mut() {
+            *value = 43;
+        }
+
+        assert_eq!(sparse_set.size(), 1);
+        assert_eq!(sparse_set.get(&index), Some(&43));
     }
 
     // sparse set with two items => swap the items => the items are swapped in order but not by indexes
