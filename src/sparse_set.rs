@@ -439,7 +439,7 @@ mod tests {
         sparse_set.push(43);
         sparse_set.push(44);
 
-        for (i, value) in sparse_set.key_values().enumerate() {
+        for (i, value) in sparse_set.values().enumerate() {
             if i == 0 {
                 assert_eq!(value, &42);
             } else if i == 1 {
@@ -482,7 +482,7 @@ mod tests {
         sparse_set.swap(&index1, &index2);
 
         assert_eq!(sparse_set.size(), 2);
-        for (i, value) in sparse_set.key_values().enumerate() {
+        for (i, value) in sparse_set.values().enumerate() {
             if i == 0 {
                 assert_eq!(value, &43);
             } else {
