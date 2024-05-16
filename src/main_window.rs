@@ -1495,7 +1495,7 @@ impl Application for MainWindow {
                     ))
                     .padding(10)
                     .style(if is_focused {
-                        if self.execution_data.has_all_executions_finished() {
+                        if self.execution_data.has_any_execution_failed() {
                             style::title_bar_focused_failed
                         } else if self.execution_data.has_all_executions_finished() {
                             style::title_bar_focused_completed

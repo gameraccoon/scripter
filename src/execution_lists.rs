@@ -364,6 +364,10 @@ impl ExecutionLists {
     }
 
     pub fn has_all_executions_finished(&self) -> bool {
+        if self.started_executions.is_empty() {
+            return false;
+        }
+
         self.started_executions
             .values()
             .all(|execution| execution.has_finished_execution())
