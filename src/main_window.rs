@@ -3861,9 +3861,7 @@ fn start_new_execution_from_edited_scripts(app: &mut MainWindow) {
 
     app.edit_data.script_filter = String::new();
     update_config_cache(app);
-    if app.visual_caches.selected_execution_log.is_none() {
-        app.visual_caches.selected_execution_log = Some(new_execution_id);
-    }
+    app.visual_caches.selected_execution_log = Some(new_execution_id);
 }
 
 fn add_script_to_execution(
@@ -4620,8 +4618,8 @@ fn on_execution_removed(app: &mut MainWindow, execution_id: execution_lists::Exe
             // but just for the sake of debugging, let's clean it
             app.visual_caches.selected_execution_log = None;
 
-            let first_execution = app.execution_data.get_started_executions().values().next();
-            if let Some(first_execution) = first_execution {
+            let last_execution = app.execution_data.get_started_executions().values().last();
+            if let Some(first_execution) = last_execution {
                 app.visual_caches.selected_execution_log = Some(first_execution.get_id());
             }
         }
