@@ -88,6 +88,13 @@ pub struct VisualCaches {
     selected_execution_log: Option<execution_lists::ExecutionId>,
     git_branch_requester: Option<git_support::GitCurrentBranchRequester>,
     last_execution_id: u32,
+    button_key_caches: ButtonKeyCaches,
+}
+
+#[derive(Default)]
+struct ButtonKeyCaches {
+    last_stoppable_execution_id: Option<execution_lists::ExecutionId>,
+    last_cleanable_execution_id: Option<execution_lists::ExecutionId>,
 }
 
 pub struct ScriptListCacheRecord {
@@ -338,6 +345,7 @@ impl Application for MainWindow {
                     None
                 },
                 last_execution_id: 0,
+                button_key_caches: ButtonKeyCaches::default(),
             },
             edit_data: EditData {
                 script_filter: String::new(),
@@ -471,16 +479,18 @@ impl Application for MainWindow {
                 };
             }
             WindowMessage::StopScriptsHotkey => {
-                // find the last execution that has running scripts
-                let rev_iter = self
-                    .execution_data
-                    .get_started_executions_mut()
-                    .values_mut()
-                    .rev();
-                for execution in rev_iter {
-                    if !execution.has_finished_execution() {
+                // we use the same script that we hinted visually
+                if let Some(execution_id) = self
+                    .visual_caches
+                    .button_key_caches
+                    .last_stoppable_execution_id
+                {
+                    if let Some(execution) = self
+                        .execution_data
+                        .get_started_executions_mut()
+                        .get_mut(execution_id)
+                    {
                         execution.request_stop_execution();
-                        break;
                     }
                 }
             }
@@ -511,16 +521,18 @@ impl Application for MainWindow {
                 on_execution_removed(self, execution_id);
             }
             WindowMessage::RescheduleScriptsHotkey => {
-                // find last execution that is started and finished
-                let mut execution_to_reschedule = None;
-                for execution in self.execution_data.get_started_executions().values().rev() {
-                    if execution.has_finished_execution()
-                        && !execution.is_waiting_execution_to_finish()
-                    {
-                        execution_to_reschedule = Some(execution.get_id());
-                        break;
-                    }
-                }
+                // use the same script that we hinted visually
+                let execution_to_reschedule = self
+                    .visual_caches
+                    .button_key_caches
+                    .last_cleanable_execution_id
+                    .and_then(|execution_id| {
+                        self.execution_data
+                            .get_started_executions()
+                            .get(execution_id)
+                            .filter(|execution| execution.has_finished_execution())
+                            .map(|_| execution_id)
+                    });
 
                 if let Some(execution_to_reschedule) = execution_to_reschedule {
                     let mut execution = self
@@ -542,6 +554,8 @@ impl Application for MainWindow {
             WindowMessage::Tick(_now) => {
                 let just_finished = self.execution_data.tick(&self.app_config);
                 if just_finished {
+                    update_button_key_hint_caches(self);
+
                     if get_rewritable_config_opt(&self.app_config, &self.edit_data.window_edit_data)
                         .window_status_reactions
                     {
@@ -2234,7 +2248,10 @@ fn produce_execution_list_content<'a>(
             column![if execution.has_finished_execution() {
                 if !execution.is_waiting_execution_to_finish() {
                     row![
-                        if window_state.is_command_key_down {
+                        if window_state.is_command_key_down
+                            && visual_caches.button_key_caches.last_cleanable_execution_id
+                                == Some(execution_id)
+                        {
                             main_icon_button_string(
                                 icons.themed.retry.clone(),
                                 format_keybind_hint(
@@ -2255,6 +2272,8 @@ fn produce_execution_list_content<'a>(
                             icons.themed.remove.clone(),
                             if window_state.is_command_key_down
                                 && execution_lists.get_edited_scripts().is_empty()
+                                && visual_caches.button_key_caches.last_cleanable_execution_id
+                                    == Some(execution_id)
                             {
                                 format_keybind_hint(
                                     visual_caches,
@@ -2279,7 +2298,10 @@ fn produce_execution_list_content<'a>(
                 {
                     row![text("Waiting for the execution to stop")]
                 } else {
-                    if window_state.is_command_key_down {
+                    if window_state.is_command_key_down
+                        && visual_caches.button_key_caches.last_stoppable_execution_id
+                            == Some(execution_id)
+                    {
                         row![main_icon_button_string(
                             icons.themed.stop.clone(),
                             format_keybind_hint(
@@ -3887,6 +3909,7 @@ fn start_new_execution_from_edited_scripts(app: &mut MainWindow) {
     app.edit_data.script_filter = String::new();
     update_config_cache(app);
     app.visual_caches.selected_execution_log = Some(new_execution_id);
+    update_button_key_hint_caches(app);
 }
 
 fn add_script_to_execution(
@@ -3976,19 +3999,20 @@ fn clear_edited_scripts(app: &mut MainWindow) {
 }
 
 fn clear_execution_scripts(app: &mut MainWindow) {
-    // find last execution list that can be cleared
-    let found_execution = app
-        .execution_data
-        .get_started_executions_mut()
-        .values()
-        .rev()
-        .find(|execution| {
-            execution.has_finished_execution() && !execution.is_waiting_execution_to_finish()
+    // use the same script that we hinted visually
+    let execution_id = app
+        .visual_caches
+        .button_key_caches
+        .last_cleanable_execution_id
+        .and_then(|execution_id| {
+            app.execution_data
+                .get_started_executions()
+                .get(execution_id)
+                .filter(|execution| execution.has_finished_execution())
+                .map(|_| execution_id)
         });
 
-    let execution_id = if let Some(execution) = found_execution {
-        execution.get_id()
-    } else {
+    let Some(execution_id) = execution_id else {
         return;
     };
 
@@ -4660,5 +4684,31 @@ fn on_execution_removed(app: &mut MainWindow, execution_id: execution_lists::Exe
     // reset executions count if we removed last execution
     if app.execution_data.get_started_executions().is_empty() {
         app.visual_caches.last_execution_id = 0;
+    }
+
+    update_button_key_hint_caches(app);
+}
+
+fn update_button_key_hint_caches(app: &mut MainWindow) {
+    let mut last_stoppable_execution_id = None;
+    let mut last_cleanable_execution_id = None;
+
+    for execution in app.execution_data.get_started_executions().values().rev() {
+        if last_stoppable_execution_id.is_none() && !execution.has_finished_execution() {
+            last_stoppable_execution_id = Some(execution.get_id());
+        }
+
+        if last_cleanable_execution_id.is_none() && execution.has_finished_execution() {
+            last_cleanable_execution_id = Some(execution.get_id());
+        }
+
+        if last_stoppable_execution_id.is_some() && last_cleanable_execution_id.is_some() {
+            break;
+        }
+    }
+
+    app.visual_caches.button_key_caches = ButtonKeyCaches {
+        last_stoppable_execution_id,
+        last_cleanable_execution_id,
     }
 }
