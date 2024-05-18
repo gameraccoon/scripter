@@ -2239,9 +2239,7 @@ fn produce_execution_list_content<'a>(
                             } else {
                                 "Clear".to_string()
                             },
-                            Some(WindowMessage::ClearFinishedExecutionScripts(
-                                execution_id
-                            )),
+                            Some(WindowMessage::ClearFinishedExecutionScripts(execution_id)),
                         ),
                     ]
                 } else {
@@ -2535,9 +2533,7 @@ fn produce_log_output_content<'a>(
     };
 
     let selected_execution = if let Some(execution_id) = visual_caches.selected_execution_log {
-        execution_lists
-            .get_started_executions()
-            .get(execution_id)
+        execution_lists.get_started_executions().get(execution_id)
     } else {
         None
     };

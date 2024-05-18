@@ -284,7 +284,7 @@ impl Execution {
     }
 
     fn join_execution_thread(&mut self, list_idx: usize) {
-        // this should never block, since the thread should be finished by now
+        // this should never block, since the thread should be finished by now,
         // but we do it anyway not to miss bugs that create zombie threads
         if let Some(join_handle) = self.execution_lists[list_idx]
             .execution_data
