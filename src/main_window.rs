@@ -34,6 +34,7 @@ use crate::ui_icons;
 
 const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
 const ONE_TITLE_LINE_HEIGHT: f32 = 18.0;
+const ONE_EXECUTION_NAME_HEIGHT: f32 = 32.0;
 const EMPTY_EXECUTION_LIST_HEIGHT: f32 = 100.0;
 const EDIT_BUTTONS_HEIGHT: f32 = 50.0;
 static EMPTY_STRING: String = String::new();
@@ -2062,8 +2063,21 @@ fn produce_execution_list_content<'a>(
         ]
     };
 
+    let should_show_execution_names = execution_lists.get_started_executions().size() > 1;
+
     let mut data_lines: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
     for execution in execution_lists.get_started_executions().values() {
+        if should_show_execution_names {
+            data_lines.push(
+                row![text(execution.get_name())
+                    .size(16)
+                    .horizontal_alignment(alignment::Horizontal::Left)
+                    .width(Length::Fill),]
+                .height(30)
+                .into(),
+            );
+        }
+
         let execution_id = execution.get_id();
         let scripts = execution.get_scheduled_scripts_cache();
         for i in 0..scripts.len() {
@@ -4239,6 +4253,9 @@ fn maximize_pane(
             return Command::none();
         };
 
+        let executions_count = app.execution_data.get_started_executions().size() as u32;
+        let should_show_execution_names = executions_count > 1;
+
         let scheduled_elements_count = app
             .execution_data
             .get_started_executions()
@@ -4274,12 +4291,16 @@ fn maximize_pane(
                 height: f32::min(
                     size.height,
                     EMPTY_EXECUTION_LIST_HEIGHT
-                        + EDIT_BUTTONS_HEIGHT
-                        + edited_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
-                        + scheduled_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
                         + title_lines as f32 * ONE_TITLE_LINE_HEIGHT
-                        + if edited_elements_count > 0 && scheduled_elements_count > 0 {
-                            // if we show two rows of edit buttons
+                        + if should_show_execution_names {
+                            ONE_EXECUTION_NAME_HEIGHT * executions_count as f32
+                        } else {
+                            0.0
+                        }
+                        + scheduled_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+                        + EDIT_BUTTONS_HEIGHT * executions_count as f32
+                        + edited_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+                        + if edited_elements_count > 0 {
                             EDIT_BUTTONS_HEIGHT
                         } else {
                             0.0
@@ -4299,7 +4320,7 @@ fn restore_window(app: &mut MainWindow) -> Command<WindowMessage> {
     {
         return resize(
             window::Id::MAIN,
-            iced::Size {
+            Size {
                 width: app.window_state.full_window_size.width,
                 height: app.window_state.full_window_size.height,
             },
