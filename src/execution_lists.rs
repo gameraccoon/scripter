@@ -48,7 +48,7 @@ pub struct Execution {
 
 pub struct ExecutionLists {
     started_executions: sparse_set::SparseSet<Execution>,
-    edited_execution_list: execution_thread::ScriptExecutionData,
+    edited_scripts: Vec<config::ScriptDefinition>,
 }
 
 pub struct ScheduledScriptCacheRecord {
@@ -83,9 +83,9 @@ impl Execution {
     pub fn execute_scripts(
         &mut self,
         app_config: &config::AppConfig,
-        edited_execution_list: execution_thread::ScriptExecutionData,
+        scripts_to_run: Vec<config::ScriptDefinition>,
     ) {
-        if edited_execution_list.scripts_to_run.is_empty() {
+        if scripts_to_run.is_empty() {
             return;
         }
 
@@ -94,7 +94,7 @@ impl Execution {
 
         // we keep the cache to be able to display the list of scripts in the UI
         self.scheduled_scripts_cache
-            .extend(edited_execution_list.scripts_to_run.iter().map(|script| {
+            .extend(scripts_to_run.iter().map(|script| {
                 ScheduledScriptCacheRecord {
                     script: script.clone(),
                     status: execution_thread::ScriptExecutionStatus {
@@ -106,7 +106,10 @@ impl Execution {
                 }
             }));
         self.execution_lists.push(ExecutionList {
-            execution_data: edited_execution_list,
+            execution_data: execution_thread::ScriptExecutionData {
+                scripts_to_run,
+                ..execution_thread::ScriptExecutionData::new()
+            },
             first_cache_index,
         });
 
@@ -300,7 +303,7 @@ impl ExecutionLists {
     pub fn new() -> Self {
         Self {
             started_executions: sparse_set::SparseSet::new(),
-            edited_execution_list: execution_thread::ScriptExecutionData::new(),
+            edited_scripts: Vec::new(),
         }
     }
 
@@ -313,11 +316,15 @@ impl ExecutionLists {
     }
 
     pub fn get_edited_scripts(&self) -> &Vec<config::ScriptDefinition> {
-        &self.edited_execution_list.scripts_to_run
+        &self.edited_scripts
     }
 
     pub fn get_edited_scripts_mut(&mut self) -> &mut Vec<config::ScriptDefinition> {
-        &mut self.edited_execution_list.scripts_to_run
+        &mut self.edited_scripts
+    }
+
+    pub fn consume_edited_scripts(&mut self) -> Vec<config::ScriptDefinition> {
+        std::mem::replace(&mut self.edited_scripts, Vec::new())
     }
 
     pub fn clear_edited_scripts(&mut self) {
@@ -336,17 +343,14 @@ impl ExecutionLists {
         &mut self,
         app_config: &config::AppConfig,
         name: String,
+        scripts_to_run: Vec<config::ScriptDefinition>,
     ) -> ExecutionId {
         let index = self.started_executions.push(Execution::new());
         let new_execution = self.started_executions.get_mut(index).unwrap();
         new_execution.id = Some(index.clone());
         new_execution.name = name;
 
-        let new_execution_list = std::mem::replace(
-            &mut self.edited_execution_list,
-            execution_thread::ScriptExecutionData::new(),
-        );
-        new_execution.execute_scripts(app_config, new_execution_list);
+        new_execution.execute_scripts(app_config, scripts_to_run);
         return index;
     }
 

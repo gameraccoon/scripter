@@ -206,7 +206,7 @@ pub enum WindowMessage {
     Maximize(pane_grid::Pane, Size),
     Restore,
     MaximizeOrRestoreExecutionPane,
-    AddScriptToExecution(config::Guid),
+    AddScriptToExecutionOrRun(config::Guid),
     AddScriptToExecutionWithoutRunning(config::Guid),
     RunScripts,
     StopScripts(execution_lists::ExecutionId),
@@ -454,11 +454,16 @@ impl Application for MainWindow {
                     }
                 }
             }
-            WindowMessage::AddScriptToExecution(script_uid) => {
-                let is_added = add_script_to_execution(self, script_uid, true);
-
-                if is_added && self.window_state.is_command_key_down {
-                    start_new_execution_from_edited_scripts(self);
+            WindowMessage::AddScriptToExecutionOrRun(script_uid) => {
+                if self.window_state.is_command_key_down {
+                    // run the script without adding it to the execution list
+                    let scripts = get_resulting_scripts_from_guid(
+                        self,
+                        script_uid,
+                    );
+                    start_new_execution_from_provided_scripts(self, scripts);
+                } else {
+                    add_script_to_execution(self, script_uid, true);
                 }
             }
             WindowMessage::AddScriptToExecutionWithoutRunning(script_uid) => {
@@ -1869,7 +1874,7 @@ fn produce_script_list_content<'a>(
                     theme::Button::Secondary
                 })
                 .on_press(if edit_data.window_edit_data.is_none() {
-                    WindowMessage::AddScriptToExecution(script.original_script_uid.clone())
+                    WindowMessage::AddScriptToExecutionOrRun(script.original_script_uid.clone())
                 } else {
                     WindowMessage::OpenScriptConfigEditing(i)
                 });
@@ -3898,13 +3903,27 @@ fn start_new_execution_from_edited_scripts(app: &mut MainWindow) {
         return;
     }
 
+    let scripts_to_execute = app.execution_data.consume_edited_scripts();
+
+    start_new_execution_from_provided_scripts(app, scripts_to_execute);
+}
+
+fn start_new_execution_from_provided_scripts(app: &mut MainWindow, scripts: Vec<config::ScriptDefinition>) {
+    if scripts
+        .iter()
+        .any(|script| is_script_missing_arguments(script))
+    {
+        eprintln!("Some scripts are missing arguments");
+        return;
+    }
+
     app.visual_caches.last_execution_id += 1;
     let name = format!("Execution #{}", app.visual_caches.last_execution_id);
 
     clean_script_selection(&mut app.window_state.cursor_script);
     let new_execution_id = app
         .execution_data
-        .start_new_execution(&app.app_config, name);
+        .start_new_execution(&app.app_config, name, scripts);
 
     app.edit_data.script_filter = String::new();
     update_config_cache(app);
@@ -3917,58 +3936,14 @@ fn add_script_to_execution(
     script_uid: config::Guid,
     should_focus: bool,
 ) -> bool {
-    let original_script =
-        config::get_original_script_definition_by_uid(&app.app_config, script_uid);
+    let scripts = get_resulting_scripts_from_guid(app, script_uid);
 
-    let original_script = if let Some(original_script) = original_script {
-        original_script
-    } else {
+    if scripts.is_empty() {
         return false;
-    };
+    }
 
-    match original_script {
-        config::ScriptDefinition::ReferenceToShared(_) => {
-            return false;
-        }
-        config::ScriptDefinition::Original(_) => {
-            app.execution_data
-                .add_script_to_edited_list(original_script.clone());
-        }
-        config::ScriptDefinition::Preset(preset) => {
-            for preset_item in &preset.items {
-                if let Some(script) = config::get_original_script_definition_by_uid(
-                    &app.app_config,
-                    preset_item.uid.clone(),
-                ) {
-                    let mut new_script = script.clone();
-
-                    match &mut new_script {
-                        config::ScriptDefinition::Original(script) => {
-                            if let Some(name) = &preset_item.name {
-                                script.name = name.clone();
-                            }
-
-                            if let Some(arguments) = &preset_item.arguments {
-                                script.arguments = arguments.clone();
-                            }
-
-                            if let Some(autorerun_count) = preset_item.autorerun_count {
-                                script.autorerun_count = autorerun_count;
-                            }
-
-                            if let Some(ignore_previous_failures) =
-                                preset_item.ignore_previous_failures
-                            {
-                                script.ignore_previous_failures = ignore_previous_failures;
-                            }
-                        }
-                        _ => {}
-                    };
-
-                    app.execution_data.add_script_to_edited_list(new_script);
-                }
-            }
-        }
+    for script in scripts {
+        app.execution_data.add_script_to_edited_list(script);
     }
 
     if should_focus {
@@ -3978,6 +3953,65 @@ fn add_script_to_execution(
     }
 
     return true;
+}
+
+fn get_resulting_scripts_from_guid(app: &mut MainWindow, script_uid: config::Guid) -> Vec<config::ScriptDefinition> {
+    let original_script =
+        config::get_original_script_definition_by_uid(&app.app_config, script_uid);
+
+    let original_script = if let Some(original_script) = original_script {
+        original_script
+    } else {
+        return Vec::new();
+    };
+
+    match original_script {
+        config::ScriptDefinition::ReferenceToShared(_) => {
+            Vec::new()
+        }
+        config::ScriptDefinition::Original(_) => {
+            vec![original_script]
+        }
+        config::ScriptDefinition::Preset(preset) => {
+            let resulting_scripts = preset.items.iter().map(|preset_item| {
+                (config::get_original_script_definition_by_uid(
+                    &app.app_config,
+                    preset_item.uid.clone(),
+                ), preset_item)
+            }).filter(|(optional_definition, _preset_item)| {
+                optional_definition.is_some()
+            }).map(|(optional_definition, preset_item)| {
+                let mut new_script = optional_definition.unwrap();
+
+                match &mut new_script {
+                    config::ScriptDefinition::Original(script) => {
+                        if let Some(name) = &preset_item.name {
+                            script.name = name.clone();
+                        }
+
+                        if let Some(arguments) = &preset_item.arguments {
+                            script.arguments = arguments.clone();
+                        }
+
+                        if let Some(autorerun_count) = preset_item.autorerun_count {
+                            script.autorerun_count = autorerun_count;
+                        }
+
+                        if let Some(ignore_previous_failures) =
+                            preset_item.ignore_previous_failures
+                        {
+                            script.ignore_previous_failures = ignore_previous_failures;
+                        }
+                    }
+                    _ => {}
+                };
+
+                new_script
+            }).collect();
+
+            resulting_scripts
+        }
+    }
 }
 
 fn focus_filter(app: &mut MainWindow) -> Command<WindowMessage> {
