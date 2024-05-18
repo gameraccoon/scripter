@@ -83,9 +83,10 @@ pub struct VisualCaches {
     is_custom_title_editing: bool,
     icons: ui_icons::IconCaches,
     pub keybind_hints: HashMap<keybind_editing::KeybindAssociatedData, String>,
-    git_branch_requester: Option<git_support::GitCurrentBranchRequester>,
     pane_drag_start_time: Instant,
     selected_execution_log: Option<execution_lists::ExecutionIndex>,
+    git_branch_requester: Option<git_support::GitCurrentBranchRequester>,
+    last_execution_index: u32,
 }
 
 pub struct ScriptListCacheRecord {
@@ -277,6 +278,7 @@ pub enum WindowMessage {
     ProcessKeyPress(keyboard::Key, keyboard::Modifiers),
     StartRecordingKeybind(keybind_editing::KeybindAssociatedData),
     StopRecordingKeybind,
+    SelectExecutionLog(execution_lists::ExecutionIndex),
 }
 
 impl Application for MainWindow {
@@ -326,13 +328,14 @@ impl Application for MainWindow {
                 is_custom_title_editing: false,
                 icons: ui_icons::IconCaches::new(),
                 keybind_hints: HashMap::new(),
+                pane_drag_start_time: Instant::now(),
+                selected_execution_log: None,
                 git_branch_requester: if show_current_git_branch {
                     Some(git_support::GitCurrentBranchRequester::new())
                 } else {
                     None
                 },
-                pane_drag_start_time: Instant::now(),
-                selected_execution_log: None,
+                last_execution_index: 0,
             },
             edit_data: EditData {
                 script_filter: String::new(),
@@ -471,9 +474,8 @@ impl Application for MainWindow {
             }
             WindowMessage::ClearEditedExecutionScripts => clear_edited_scripts(self),
             WindowMessage::ClearFinishedExecutionScripts(execution_index) => {
-                self.execution_data
-                    .get_started_executions_mut()
-                    .remove_stable(&execution_index);
+                self.execution_data.remove_execution(execution_index);
+                on_execution_removed(self, execution_index);
             }
             WindowMessage::ClearExecutionScriptsHotkey => {
                 if !self.execution_data.get_edited_scripts().is_empty() {
@@ -494,6 +496,7 @@ impl Application for MainWindow {
                                 .push(record.script);
                         });
                 }
+                on_execution_removed(self, execution_index);
             }
             WindowMessage::RescheduleScriptsHotkey => {
                 // find last execution that is started and finished
@@ -521,6 +524,7 @@ impl Application for MainWindow {
                                     .push(record.script);
                             });
                     }
+                    on_execution_removed(self, execution_to_reschedule);
                 }
             }
             WindowMessage::Tick(_now) => {
@@ -1462,6 +1466,9 @@ impl Application for MainWindow {
                     window_edit_data.keybind_editing.edited_keybind = None;
                     window_edit_data.keybind_editing.edited_keybind_error = None;
                 }
+            }
+            WindowMessage::SelectExecutionLog(execution_index) => {
+                self.visual_caches.selected_execution_log = Some(execution_index);
             }
         }
 
@@ -2499,64 +2506,90 @@ fn produce_log_output_content<'a>(
         return Column::new();
     }
 
-    let mut data_lines: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
-
-    let Some(execution_index) = visual_caches.selected_execution_log else {
-        return Column::new();
-    };
-
-    let selected_execution = execution_lists
-        .get_started_executions()
-        .get(&execution_index);
-    let Some(selected_execution) = selected_execution else {
-        return Column::new();
-    };
-
-    if let Ok(logs) = selected_execution.get_recent_logs().try_lock() {
-        if !logs.is_empty() {
-            let (caption_color, error_color) =
-                if let Some(custom_theme) = &rewritable_config.custom_theme {
-                    (
-                        iced::Color::from_rgb(
-                            custom_theme.caption_text[0],
-                            custom_theme.caption_text[1],
-                            custom_theme.caption_text[2],
-                        ),
-                        iced::Color::from_rgb(
-                            custom_theme.error_text[0],
-                            custom_theme.error_text[1],
-                            custom_theme.error_text[2],
-                        ),
-                    )
+    let tabs = if execution_lists.get_started_executions().size() > 1 {
+        let tabs = row(execution_lists
+            .get_started_executions()
+            .values()
+            .map(|execution| {
+                let is_selected_execution =
+                    Some(execution.get_index()) == visual_caches.selected_execution_log;
+                let tab_button = button(text(execution.get_name()));
+                if is_selected_execution {
+                    tab_button
                 } else {
-                    (
-                        theme.extended_palette().primary.strong.color,
-                        theme.extended_palette().danger.weak.color,
-                    )
-                };
-
-            data_lines.extend(logs.iter().map(|element| {
-                text(format!(
-                    "[{}] {}",
-                    element.timestamp.format("%H:%M:%S"),
-                    element.text
-                ))
-                .style(match element.output_type {
-                    execution_thread::OutputType::StdOut => {
-                        theme.extended_palette().primary.weak.text
-                    }
-                    execution_thread::OutputType::StdErr => error_color,
-                    execution_thread::OutputType::Error => error_color,
-                    execution_thread::OutputType::Event => caption_color,
-                })
+                    tab_button.on_press(WindowMessage::SelectExecutionLog(execution.get_index()))
+                }
                 .into()
-            }));
+            })
+            .collect::<Vec<_>>())
+        .spacing(5);
+
+        let tabs = row![
+            scrollable(column![tabs, Space::with_height(12),]).direction(
+                scrollable::Direction::Horizontal(scrollable::Properties::default())
+            )
+        ];
+        tabs
+    } else {
+        row![]
+    };
+
+    let selected_execution = if let Some(execution_index) = visual_caches.selected_execution_log {
+        execution_lists
+            .get_started_executions()
+            .get(&execution_index)
+    } else {
+        None
+    };
+
+    let mut data_lines: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
+    if let Some(selected_execution) = selected_execution {
+        if let Ok(logs) = selected_execution.get_recent_logs().try_lock() {
+            if !logs.is_empty() {
+                let (caption_color, error_color) =
+                    if let Some(custom_theme) = &rewritable_config.custom_theme {
+                        (
+                            iced::Color::from_rgb(
+                                custom_theme.caption_text[0],
+                                custom_theme.caption_text[1],
+                                custom_theme.caption_text[2],
+                            ),
+                            iced::Color::from_rgb(
+                                custom_theme.error_text[0],
+                                custom_theme.error_text[1],
+                                custom_theme.error_text[2],
+                            ),
+                        )
+                    } else {
+                        (
+                            theme.extended_palette().primary.strong.color,
+                            theme.extended_palette().danger.weak.color,
+                        )
+                    };
+
+                data_lines.extend(logs.iter().map(|element| {
+                    text(format!(
+                        "[{}] {}",
+                        element.timestamp.format("%H:%M:%S"),
+                        element.text
+                    ))
+                    .style(match element.output_type {
+                        execution_thread::OutputType::StdOut => {
+                            theme.extended_palette().primary.weak.text
+                        }
+                        execution_thread::OutputType::StdErr => error_color,
+                        execution_thread::OutputType::Error => error_color,
+                        execution_thread::OutputType::Event => caption_color,
+                    })
+                    .into()
+                }));
+            }
         }
     }
 
     let data: Element<_> = column(data_lines).spacing(10).width(Length::Fill).into();
 
-    return column![scrollable(data)]
+    return column![tabs, scrollable(data)]
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
@@ -3822,8 +3855,13 @@ fn start_new_execution_from_edited_scripts(app: &mut MainWindow) {
         return;
     }
 
+    app.visual_caches.last_execution_index += 1;
+    let name = format!("Execution #{}", app.visual_caches.last_execution_index);
+
     clean_script_selection(&mut app.window_state.cursor_script);
-    let new_execution_index = app.execution_data.start_new_execution(&app.app_config);
+    let new_execution_index = app
+        .execution_data
+        .start_new_execution(&app.app_config, name);
 
     app.edit_data.script_filter = String::new();
     update_config_cache(app);
@@ -3937,6 +3975,7 @@ fn clear_execution_scripts(app: &mut MainWindow) {
 
     app.execution_data.remove_execution(execution_index);
     clean_script_selection(&mut app.window_state.cursor_script);
+    on_execution_removed(app, execution_index);
 }
 
 fn select_edited_script(app: &mut MainWindow, script_idx: usize) {
@@ -4574,5 +4613,26 @@ fn is_command_key(key: &keyboard::Key) -> bool {
     #[cfg(not(target_os = "macos"))]
     {
         key.eq(&keyboard::Key::Named(keyboard::key::Named::Control))
+    }
+}
+
+fn on_execution_removed(app: &mut MainWindow, execution_index: execution_lists::ExecutionIndex) {
+    // switch current log tab if the removed execution was selected
+    if let Some(selected_execution) = app.visual_caches.selected_execution_log {
+        if selected_execution == execution_index {
+            // this is not actually needed since a wrong index will also not show anything
+            // but just for the sake of debugging, let's clean it
+            app.visual_caches.selected_execution_log = None;
+
+            let first_execution = app.execution_data.get_started_executions().values().next();
+            if let Some(first_execution) = first_execution {
+                app.visual_caches.selected_execution_log = Some(first_execution.get_index());
+            }
+        }
+    }
+
+    // reset executions count if we removed last execution
+    if app.execution_data.get_started_executions().is_empty() {
+        app.visual_caches.last_execution_index = 0;
     }
 }

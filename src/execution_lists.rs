@@ -25,6 +25,7 @@ pub type ExecutionIndex = sparse_set::Index;
 // executions can be run in parallel, each of them tracks its own progress
 pub struct Execution {
     index: Option<ExecutionIndex>,
+    name: String,
 
     execution_lists: Vec<ExecutionList>,
     current_execution_list_index: usize,
@@ -59,6 +60,7 @@ impl Execution {
     pub fn new() -> Execution {
         Self {
             index: None,
+            name: String::new(),
             execution_lists: Vec::new(),
             current_execution_list_index: 0,
             scheduled_scripts_cache: Vec::new(),
@@ -71,6 +73,10 @@ impl Execution {
 
     pub fn get_index(&self) -> ExecutionIndex {
         self.index.unwrap().clone()
+    }
+
+    pub fn get_name(&self) -> &String {
+        &self.name
     }
 
     // either starts a new execution or adds a new list to the current execution
@@ -326,10 +332,15 @@ impl ExecutionLists {
         &mut self.started_executions
     }
 
-    pub fn start_new_execution(&mut self, app_config: &config::AppConfig) -> ExecutionIndex {
+    pub fn start_new_execution(
+        &mut self,
+        app_config: &config::AppConfig,
+        name: String,
+    ) -> ExecutionIndex {
         let index = self.started_executions.push(Execution::new());
         let new_execution = self.started_executions.get_mut(&index).unwrap();
         new_execution.index = Some(index.clone());
+        new_execution.name = name;
 
         let new_execution_list = std::mem::replace(
             &mut self.edited_execution_list,
