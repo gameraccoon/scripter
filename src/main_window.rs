@@ -202,6 +202,7 @@ pub enum WindowMessage {
     AddScriptToExecution(config::Guid),
     AddScriptToExecutionWithoutRunning(config::Guid),
     RunScripts,
+    StopScripts(execution_lists::ExecutionId),
     StopScriptsHotkey,
     ClearEditedExecutionScripts,
     ClearFinishedExecutionScripts(execution_lists::ExecutionId),
@@ -460,6 +461,15 @@ impl Application for MainWindow {
                     start_new_execution_from_edited_scripts(self);
                 }
             }
+            WindowMessage::StopScripts(execution_id) => {
+                if let Some(execution) = self
+                    .execution_data
+                    .get_started_executions_mut()
+                    .get_mut(execution_id)
+                {
+                    execution.request_stop_execution();
+                };
+            }
             WindowMessage::StopScriptsHotkey => {
                 // find the last execution that has running scripts
                 let rev_iter = self
@@ -470,6 +480,7 @@ impl Application for MainWindow {
                 for execution in rev_iter {
                     if !execution.has_finished_execution() {
                         execution.request_stop_execution();
+                        break;
                     }
                 }
             }
@@ -2276,13 +2287,13 @@ fn produce_execution_list_content<'a>(
                                 "Stop",
                                 config::AppAction::StopScripts
                             ),
-                            Some(WindowMessage::StopScriptsHotkey)
+                            Some(WindowMessage::StopScripts(execution_id))
                         )]
                     } else {
                         row![main_icon_button(
                             icons.themed.stop.clone(),
                             "Stop",
-                            Some(WindowMessage::StopScriptsHotkey)
+                            Some(WindowMessage::StopScripts(execution_id))
                         )]
                     }
                 }
