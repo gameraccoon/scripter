@@ -20,11 +20,11 @@ struct ExecutionList {
     first_cache_index: usize,
 }
 
-pub type ExecutionIndex = sparse_set::Index;
+pub type ExecutionId = sparse_set::Key;
 
 // executions can be run in parallel, each of them tracks its own progress
 pub struct Execution {
-    index: Option<ExecutionIndex>,
+    id: Option<ExecutionId>,
     name: String,
 
     execution_lists: Vec<ExecutionList>,
@@ -59,7 +59,7 @@ pub struct ScheduledScriptCacheRecord {
 impl Execution {
     pub fn new() -> Execution {
         Self {
-            index: None,
+            id: None,
             name: String::new(),
             execution_lists: Vec::new(),
             current_execution_list_index: 0,
@@ -71,8 +71,8 @@ impl Execution {
         }
     }
 
-    pub fn get_index(&self) -> ExecutionIndex {
-        self.index.unwrap().clone()
+    pub fn get_id(&self) -> ExecutionId {
+        self.id.unwrap().clone()
     }
 
     pub fn get_name(&self) -> &String {
@@ -336,10 +336,10 @@ impl ExecutionLists {
         &mut self,
         app_config: &config::AppConfig,
         name: String,
-    ) -> ExecutionIndex {
+    ) -> ExecutionId {
         let index = self.started_executions.push(Execution::new());
-        let new_execution = self.started_executions.get_mut(&index).unwrap();
-        new_execution.index = Some(index.clone());
+        let new_execution = self.started_executions.get_mut(index).unwrap();
+        new_execution.id = Some(index.clone());
         new_execution.name = name;
 
         let new_execution_list = std::mem::replace(
@@ -350,8 +350,8 @@ impl ExecutionLists {
         return index;
     }
 
-    pub fn remove_execution(&mut self, execution_index: ExecutionIndex) -> Option<Execution> {
-        self.started_executions.remove_stable(&execution_index)
+    pub fn remove_execution(&mut self, execution_index: ExecutionId) -> Option<Execution> {
+        self.started_executions.remove_stable(execution_index)
     }
 
     pub fn tick(&mut self, app_config: &config::AppConfig) -> bool {

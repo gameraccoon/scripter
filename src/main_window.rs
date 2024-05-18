@@ -84,9 +84,9 @@ pub struct VisualCaches {
     icons: ui_icons::IconCaches,
     pub keybind_hints: HashMap<keybind_editing::KeybindAssociatedData, String>,
     pane_drag_start_time: Instant,
-    selected_execution_log: Option<execution_lists::ExecutionIndex>,
+    selected_execution_log: Option<execution_lists::ExecutionId>,
     git_branch_requester: Option<git_support::GitCurrentBranchRequester>,
-    last_execution_index: u32,
+    last_execution_id: u32,
 }
 
 pub struct ScriptListCacheRecord {
@@ -203,9 +203,9 @@ pub enum WindowMessage {
     RunScripts,
     StopScriptsHotkey,
     ClearEditedExecutionScripts,
-    ClearFinishedExecutionScripts(execution_lists::ExecutionIndex),
+    ClearFinishedExecutionScripts(execution_lists::ExecutionId),
     ClearExecutionScriptsHotkey,
-    RescheduleScripts(execution_lists::ExecutionIndex),
+    RescheduleScripts(execution_lists::ExecutionId),
     RescheduleScriptsHotkey,
     Tick(Instant),
     OpenScriptEditing(usize),
@@ -273,12 +273,12 @@ pub enum WindowMessage {
     EditExecutionListTitle(String),
     OpenWithDefaultApplication(PathBuf),
     OpenUrl(String),
-    OpenLogFileOrFolder(execution_lists::ExecutionIndex, usize),
+    OpenLogFileOrFolder(execution_lists::ExecutionId, usize),
     SwitchToOriginalSharedScript(EditScriptId),
     ProcessKeyPress(keyboard::Key, keyboard::Modifiers),
     StartRecordingKeybind(keybind_editing::KeybindAssociatedData),
     StopRecordingKeybind,
-    SelectExecutionLog(execution_lists::ExecutionIndex),
+    SelectExecutionLog(execution_lists::ExecutionId),
 }
 
 impl Application for MainWindow {
@@ -335,7 +335,7 @@ impl Application for MainWindow {
                 } else {
                     None
                 },
-                last_execution_index: 0,
+                last_execution_id: 0,
             },
             edit_data: EditData {
                 script_filter: String::new(),
@@ -473,9 +473,9 @@ impl Application for MainWindow {
                 }
             }
             WindowMessage::ClearEditedExecutionScripts => clear_edited_scripts(self),
-            WindowMessage::ClearFinishedExecutionScripts(execution_index) => {
-                self.execution_data.remove_execution(execution_index);
-                on_execution_removed(self, execution_index);
+            WindowMessage::ClearFinishedExecutionScripts(execution_id) => {
+                self.execution_data.remove_execution(execution_id);
+                on_execution_removed(self, execution_id);
             }
             WindowMessage::ClearExecutionScriptsHotkey => {
                 if !self.execution_data.get_edited_scripts().is_empty() {
@@ -484,8 +484,8 @@ impl Application for MainWindow {
                     clear_execution_scripts(self);
                 }
             }
-            WindowMessage::RescheduleScripts(execution_index) => {
-                let mut execution = self.execution_data.remove_execution(execution_index);
+            WindowMessage::RescheduleScripts(execution_id) => {
+                let mut execution = self.execution_data.remove_execution(execution_id);
                 if let Some(execution) = &mut execution {
                     execution
                         .get_scheduled_scripts_cache_mut()
@@ -496,7 +496,7 @@ impl Application for MainWindow {
                                 .push(record.script);
                         });
                 }
-                on_execution_removed(self, execution_index);
+                on_execution_removed(self, execution_id);
             }
             WindowMessage::RescheduleScriptsHotkey => {
                 // find last execution that is started and finished
@@ -505,7 +505,7 @@ impl Application for MainWindow {
                     if execution.has_finished_execution()
                         && !execution.is_waiting_execution_to_finish()
                     {
-                        execution_to_reschedule = Some(execution.get_index());
+                        execution_to_reschedule = Some(execution.get_id());
                         break;
                     }
                 }
@@ -1340,11 +1340,11 @@ impl Application for MainWindow {
                     eprintln!("Failed to open URL: {}", e);
                 }
             }
-            WindowMessage::OpenLogFileOrFolder(execution_index, script_index) => {
+            WindowMessage::OpenLogFileOrFolder(execution_id, script_index) => {
                 if let Some(execution) = self
                     .execution_data
                     .get_started_executions()
-                    .get(&execution_index)
+                    .get(execution_id)
                 {
                     if let Some(record) = execution.get_scheduled_scripts_cache().get(script_index)
                     {
@@ -1467,8 +1467,8 @@ impl Application for MainWindow {
                     window_edit_data.keybind_editing.edited_keybind_error = None;
                 }
             }
-            WindowMessage::SelectExecutionLog(execution_index) => {
-                self.visual_caches.selected_execution_log = Some(execution_index);
+            WindowMessage::SelectExecutionLog(execution_id) => {
+                self.visual_caches.selected_execution_log = Some(execution_id);
             }
         }
 
@@ -2064,7 +2064,7 @@ fn produce_execution_list_content<'a>(
 
     let mut data_lines: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
     for execution in execution_lists.get_started_executions().values() {
-        let execution_index = execution.get_index();
+        let execution_id = execution.get_id();
         let scripts = execution.get_scheduled_scripts_cache();
         for i in 0..scripts.len() {
             let record = &scripts[i];
@@ -2177,7 +2177,7 @@ fn produce_execution_list_content<'a>(
                         tooltip(
                             inline_icon_button(
                                 icons.themed.log.clone(),
-                                WindowMessage::OpenLogFileOrFolder(execution_index, i),
+                                WindowMessage::OpenLogFileOrFolder(execution_id, i),
                             ),
                             "Open log directory",
                             tooltip::Position::Right,
@@ -2190,7 +2190,7 @@ fn produce_execution_list_content<'a>(
                         tooltip(
                             inline_icon_button(
                                 icons.themed.log.clone(),
-                                WindowMessage::OpenLogFileOrFolder(execution_index, i),
+                                WindowMessage::OpenLogFileOrFolder(execution_id, i),
                             ),
                             "Open log file",
                             tooltip::Position::Right,
@@ -2217,13 +2217,13 @@ fn produce_execution_list_content<'a>(
                                     "Reschedule",
                                     config::AppAction::RescheduleScripts,
                                 ),
-                                Some(WindowMessage::RescheduleScripts(execution_index)),
+                                Some(WindowMessage::RescheduleScripts(execution_id)),
                             )
                         } else {
                             main_icon_button(
                                 icons.themed.retry.clone(),
                                 "Reschedule",
-                                Some(WindowMessage::RescheduleScripts(execution_index)),
+                                Some(WindowMessage::RescheduleScripts(execution_id)),
                             )
                         },
                         main_icon_button_string(
@@ -2240,7 +2240,7 @@ fn produce_execution_list_content<'a>(
                                 "Clear".to_string()
                             },
                             Some(WindowMessage::ClearFinishedExecutionScripts(
-                                execution_index
+                                execution_id
                             )),
                         ),
                     ]
@@ -2512,12 +2512,12 @@ fn produce_log_output_content<'a>(
             .values()
             .map(|execution| {
                 let is_selected_execution =
-                    Some(execution.get_index()) == visual_caches.selected_execution_log;
+                    Some(execution.get_id()) == visual_caches.selected_execution_log;
                 let tab_button = button(text(execution.get_name()));
                 if is_selected_execution {
                     tab_button
                 } else {
-                    tab_button.on_press(WindowMessage::SelectExecutionLog(execution.get_index()))
+                    tab_button.on_press(WindowMessage::SelectExecutionLog(execution.get_id()))
                 }
                 .into()
             })
@@ -2534,10 +2534,10 @@ fn produce_log_output_content<'a>(
         row![]
     };
 
-    let selected_execution = if let Some(execution_index) = visual_caches.selected_execution_log {
+    let selected_execution = if let Some(execution_id) = visual_caches.selected_execution_log {
         execution_lists
             .get_started_executions()
-            .get(&execution_index)
+            .get(execution_id)
     } else {
         None
     };
@@ -3855,18 +3855,18 @@ fn start_new_execution_from_edited_scripts(app: &mut MainWindow) {
         return;
     }
 
-    app.visual_caches.last_execution_index += 1;
-    let name = format!("Execution #{}", app.visual_caches.last_execution_index);
+    app.visual_caches.last_execution_id += 1;
+    let name = format!("Execution #{}", app.visual_caches.last_execution_id);
 
     clean_script_selection(&mut app.window_state.cursor_script);
-    let new_execution_index = app
+    let new_execution_id = app
         .execution_data
         .start_new_execution(&app.app_config, name);
 
     app.edit_data.script_filter = String::new();
     update_config_cache(app);
     if app.visual_caches.selected_execution_log.is_none() {
-        app.visual_caches.selected_execution_log = Some(new_execution_index);
+        app.visual_caches.selected_execution_log = Some(new_execution_id);
     }
 }
 
@@ -3967,15 +3967,15 @@ fn clear_execution_scripts(app: &mut MainWindow) {
             execution.has_finished_execution() && !execution.is_waiting_execution_to_finish()
         });
 
-    let execution_index = if let Some(execution) = found_execution {
-        execution.get_index()
+    let execution_id = if let Some(execution) = found_execution {
+        execution.get_id()
     } else {
         return;
     };
 
-    app.execution_data.remove_execution(execution_index);
+    app.execution_data.remove_execution(execution_id);
     clean_script_selection(&mut app.window_state.cursor_script);
-    on_execution_removed(app, execution_index);
+    on_execution_removed(app, execution_id);
 }
 
 fn select_edited_script(app: &mut MainWindow, script_idx: usize) {
@@ -4616,23 +4616,23 @@ fn is_command_key(key: &keyboard::Key) -> bool {
     }
 }
 
-fn on_execution_removed(app: &mut MainWindow, execution_index: execution_lists::ExecutionIndex) {
+fn on_execution_removed(app: &mut MainWindow, execution_id: execution_lists::ExecutionId) {
     // switch current log tab if the removed execution was selected
     if let Some(selected_execution) = app.visual_caches.selected_execution_log {
-        if selected_execution == execution_index {
+        if selected_execution == execution_id {
             // this is not actually needed since a wrong index will also not show anything
             // but just for the sake of debugging, let's clean it
             app.visual_caches.selected_execution_log = None;
 
             let first_execution = app.execution_data.get_started_executions().values().next();
             if let Some(first_execution) = first_execution {
-                app.visual_caches.selected_execution_log = Some(first_execution.get_index());
+                app.visual_caches.selected_execution_log = Some(first_execution.get_id());
             }
         }
     }
 
     // reset executions count if we removed last execution
     if app.execution_data.get_started_executions().is_empty() {
-        app.visual_caches.last_execution_index = 0;
+        app.visual_caches.last_execution_id = 0;
     }
 }
