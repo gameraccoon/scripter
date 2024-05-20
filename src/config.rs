@@ -245,7 +245,8 @@ pub enum AppAction {
     FocusFilter,
     TrySwitchWindowEditMode,
     RescheduleScripts,
-    RunScripts,
+    RunScriptsInParallel,
+    RunScriptsAfterExecution,
     StopScripts,
     ClearExecutionScripts,
     MaximizeOrRestoreExecutionPane,
@@ -884,10 +885,17 @@ fn get_default_app_action_keybinds() -> Vec<AppActionKeybind> {
         },
     });
     keybinds.push(AppActionKeybind {
-        action: AppAction::RunScripts,
+        action: AppAction::RunScriptsAfterExecution,
         keybind: CustomKeybind {
             key: CustomKeyCode::R,
             modifiers: CustomModifiers::COMMAND,
+        },
+    });
+    keybinds.push(AppActionKeybind {
+        action: AppAction::RunScriptsInParallel,
+        keybind: CustomKeybind {
+            key: CustomKeyCode::R,
+            modifiers: CustomModifiers::COMMAND | CustomModifiers::ALT,
         },
     });
     keybinds.push(AppActionKeybind {

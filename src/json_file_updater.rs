@@ -42,6 +42,9 @@ use serde_json::Value as JsonValue;
 ///  - Updater functions should be self-contained, and should not call any of the app code that can
 ///    potentially change in the future. Otherwise, this will invalidate the whole purpose of the
 ///    updater and the app code would need to be versioned as well. This is not the place for DRY.
+///  - When a field is removed from the target struct, the update function should remove it as well
+///    (this will save you from headache a few years in the future when you add a new field with
+///    the same name).
 ///
 /// Limitations:
 ///  - If no update functions are provided, the json file is not changed

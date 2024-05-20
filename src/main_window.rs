@@ -208,7 +208,9 @@ pub enum WindowMessage {
     MaximizeOrRestoreExecutionPane,
     AddScriptToExecutionOrRun(config::Guid),
     AddScriptToExecutionWithoutRunning(config::Guid),
-    RunScripts,
+    RunScriptsInParallel,
+    RunEditedScriptsAfterExecutionHotkey,
+    RunEditedScriptsWithExecution(execution_lists::ExecutionId),
     StopScripts(execution_lists::ExecutionId),
     StopScriptsHotkey,
     ClearEditedExecutionScripts,
@@ -457,10 +459,7 @@ impl Application for MainWindow {
             WindowMessage::AddScriptToExecutionOrRun(script_uid) => {
                 if self.window_state.is_command_key_down {
                     // run the script without adding it to the execution list
-                    let scripts = get_resulting_scripts_from_guid(
-                        self,
-                        script_uid,
-                    );
+                    let scripts = get_resulting_scripts_from_guid(self, script_uid);
                     start_new_execution_from_provided_scripts(self, scripts);
                 } else {
                     add_script_to_execution(self, script_uid, true);
@@ -469,10 +468,30 @@ impl Application for MainWindow {
             WindowMessage::AddScriptToExecutionWithoutRunning(script_uid) => {
                 add_script_to_execution(self, script_uid, true);
             }
-            WindowMessage::RunScripts => {
+            WindowMessage::RunScriptsInParallel => {
                 if !self.edit_data.window_edit_data.is_some() {
                     start_new_execution_from_edited_scripts(self);
                 }
+            }
+            WindowMessage::RunEditedScriptsAfterExecutionHotkey => {
+                // we can accept this hotkey only if we definitely know what execution we
+                // supposed to add it to
+                let executions_number = self.execution_data.get_started_executions().size();
+                if executions_number == 1 {
+                    let execution_id = self
+                        .execution_data
+                        .get_started_executions()
+                        .values()
+                        .next()
+                        .unwrap();
+                    add_edited_scripts_to_started_execution(self, execution_id.get_id());
+                } else if executions_number == 0 {
+                    // if there are no executions, then we can start a new one
+                    start_new_execution_from_edited_scripts(self);
+                }
+            }
+            WindowMessage::RunEditedScriptsWithExecution(execution_id) => {
+                add_edited_scripts_to_started_execution(self, execution_id);
             }
             WindowMessage::StopScripts(execution_id) => {
                 if let Some(execution) = self
@@ -2093,7 +2112,8 @@ fn produce_execution_list_content<'a>(
         ]
     };
 
-    let should_show_execution_names = execution_lists.get_started_executions().size() > 1;
+    let started_execution_count = execution_lists.get_started_executions().size();
+    let should_show_execution_names = started_execution_count > 1;
 
     let mut data_lines: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
     for execution in execution_lists.get_started_executions().values() {
@@ -2463,55 +2483,122 @@ fn produce_execution_list_content<'a>(
             }
         )]
     } else if !execution_lists.get_edited_scripts().is_empty() {
-        let has_scripts_missing_arguments = execution_lists
+        let have_scripts_missing_arguments = execution_lists
             .get_edited_scripts()
             .iter()
             .any(|script| is_script_missing_arguments(script));
 
-        let run_name = if window_state.is_command_key_down {
-            format_keybind_hint(visual_caches, "Run", config::AppAction::RunScripts)
-        } else {
-            "Run".to_string()
-        };
+        let mut execution_buttons: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
+            Vec::new();
 
-        let run_button = if has_scripts_missing_arguments {
-            column![tooltip(
-                main_icon_button_string(icons.themed.play.clone(), run_name, None,),
-                "Some scripts are missing arguments",
-                tooltip::Position::Top
-            )
-            .style(theme::Container::Box)]
-        } else {
-            column![main_icon_button_string(
-                icons.themed.play.clone(),
-                run_name,
-                Some(WindowMessage::RunScripts)
-            )]
-        }
-        .align_items(Alignment::Center)
-        .spacing(5);
-
-        row![
-            run_button,
-            main_icon_button_string(
-                icons.themed.remove.clone(),
-                if window_state.is_command_key_down {
-                    format_keybind_hint(
-                        visual_caches,
-                        "Clear",
-                        config::AppAction::ClearExecutionScripts,
+        if !have_scripts_missing_arguments {
+            if should_show_execution_names {
+                for execution in execution_lists.get_started_executions().values() {
+                    execution_buttons.push(
+                        main_icon_button_string(
+                            icons.themed.play.clone(),
+                            format!("Run after {}", execution.get_name()),
+                            Some(WindowMessage::RunEditedScriptsWithExecution(
+                                execution.get_id(),
+                            )),
+                        )
+                        .into(),
+                    );
+                }
+            } else if started_execution_count == 1 {
+                execution_buttons.push(
+                    main_icon_button_string(
+                        icons.themed.play.clone(),
+                        if window_state.is_command_key_down {
+                            format_keybind_hint(
+                                visual_caches,
+                                "Run after",
+                                config::AppAction::RunScriptsAfterExecution,
+                            )
+                        } else {
+                            "Run after".to_string()
+                        },
+                        Some(WindowMessage::RunEditedScriptsWithExecution(
+                            execution_lists
+                                .get_started_executions()
+                                .values()
+                                .next()
+                                .unwrap()
+                                .get_id(),
+                        )),
                     )
-                } else {
-                    "Clear".to_string()
-                },
-                Some(WindowMessage::ClearEditedExecutionScripts)
-            ),
-        ]
+                    .into(),
+                );
+            }
+
+            if started_execution_count == 0 {
+                execution_buttons.push(
+                    main_icon_button_string(
+                        icons.themed.play.clone(),
+                        if window_state.is_command_key_down {
+                            format_keybind_hint(
+                                visual_caches,
+                                "Run",
+                                config::AppAction::RunScriptsAfterExecution,
+                            )
+                        } else {
+                            "Run".to_string()
+                        },
+                        Some(WindowMessage::RunEditedScriptsAfterExecutionHotkey),
+                    )
+                    .into(),
+                );
+            } else {
+                execution_buttons.push(
+                    main_icon_button_string(
+                        icons.themed.play.clone(),
+                        if window_state.is_command_key_down {
+                            format_keybind_hint(
+                                visual_caches,
+                                "Run in parallel",
+                                config::AppAction::RunScriptsInParallel,
+                            )
+                        } else {
+                            "Run in parallel".to_string()
+                        },
+                        Some(WindowMessage::RunScriptsInParallel),
+                    )
+                    .into(),
+                );
+            }
+
+            execution_buttons.push(
+                main_icon_button_string(
+                    icons.themed.remove.clone(),
+                    if window_state.is_command_key_down {
+                        format_keybind_hint(
+                            visual_caches,
+                            "Clear",
+                            config::AppAction::ClearExecutionScripts,
+                        )
+                    } else {
+                        "Clear".to_string()
+                    },
+                    Some(WindowMessage::ClearEditedExecutionScripts),
+                )
+                .into(),
+            );
+        } else {
+            execution_buttons.push(text("Some scripts are missing arguments").into());
+        }
+
+        row![scrollable(column![
+            row(execution_buttons).spacing(5),
+            Space::with_height(8),
+        ])
+        .direction(scrollable::Direction::Horizontal(
+            scrollable::Properties::default()
+        ))]
     } else {
         row![]
     }
     .align_items(Alignment::Center)
-    .spacing(5)]
+    .spacing(3)]
     .align_items(Alignment::Center)
     .spacing(5)
     .width(Length::Fill);
@@ -3109,8 +3196,18 @@ fn produce_config_edit_content<'a>(
         &mut list_elements,
         window_edit,
         visual_caches,
-        "Run scripts:",
-        keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::RunScripts),
+        "Run scripts after execution:",
+        keybind_editing::KeybindAssociatedData::AppAction(
+            config::AppAction::RunScriptsAfterExecution,
+        ),
+    );
+
+    keybind_editing::populate_keybind_editing_content(
+        &mut list_elements,
+        window_edit,
+        visual_caches,
+        "Run scripts in parallel:",
+        keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::RunScriptsInParallel),
     );
 
     keybind_editing::populate_keybind_editing_content(
@@ -3889,6 +3986,33 @@ fn exit_window_edit_mode(app: &mut MainWindow) {
     update_git_branch_visibility(app);
 }
 
+fn add_edited_scripts_to_started_execution(
+    app: &mut MainWindow,
+    execution_id: execution_lists::ExecutionId,
+) {
+    if app.execution_data.get_edited_scripts().is_empty() {
+        return;
+    }
+
+    if app
+        .execution_data
+        .get_edited_scripts()
+        .iter()
+        .any(|script| is_script_missing_arguments(script))
+    {
+        return;
+    }
+
+    clean_script_selection(&mut app.window_state.cursor_script);
+
+    let scripts_to_execute = app.execution_data.consume_edited_scripts();
+    app.execution_data.add_script_to_running_execution(
+        &app.app_config,
+        execution_id,
+        scripts_to_execute,
+    );
+}
+
 fn start_new_execution_from_edited_scripts(app: &mut MainWindow) {
     if app.execution_data.get_edited_scripts().is_empty() {
         return;
@@ -3908,7 +4032,10 @@ fn start_new_execution_from_edited_scripts(app: &mut MainWindow) {
     start_new_execution_from_provided_scripts(app, scripts_to_execute);
 }
 
-fn start_new_execution_from_provided_scripts(app: &mut MainWindow, scripts: Vec<config::ScriptDefinition>) {
+fn start_new_execution_from_provided_scripts(
+    app: &mut MainWindow,
+    scripts: Vec<config::ScriptDefinition>,
+) {
     if scripts
         .iter()
         .any(|script| is_script_missing_arguments(script))
@@ -3955,7 +4082,10 @@ fn add_script_to_execution(
     return true;
 }
 
-fn get_resulting_scripts_from_guid(app: &mut MainWindow, script_uid: config::Guid) -> Vec<config::ScriptDefinition> {
+fn get_resulting_scripts_from_guid(
+    app: &mut MainWindow,
+    script_uid: config::Guid,
+) -> Vec<config::ScriptDefinition> {
     let original_script =
         config::get_original_script_definition_by_uid(&app.app_config, script_uid);
 
@@ -3966,48 +4096,53 @@ fn get_resulting_scripts_from_guid(app: &mut MainWindow, script_uid: config::Gui
     };
 
     match original_script {
-        config::ScriptDefinition::ReferenceToShared(_) => {
-            Vec::new()
-        }
+        config::ScriptDefinition::ReferenceToShared(_) => Vec::new(),
         config::ScriptDefinition::Original(_) => {
             vec![original_script]
         }
         config::ScriptDefinition::Preset(preset) => {
-            let resulting_scripts = preset.items.iter().map(|preset_item| {
-                (config::get_original_script_definition_by_uid(
-                    &app.app_config,
-                    preset_item.uid.clone(),
-                ), preset_item)
-            }).filter(|(optional_definition, _preset_item)| {
-                optional_definition.is_some()
-            }).map(|(optional_definition, preset_item)| {
-                let mut new_script = optional_definition.unwrap();
+            let resulting_scripts = preset
+                .items
+                .iter()
+                .map(|preset_item| {
+                    (
+                        config::get_original_script_definition_by_uid(
+                            &app.app_config,
+                            preset_item.uid.clone(),
+                        ),
+                        preset_item,
+                    )
+                })
+                .filter(|(optional_definition, _preset_item)| optional_definition.is_some())
+                .map(|(optional_definition, preset_item)| {
+                    let mut new_script = optional_definition.unwrap();
 
-                match &mut new_script {
-                    config::ScriptDefinition::Original(script) => {
-                        if let Some(name) = &preset_item.name {
-                            script.name = name.clone();
+                    match &mut new_script {
+                        config::ScriptDefinition::Original(script) => {
+                            if let Some(name) = &preset_item.name {
+                                script.name = name.clone();
+                            }
+
+                            if let Some(arguments) = &preset_item.arguments {
+                                script.arguments = arguments.clone();
+                            }
+
+                            if let Some(autorerun_count) = preset_item.autorerun_count {
+                                script.autorerun_count = autorerun_count;
+                            }
+
+                            if let Some(ignore_previous_failures) =
+                                preset_item.ignore_previous_failures
+                            {
+                                script.ignore_previous_failures = ignore_previous_failures;
+                            }
                         }
+                        _ => {}
+                    };
 
-                        if let Some(arguments) = &preset_item.arguments {
-                            script.arguments = arguments.clone();
-                        }
-
-                        if let Some(autorerun_count) = preset_item.autorerun_count {
-                            script.autorerun_count = autorerun_count;
-                        }
-
-                        if let Some(ignore_previous_failures) =
-                            preset_item.ignore_previous_failures
-                        {
-                            script.ignore_previous_failures = ignore_previous_failures;
-                        }
-                    }
-                    _ => {}
-                };
-
-                new_script
-            }).collect();
+                    new_script
+                })
+                .collect();
 
             resulting_scripts
         }
@@ -4637,7 +4772,10 @@ pub fn get_window_message_from_app_action(app_action: config::AppAction) -> Wind
         config::AppAction::FocusFilter => WindowMessage::FocusFilter,
         config::AppAction::TrySwitchWindowEditMode => WindowMessage::TrySwitchWindowEditMode,
         config::AppAction::RescheduleScripts => WindowMessage::RescheduleScriptsHotkey,
-        config::AppAction::RunScripts => WindowMessage::RunScripts,
+        config::AppAction::RunScriptsInParallel => WindowMessage::RunScriptsInParallel,
+        config::AppAction::RunScriptsAfterExecution => {
+            WindowMessage::RunEditedScriptsAfterExecutionHotkey
+        }
         config::AppAction::StopScripts => WindowMessage::StopScriptsHotkey,
         config::AppAction::ClearExecutionScripts => WindowMessage::ClearExecutionScriptsHotkey,
         config::AppAction::MaximizeOrRestoreExecutionPane => {

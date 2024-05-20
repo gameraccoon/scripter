@@ -94,17 +94,19 @@ impl Execution {
 
         // we keep the cache to be able to display the list of scripts in the UI
         self.scheduled_scripts_cache
-            .extend(scripts_to_run.iter().map(|script| {
-                ScheduledScriptCacheRecord {
-                    script: script.clone(),
-                    status: execution_thread::ScriptExecutionStatus {
-                        start_time: None,
-                        finish_time: None,
-                        result: execution_thread::ScriptResultStatus::Success,
-                        retry_count: 0,
-                    },
-                }
-            }));
+            .extend(
+                scripts_to_run
+                    .iter()
+                    .map(|script| ScheduledScriptCacheRecord {
+                        script: script.clone(),
+                        status: execution_thread::ScriptExecutionStatus {
+                            start_time: None,
+                            finish_time: None,
+                            result: execution_thread::ScriptResultStatus::Success,
+                            retry_count: 0,
+                        },
+                    }),
+            );
         self.execution_lists.push(ExecutionList {
             execution_data: execution_thread::ScriptExecutionData {
                 scripts_to_run,
@@ -356,6 +358,17 @@ impl ExecutionLists {
 
     pub fn remove_execution(&mut self, execution_index: ExecutionId) -> Option<Execution> {
         self.started_executions.remove_stable(execution_index)
+    }
+
+    pub fn add_script_to_running_execution(
+        &mut self,
+        app_config: &config::AppConfig,
+        execution_index: ExecutionId,
+        scripts_to_add: Vec<config::ScriptDefinition>,
+    ) {
+        if let Some(execution) = self.started_executions.get_mut(execution_index) {
+            execution.execute_scripts(app_config, scripts_to_add);
+        }
     }
 
     pub fn tick(&mut self, app_config: &config::AppConfig) -> bool {
