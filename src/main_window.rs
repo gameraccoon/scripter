@@ -1220,7 +1220,10 @@ impl Application for MainWindow {
                 }
             }
             WindowMessage::FocusFilter => {
-                return focus_filter(self);
+                if !self.window_state.has_maximized_pane {
+                    self.window_state.is_command_key_down = false;
+                    return focus_filter(self);
+                }
             }
             WindowMessage::OnCommandKeyStateChanged(is_command_key_down) => {
                 self.window_state.is_command_key_down = is_command_key_down;
@@ -1466,6 +1469,8 @@ impl Application for MainWindow {
                 update_config_cache(self);
             }
             WindowMessage::ProcessKeyPress(iced_key, iced_modifiers) => {
+                self.window_state.is_command_key_down = iced_modifiers.command();
+
                 if keybind_editing::process_key_press(self, iced_key.clone(), iced_modifiers) {
                     return Command::none();
                 }
