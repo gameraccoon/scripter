@@ -474,21 +474,7 @@ impl Application for MainWindow {
                 }
             }
             WindowMessage::RunEditedScriptsAfterExecutionHotkey => {
-                // we can accept this hotkey only if we definitely know what execution we
-                // supposed to add it to
-                let executions_number = self.execution_data.get_started_executions().size();
-                if executions_number == 1 {
-                    let execution_id = self
-                        .execution_data
-                        .get_started_executions()
-                        .values()
-                        .next()
-                        .unwrap();
-                    add_edited_scripts_to_started_execution(self, execution_id.get_id());
-                } else if executions_number == 0 {
-                    // if there are no executions, then we can start a new one
-                    start_new_execution_from_edited_scripts(self);
-                }
+                try_add_edited_scripts_to_execution_or_start_new(self);
             }
             WindowMessage::RunEditedScriptsWithExecution(execution_id) => {
                 add_edited_scripts_to_started_execution(self, execution_id);
@@ -1310,14 +1296,17 @@ impl Application for MainWindow {
                         let scripts = &self.displayed_configs_list_cache;
 
                         if let Some(script) = scripts.get(cursor_script_id) {
-                            let is_added = add_script_to_execution(
-                                self,
-                                script.original_script_uid.clone(),
-                                false,
-                            );
-
-                            if is_added && self.window_state.is_command_key_down {
-                                start_new_execution_from_edited_scripts(self);
+                            if self.window_state.is_command_key_down {
+                                try_add_script_to_execution_or_start_new(
+                                    self,
+                                    script.original_script_uid.clone(),
+                                );
+                            } else {
+                                add_script_to_execution(
+                                    self,
+                                    script.original_script_uid.clone(),
+                                    false,
+                                );
                             }
                         }
                     }
@@ -4887,5 +4876,49 @@ fn update_button_key_hint_caches(app: &mut MainWindow) {
     app.visual_caches.button_key_caches = ButtonKeyCaches {
         last_stoppable_execution_id,
         last_cleanable_execution_id,
+    }
+}
+
+fn try_add_edited_scripts_to_execution_or_start_new(app: &mut MainWindow) {
+    // we can accept this hotkey only if we definitely know what execution we
+    // supposed to add it to
+    let executions_number = app.execution_data.get_started_executions().size();
+    if executions_number == 1 {
+        let execution_id = app
+            .execution_data
+            .get_started_executions()
+            .values()
+            .next()
+            .unwrap();
+        add_edited_scripts_to_started_execution(app, execution_id.get_id());
+    } else if executions_number == 0 {
+        // if there are no executions, then we can start a new one
+        start_new_execution_from_edited_scripts(app);
+    }
+}
+
+fn try_add_script_to_execution_or_start_new(app: &mut MainWindow, script_uid: config::Guid) {
+    // we can accept this hotkey only if we definitely know what execution we
+    // supposed to add it to
+    let executions_number = app.execution_data.get_started_executions().size();
+    let scripts_to_add = get_resulting_scripts_from_guid(app, script_uid);
+
+    if executions_number == 1 {
+        let execution_id = app
+            .execution_data
+            .get_started_executions()
+            .values()
+            .next()
+            .unwrap()
+            .get_id();
+
+        app.execution_data.add_script_to_running_execution(
+            &app.app_config,
+            execution_id,
+            scripts_to_add,
+        );
+    } else if executions_number == 0 {
+        // if there are no executions, then we can start a new one
+        start_new_execution_from_provided_scripts(app, scripts_to_add);
     }
 }
