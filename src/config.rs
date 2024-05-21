@@ -934,6 +934,13 @@ fn get_default_app_action_keybinds() -> Vec<AppActionKeybind> {
         },
     });
     keybinds.push(AppActionKeybind {
+        action: AppAction::CursorConfirm,
+        keybind: CustomKeybind {
+            key: CustomKeyCode::Enter,
+            modifiers: CustomModifiers::COMMAND | CustomModifiers::ALT,
+        },
+    });
+    keybinds.push(AppActionKeybind {
         action: AppAction::MoveScriptDown,
         keybind: CustomKeybind {
             key: CustomKeyCode::Down,

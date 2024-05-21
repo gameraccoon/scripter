@@ -194,6 +194,7 @@ struct WindowState {
     cursor_script: Option<EditScriptId>,
     full_window_size: Size,
     is_command_key_down: bool,
+    is_alt_key_down: bool,
     has_maximized_pane: bool,
 }
 
@@ -273,6 +274,7 @@ pub enum WindowMessage {
     RequestCloseApp,
     FocusFilter,
     OnCommandKeyStateChanged(bool),
+    OnAltKeyStateChanged(bool),
     MoveCursorUp,
     MoveCursorDown,
     MoveScriptDown,
@@ -359,6 +361,7 @@ impl Application for MainWindow {
                 cursor_script: None,
                 full_window_size: Size::new(1024.0, 768.0),
                 is_command_key_down: false,
+                is_alt_key_down: false,
                 has_maximized_pane: false,
             },
             keybinds: custom_keybinds::CustomKeybinds::new(),
@@ -458,9 +461,12 @@ impl Application for MainWindow {
             }
             WindowMessage::AddScriptToExecutionOrRun(script_uid) => {
                 if self.window_state.is_command_key_down {
-                    // run the script without adding it to the execution list
-                    let scripts = get_resulting_scripts_from_guid(self, script_uid);
-                    start_new_execution_from_provided_scripts(self, scripts);
+                    if self.window_state.is_alt_key_down {
+                        let scripts = get_resulting_scripts_from_guid(self, script_uid);
+                        start_new_execution_from_provided_scripts(self, scripts);
+                    } else {
+                        try_add_script_to_execution_or_start_new(self, script_uid);
+                    }
                 } else {
                     add_script_to_execution(self, script_uid, true);
                 }
@@ -1208,11 +1214,15 @@ impl Application for MainWindow {
             WindowMessage::FocusFilter => {
                 if !self.window_state.has_maximized_pane {
                     self.window_state.is_command_key_down = false;
+                    self.window_state.is_alt_key_down = false;
                     return focus_filter(self);
                 }
             }
             WindowMessage::OnCommandKeyStateChanged(is_command_key_down) => {
                 self.window_state.is_command_key_down = is_command_key_down;
+            }
+            WindowMessage::OnAltKeyStateChanged(is_alt_key_down) => {
+                self.window_state.is_alt_key_down = is_alt_key_down;
             }
             WindowMessage::MoveCursorUp => {
                 move_cursor(self, true);
@@ -1297,10 +1307,18 @@ impl Application for MainWindow {
 
                         if let Some(script) = scripts.get(cursor_script_id) {
                             if self.window_state.is_command_key_down {
-                                try_add_script_to_execution_or_start_new(
-                                    self,
-                                    script.original_script_uid.clone(),
-                                );
+                                if self.window_state.is_alt_key_down {
+                                    let scripts = get_resulting_scripts_from_guid(
+                                        self,
+                                        script.original_script_uid.clone(),
+                                    );
+                                    start_new_execution_from_provided_scripts(self, scripts);
+                                } else {
+                                    try_add_script_to_execution_or_start_new(
+                                        self,
+                                        script.original_script_uid.clone(),
+                                    );
+                                }
                             } else {
                                 add_script_to_execution(
                                     self,
@@ -1459,6 +1477,7 @@ impl Application for MainWindow {
             }
             WindowMessage::ProcessKeyPress(iced_key, iced_modifiers) => {
                 self.window_state.is_command_key_down = iced_modifiers.command();
+                self.window_state.is_alt_key_down = iced_modifiers.alt();
 
                 if keybind_editing::process_key_press(self, iced_key.clone(), iced_modifiers) {
                     return Command::none();
@@ -1615,6 +1634,9 @@ impl Application for MainWindow {
                 if is_command_key(&key) {
                     return Some(WindowMessage::OnCommandKeyStateChanged(true));
                 }
+                if key == keyboard::Key::Named(keyboard::key::Named::Alt) {
+                    return Some(WindowMessage::OnAltKeyStateChanged(true));
+                }
 
                 if key == keyboard::Key::Named(keyboard::key::Named::Control)
                     || key == keyboard::Key::Named(keyboard::key::Named::Shift)
@@ -1631,6 +1653,8 @@ impl Application for MainWindow {
             keyboard::on_key_release(|key, _modifiers| {
                 if is_command_key(&key) {
                     Some(WindowMessage::OnCommandKeyStateChanged(false))
+                } else if key == keyboard::Key::Named(keyboard::key::Named::Alt) {
+                    Some(WindowMessage::OnAltKeyStateChanged(false))
                 } else {
                     None
                 }

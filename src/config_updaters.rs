@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.16.0";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.16.0";
+pub static LATEST_CONFIG_VERSION: &str = "0.16.1";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.16.1";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -125,6 +125,8 @@ fn register_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.15.0", v0_15_0_remove_always_on_top);
     json_config_updater.add_update_function("0.15.1", v0_15_1_update_keybinds_for_iced_12);
     json_config_updater.add_update_function("0.16.0", v0_16_0_replace_run_scripts_keybind_id);
+    json_config_updater
+        .add_update_function("0.16.1", v0_16_1_add_alt_for_cursor_confirm_keybind_variant);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -192,6 +194,8 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.15.0", v0_15_0_remove_always_on_top);
     json_config_updater.add_update_function("0.15.1", v0_15_1_update_keybinds_for_iced_12);
     json_config_updater.add_update_function("0.16.0", v0_16_0_replace_run_scripts_keybind_id);
+    json_config_updater
+        .add_update_function("0.16.1", v0_16_1_add_alt_for_cursor_confirm_keybind_variant);
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
 
@@ -472,6 +476,17 @@ fn v0_16_0_replace_run_scripts_keybind_id(config_json: &mut JsonValue) {
                     keybind["action"] = json!("RunScriptsAfterExecution");
                 }
             }
+        }
+    }
+}
+
+fn v0_16_1_add_alt_for_cursor_confirm_keybind_variant(config_json: &mut JsonValue) {
+    if let Some(rewritable) = config_json["rewritable"].as_object_mut() {
+        if let Some(app_actions_keybinds) = rewritable["app_actions_keybinds"].as_array_mut() {
+            app_actions_keybinds.push(json!({
+                "action": "CursorConfirm",
+                "keybind": {"key": "Enter", "modifiers": "Cmd+Alt"},
+            }));
         }
     }
 }
