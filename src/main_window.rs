@@ -4824,7 +4824,7 @@ fn update_git_branch_visibility(app: &mut MainWindow) {
 fn is_command_key(key: &keyboard::Key) -> bool {
     #[cfg(target_os = "macos")]
     {
-        key.eq(&Key::Named(Named::Super))
+        key.eq(&keyboard::Key::Named(keyboard::key::Named::Super))
     }
     #[cfg(not(target_os = "macos"))]
     {
