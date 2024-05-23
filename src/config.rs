@@ -56,6 +56,7 @@ pub struct RewritableConfig {
     pub app_actions_keybinds: Vec<AppActionKeybind>,
     pub script_keybinds: Vec<ScriptKeybind>,
     pub show_current_git_branch: bool,
+    pub quick_launch_scripts: Vec<Guid>,
 }
 
 #[derive(Clone)]
@@ -362,6 +363,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             app_actions_keybinds: get_default_app_action_keybinds(),
             script_keybinds: Vec::new(),
             show_current_git_branch: false,
+            quick_launch_scripts: Vec::new(),
         },
         script_definitions: Vec::new(),
         is_read_only: !has_write_permission(&config_path),

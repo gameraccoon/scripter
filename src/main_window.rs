@@ -23,6 +23,7 @@ use std::time::{Duration, Instant};
 
 use crate::color_utils;
 use crate::config;
+use crate::config::get_original_script_definition_by_uid;
 use crate::custom_keybinds;
 use crate::execution_lists;
 use crate::execution_thread;
@@ -89,6 +90,7 @@ pub struct VisualCaches {
     git_branch_requester: Option<git_support::GitCurrentBranchRequester>,
     last_execution_id: u32,
     button_key_caches: ButtonKeyCaches,
+    quick_launch_buttons: Vec<QuickLaunchButton>,
 }
 
 #[derive(Default)]
@@ -162,6 +164,12 @@ pub struct WindowEditData {
     theme_color_error_text: String,
 }
 
+struct QuickLaunchButton {
+    icon: Handle,
+    label: String,
+    script_uid: config::Guid,
+}
+
 impl WindowEditData {
     fn from_config(
         config: &config::AppConfig,
@@ -209,7 +217,7 @@ pub enum WindowMessage {
     MaximizeOrRestoreExecutionPane,
     AddScriptToExecutionOrRun(config::Guid),
     AddScriptToExecutionWithoutRunning(config::Guid),
-    RunScriptsInParallel,
+    RunEditedScriptsInParallel,
     RunEditedScriptsAfterExecutionHotkey,
     RunEditedScriptsWithExecution(execution_lists::ExecutionId),
     StopScripts(execution_lists::ExecutionId),
@@ -292,6 +300,9 @@ pub enum WindowMessage {
     StartRecordingKeybind(keybind_editing::KeybindAssociatedData),
     StopRecordingKeybind,
     SelectExecutionLog(execution_lists::ExecutionId),
+    OnQuickLaunchButtonPressed(config::Guid),
+    AddToQuickLaunchPanel(config::Guid),
+    RemoveFromQuickLaunchPanel(config::Guid),
 }
 
 impl Application for MainWindow {
@@ -350,6 +361,7 @@ impl Application for MainWindow {
                 },
                 last_execution_id: 0,
                 button_key_caches: ButtonKeyCaches::default(),
+                quick_launch_buttons: Vec::new(),
             },
             edit_data: EditData {
                 script_filter: String::new(),
@@ -474,7 +486,7 @@ impl Application for MainWindow {
             WindowMessage::AddScriptToExecutionWithoutRunning(script_uid) => {
                 add_script_to_execution(self, script_uid, true);
             }
-            WindowMessage::RunScriptsInParallel => {
+            WindowMessage::RunEditedScriptsInParallel => {
                 if !self.edit_data.window_edit_data.is_some() {
                     start_new_execution_from_edited_scripts(self);
                 }
@@ -1533,6 +1545,34 @@ impl Application for MainWindow {
             WindowMessage::SelectExecutionLog(execution_id) => {
                 self.visual_caches.selected_execution_log = Some(execution_id);
             }
+            WindowMessage::OnQuickLaunchButtonPressed(script_uid) => {
+                if !self.edit_data.window_edit_data.is_some() {
+                    let scripts_to_execute = get_resulting_scripts_from_guid(self, script_uid);
+                    start_new_execution_from_provided_scripts(self, scripts_to_execute);
+                }
+            }
+            WindowMessage::AddToQuickLaunchPanel(script_uid) => {
+                get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
+                    .quick_launch_scripts
+                    .push(script_uid);
+                self.edit_data.is_dirty = true;
+                update_config_cache(self);
+            }
+            WindowMessage::RemoveFromQuickLaunchPanel(script_uid) => {
+                let config = get_rewritable_config_mut(
+                    &mut self.app_config,
+                    &self.edit_data.window_edit_data,
+                );
+                let index = config
+                    .quick_launch_scripts
+                    .iter()
+                    .position(|v| *v == script_uid);
+                if let Some(index) = index {
+                    config.quick_launch_scripts.remove(index);
+                    self.edit_data.is_dirty = true;
+                    update_config_cache(self);
+                }
+            }
         }
 
         Command::none()
@@ -1731,6 +1771,25 @@ fn inline_icon_button<'a, Message>(icon_handle: Handle, message: Message) -> But
     .on_press(message)
 }
 
+fn quick_launch_button(button_description: &QuickLaunchButton) -> Element<WindowMessage> {
+    tooltip(
+        button(
+            image(button_description.icon.clone())
+                .width(Length::Fixed(22.0))
+                .height(Length::Fixed(22.0)),
+        )
+        .style(theme::Button::Secondary)
+        .on_press(WindowMessage::OnQuickLaunchButtonPressed(
+            button_description.script_uid.clone(),
+        ))
+        .padding(4),
+        button_description.label.as_str(),
+        tooltip::Position::Top,
+    )
+    .style(theme::Container::Box)
+    .into()
+}
+
 fn main_icon_button(
     icon_handle: Handle,
     label: &str,
@@ -1830,7 +1889,7 @@ fn produce_script_list_content<'a>(
     rewritable_config: &config::RewritableConfig,
     displayed_configs_list_cache: &Vec<ScriptListCacheRecord>,
     edit_data: &EditData,
-    visual_caches: &VisualCaches,
+    visual_caches: &'a VisualCaches,
     window_state: &WindowState,
     theme: &Theme,
 ) -> Column<'a, WindowMessage> {
@@ -2046,10 +2105,36 @@ fn produce_script_list_content<'a>(
             row![]
         };
 
-    column![edit_controls, filter_field, scrollable(data),]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_items(Alignment::Start)
+    let quick_launch_buttons = if !visual_caches.quick_launch_buttons.is_empty() {
+        column![
+            horizontal_rule(1),
+            scrollable(column![
+                Space::with_height(2.0),
+                row(visual_caches
+                    .quick_launch_buttons
+                    .iter()
+                    .map(|button| { quick_launch_button(&button).into() })
+                    .collect::<Vec<_>>())
+                .spacing(4),
+                Space::with_height(4.0),
+            ])
+            .direction(scrollable::Direction::Horizontal(
+                scrollable::Properties::default()
+            ))
+        ]
+    } else {
+        column![]
+    };
+
+    column![
+        edit_controls,
+        filter_field,
+        scrollable(data).height(Length::Fill),
+        quick_launch_buttons,
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .align_items(Alignment::Start)
 }
 
 fn produce_execution_list_content<'a>(
@@ -2579,7 +2664,7 @@ fn produce_execution_list_content<'a>(
                         } else {
                             "Run in parallel".to_string()
                         },
-                        Some(WindowMessage::RunScriptsInParallel),
+                        Some(WindowMessage::RunEditedScriptsInParallel),
                     )
                     .into(),
                 );
@@ -2768,16 +2853,6 @@ fn produce_script_edit_content<'a>(
         }
     }
 
-    let edit_button = |label, message| {
-        button(
-            text(label)
-                .vertical_alignment(alignment::Vertical::Center)
-                .size(16),
-        )
-        .padding(4)
-        .on_press(message)
-    };
-
     let script = if currently_edited_script.script_type == EditScriptType::ScriptConfig {
         get_script_definition(&app_config, edit_data, currently_edited_script.idx)
     } else {
@@ -2903,6 +2978,10 @@ fn produce_script_edit_content<'a>(
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
+            parameters.push(get_quick_launch_edit_button(&visual_caches, &script.uid).into());
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+
             if currently_edited_script.script_type == EditScriptType::ScriptConfig {
                 parameters.push(
                     edit_button(
@@ -2958,6 +3037,9 @@ fn produce_script_edit_content<'a>(
             }
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            parameters.push(get_quick_launch_edit_button(&visual_caches, &reference.uid).into());
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             if currently_edited_script.script_type == EditScriptType::ScriptConfig {
                 parameters.push(
                     edit_button(
@@ -3009,6 +3091,10 @@ fn produce_script_edit_content<'a>(
                     keybind_editing::KeybindAssociatedData::Script(preset.uid.clone()),
                 );
             }
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+
+            parameters.push(get_quick_launch_edit_button(&visual_caches, &preset.uid).into());
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
@@ -3302,7 +3388,7 @@ fn view_content<'a>(
     theme: &Theme,
     displayed_configs_list_cache: &Vec<ScriptListCacheRecord>,
     paths: &config::PathCaches,
-    visual_caches: &VisualCaches,
+    visual_caches: &'a VisualCaches,
     config: &config::AppConfig,
     edit_data: &EditData,
     window_state: &WindowState,
@@ -3891,6 +3977,35 @@ fn update_config_cache(app: &mut MainWindow) {
                 }
             }
         }
+    }
+
+    app.visual_caches.quick_launch_buttons.clear();
+    let rewritable_config =
+        get_rewritable_config_opt(&app.app_config, &app.edit_data.window_edit_data);
+    for script_uid in &rewritable_config.quick_launch_scripts {
+        let original_script =
+            get_original_script_definition_by_uid(&app.app_config, script_uid.clone());
+        let Some(script) = original_script else {
+            continue;
+        };
+
+        let (name, icon) = match script {
+            config::ScriptDefinition::Original(script) => {
+                (script.name.clone(), script.icon.clone())
+            }
+            config::ScriptDefinition::Preset(preset) => (preset.name.clone(), preset.icon.clone()),
+            _ => continue,
+        };
+
+        let icon_path = config::get_full_optional_path(&app.app_config.paths, &icon);
+
+        app.visual_caches
+            .quick_launch_buttons
+            .push(QuickLaunchButton {
+                label: name,
+                icon: Handle::from_path(icon_path.unwrap_or_default().as_path()),
+                script_uid: script_uid.clone(),
+            });
     }
 }
 
@@ -4790,7 +4905,7 @@ pub fn get_window_message_from_app_action(app_action: config::AppAction) -> Wind
         config::AppAction::FocusFilter => WindowMessage::FocusFilter,
         config::AppAction::TrySwitchWindowEditMode => WindowMessage::TrySwitchWindowEditMode,
         config::AppAction::RescheduleScripts => WindowMessage::RescheduleScriptsHotkey,
-        config::AppAction::RunScriptsInParallel => WindowMessage::RunScriptsInParallel,
+        config::AppAction::RunScriptsInParallel => WindowMessage::RunEditedScriptsInParallel,
         config::AppAction::RunScriptsAfterExecution => {
             WindowMessage::RunEditedScriptsAfterExecutionHotkey
         }
@@ -4945,4 +5060,43 @@ fn try_add_script_to_execution_or_start_new(app: &mut MainWindow, script_uid: co
         // if there are no executions, then we can start a new one
         start_new_execution_from_provided_scripts(app, scripts_to_add);
     }
+}
+
+fn is_script_in_quick_launch_buttons(
+    visual_caches: &VisualCaches,
+    script_uid: &config::Guid,
+) -> bool {
+    // ToDo: this is not scalable, need to make a hash set to search
+    return visual_caches
+        .quick_launch_buttons
+        .iter()
+        .find(|button| *script_uid == button.script_uid)
+        .is_some();
+}
+
+fn get_quick_launch_edit_button<'a>(
+    visual_caches: &VisualCaches,
+    script_uid: &config::Guid,
+) -> Button<'a, WindowMessage> {
+    if is_script_in_quick_launch_buttons(&visual_caches, &script_uid) {
+        edit_button(
+            "Remove from quick launch panel",
+            WindowMessage::RemoveFromQuickLaunchPanel(script_uid.clone()),
+        )
+    } else {
+        edit_button(
+            "Add to quick launch panel",
+            WindowMessage::AddToQuickLaunchPanel(script_uid.clone()),
+        )
+    }
+}
+
+fn edit_button(label: &str, message: WindowMessage) -> Button<WindowMessage> {
+    button(
+        text(label)
+            .vertical_alignment(alignment::Vertical::Center)
+            .size(16),
+    )
+    .padding(4)
+    .on_press(message)
 }

@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.16.1";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.16.1";
+pub static LATEST_CONFIG_VERSION: &str = "0.16.2";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.16.2";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -127,6 +127,7 @@ fn register_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.16.0", v0_16_0_replace_run_scripts_keybind_id);
     json_config_updater
         .add_update_function("0.16.1", v0_16_1_add_alt_for_cursor_confirm_keybind_variant);
+    json_config_updater.add_update_function("0.16.2", v0_16_2_add_quick_launch_scripts);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -196,6 +197,8 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.16.0", v0_16_0_replace_run_scripts_keybind_id);
     json_config_updater
         .add_update_function("0.16.1", v0_16_1_add_alt_for_cursor_confirm_keybind_variant);
+    json_config_updater.add_update_function("0.16.2", v0_16_2_add_quick_launch_scripts);
+
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
 
@@ -488,5 +491,11 @@ fn v0_16_1_add_alt_for_cursor_confirm_keybind_variant(config_json: &mut JsonValu
                 "keybind": {"key": "Enter", "modifiers": "Cmd+Alt"},
             }));
         }
+    }
+}
+
+fn v0_16_2_add_quick_launch_scripts(config_json: &mut JsonValue) {
+    if let Some(rewritable) = config_json["rewritable"].as_object_mut() {
+        rewritable.insert("quick_launch_scripts".to_string(), json!([]));
     }
 }
