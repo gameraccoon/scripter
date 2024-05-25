@@ -2,6 +2,7 @@
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use chrono;
+use sparse_set_container::{SparseSet, SparseKey};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -9,7 +10,6 @@ use crate::config;
 use crate::execution_thread;
 use crate::file_utils;
 use crate::ring_buffer;
-use crate::sparse_set;
 
 // one list of scripts, an execution can have multiple lists
 // in that case as soon as one list finishes, the next one starts immediately
@@ -20,7 +20,7 @@ struct ExecutionList {
     first_cache_index: usize,
 }
 
-pub type ExecutionId = sparse_set::Key;
+pub type ExecutionId = SparseKey;
 
 // executions can be run in parallel, each of them tracks its own progress
 pub struct Execution {
@@ -47,7 +47,7 @@ pub struct Execution {
 // ]
 
 pub struct ExecutionLists {
-    started_executions: sparse_set::SparseSet<Execution>,
+    started_executions: SparseSet<Execution>,
     edited_scripts: Vec<config::ScriptDefinition>,
 }
 
@@ -304,7 +304,7 @@ impl Execution {
 impl ExecutionLists {
     pub fn new() -> Self {
         Self {
-            started_executions: sparse_set::SparseSet::new(),
+            started_executions: SparseSet::new(),
             edited_scripts: Vec::new(),
         }
     }
@@ -333,11 +333,11 @@ impl ExecutionLists {
         self.get_edited_scripts_mut().clear();
     }
 
-    pub fn get_started_executions(&self) -> &sparse_set::SparseSet<Execution> {
+    pub fn get_started_executions(&self) -> &SparseSet<Execution> {
         &self.started_executions
     }
 
-    pub fn get_started_executions_mut(&mut self) -> &mut sparse_set::SparseSet<Execution> {
+    pub fn get_started_executions_mut(&mut self) -> &mut SparseSet<Execution> {
         &mut self.started_executions
     }
 
@@ -357,7 +357,7 @@ impl ExecutionLists {
     }
 
     pub fn remove_execution(&mut self, execution_index: ExecutionId) -> Option<Execution> {
-        self.started_executions.remove_stable(execution_index)
+        self.started_executions.remove(execution_index)
     }
 
     pub fn add_script_to_running_execution(

@@ -19,7 +19,6 @@ mod main_window;
 mod main_window_utils;
 mod main_window_widgets;
 mod ring_buffer;
-mod sparse_set;
 mod style;
 mod ui_icons;
 

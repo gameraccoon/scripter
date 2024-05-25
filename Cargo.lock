@@ -2732,6 +2732,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smol_str",
+ "sparse_set_container",
 ]
 
 [[package]]
@@ -2933,6 +2934,12 @@ dependencies = [
  "windows-sys 0.52.0",
  "x11rb",
 ]
+
+[[package]]
+name = "sparse_set_container"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c97b0a71ce60957617778fe7eeb9d39b8e87e1f50b8374c398cd3d853c5acc1a"
 
 [[package]]
 name = "spin"
