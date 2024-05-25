@@ -16,6 +16,8 @@ mod json_file_updater;
 mod key_mapping;
 mod keybind_editing;
 mod main_window;
+mod main_window_utils;
+mod main_window_widgets;
 mod ring_buffer;
 mod sparse_set;
 mod style;
