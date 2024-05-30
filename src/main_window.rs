@@ -1549,11 +1549,23 @@ impl Application for MainWindow {
                 }
             }
             WindowMessage::AddToQuickLaunchPanel(script_uid) => {
-                get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
+                let original_script =
+                    config::get_original_script_definition_by_uid(&self.app_config, script_uid);
+                if let Some(original_script) = original_script {
+                    let original_script_id = match original_script {
+                        config::ScriptDefinition::Original(script) => script.uid.clone(),
+                        config::ScriptDefinition::Preset(preset) => preset.uid.clone(),
+                        _ => return Command::none(),
+                    };
+                    get_rewritable_config_mut(
+                        &mut self.app_config,
+                        &self.edit_data.window_edit_data,
+                    )
                     .quick_launch_scripts
-                    .push(script_uid);
-                self.edit_data.is_dirty = true;
-                update_config_cache(self);
+                    .push(original_script_id);
+                    self.edit_data.is_dirty = true;
+                    update_config_cache(self);
+                }
             }
             WindowMessage::RemoveFromQuickLaunchPanel(script_uid) => {
                 let config = get_rewritable_config_mut(
