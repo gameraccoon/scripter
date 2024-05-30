@@ -1030,7 +1030,12 @@ impl Application for MainWindow {
                                         format!("{} (copy)", original_script.name);
                                     script
                                 }
-                                _ => {
+                                config::ScriptDefinition::Preset(preset) => {
+                                    preset.uid = config::Guid::new();
+                                    preset.name = format!("{} (copy)", preset.name);
+                                    script
+                                }
+                                config::ScriptDefinition::ReferenceToShared(_) => {
                                     return Command::none();
                                 }
                             }

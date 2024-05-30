@@ -2,7 +2,7 @@
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use chrono;
-use sparse_set_container::{SparseSet, SparseKey};
+use sparse_set_container::{SparseKey, SparseSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
