@@ -96,7 +96,7 @@ pub enum CustomKeyCode {
     /// The Escape key, next to F1
     Escape,
 
-    /// The Backspace key, right over Enter.
+    /// The Backspace key, above Enter.
     Backspace,
     /// The Enter key.
     Enter,
@@ -219,7 +219,7 @@ impl<'de> Serialize for CustomModifiers {
     {
         let mut modifiers = String::new();
         // try to save config platform independent, in a way
-        // that Command is Ctrl on windows and Ctrl is Cmd on mac
+        // that Command is Ctrl on windows and Ctrl is Cmd on Mac
 
         #[cfg(target_os = "macos")]
         {
@@ -308,7 +308,7 @@ impl CustomModifiers {
     /// This is normally the main modifier to be used for hotkeys.
     ///
     /// On macOS, this is equivalent to `Self::LOGO`.
-    /// Ohterwise, this is equivalent to `Self::CTRL`.
+    /// Otherwise, this is equivalent to `Self::CTRL`.
     pub const COMMAND: Self = if cfg!(target_os = "macos") {
         Self::LOGO
     } else {

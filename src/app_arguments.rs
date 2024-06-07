@@ -56,7 +56,7 @@ pub fn get_app_arguments() -> AppArguments {
         ArgumentDefinition {
             name: "--env",
             syntax: "--env <name> <value>",
-            description: "Add an enviroment variable that will be set for all the scripts",
+            description: "Add an environment variable that will be set for all the scripts",
             number_of_args: 2,
         },
         ArgumentDefinition {

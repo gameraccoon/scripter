@@ -137,17 +137,6 @@ impl iced::widget::text_input::StyleSheet for InvalidInputStyleSheet {
         }
     }
 
-    fn hovered(&self, style: &Self::Style) -> iced::widget::text_input::Appearance {
-        iced::widget::text_input::Appearance {
-            background: iced::Background::Color(style.extended_palette().background.base.color),
-            border: Border {
-                color: style.extended_palette().danger.strong.text,
-                ..self.active(style).border
-            },
-            ..self.active(style)
-        }
-    }
-
     fn placeholder_color(&self, style: &Self::Style) -> iced::Color {
         style.extended_palette().background.strong.color
     }
@@ -162,6 +151,17 @@ impl iced::widget::text_input::StyleSheet for InvalidInputStyleSheet {
 
     fn selection_color(&self, style: &Self::Style) -> iced::Color {
         style.extended_palette().background.strong.text
+    }
+
+    fn hovered(&self, style: &Self::Style) -> iced::widget::text_input::Appearance {
+        iced::widget::text_input::Appearance {
+            background: iced::Background::Color(style.extended_palette().background.base.color),
+            border: Border {
+                color: style.extended_palette().danger.strong.text,
+                ..self.active(style).border
+            },
+            ..self.active(style)
+        }
     }
 
     fn disabled(&self, style: &Self::Style) -> iced::widget::text_input::Appearance {

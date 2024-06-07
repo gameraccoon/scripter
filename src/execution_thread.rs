@@ -68,7 +68,7 @@ impl ScriptExecutionData {
     }
 
     pub fn is_waiting_execution_thread_to_finish(&self) -> bool {
-        // wait for the thread to finish, otherwise we can let the user to break their state
+        // wait for the thread to finish, otherwise we can let the user break their state
         if let Some(join_handle) = &self.thread_join_handle {
             if !join_handle.is_finished() {
                 return true;

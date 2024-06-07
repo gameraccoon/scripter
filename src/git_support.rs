@@ -98,7 +98,7 @@ impl GitCurrentBranchRequester {
     }
 
     fn set_up(&mut self) {
-        // the set up consists of several steps that we perfrom in a chain:
+        // the set-up consists of several steps that we perform in a chain:
         // 1. request the path to HEAD file used for this git repository
         // 2. set up a watcher for the HEAD file
         // 3. request the current branch name

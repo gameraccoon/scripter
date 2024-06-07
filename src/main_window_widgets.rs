@@ -219,15 +219,7 @@ pub fn get_config_error_content<'a>(
             );
             content.push(text("Make sure the file has correct access rights").into());
             content.push(text(format!("Details: {}", error)).into());
-            if let Some(file_path) = file_path.parent() {
-                content.push(
-                    button("Open file location")
-                        .on_press(WindowMessage::OpenWithDefaultApplication(
-                            file_path.to_path_buf(),
-                        ))
-                        .into(),
-                );
-            }
+            add_open_file_location_button(&mut content, file_path);
         }
         config::ConfigReadError::DataParseJsonError { file_path, error } => {
             content.push(
@@ -338,20 +330,27 @@ pub fn get_config_error_content<'a>(
                 text("Make sure the file has correct access rights and is not read-only").into(),
             );
             content.push(text(format!("Details: {}", error)).into());
-            if let Some(file_path) = file_path.parent() {
-                content.push(
-                    button("Open file location")
-                        .on_press(WindowMessage::OpenWithDefaultApplication(
-                            file_path.to_path_buf(),
-                        ))
-                        .into(),
-                );
-            }
+            add_open_file_location_button(&mut content, file_path);
         }
     }
 
     content.push(text(format!("Application version {}", env!("CARGO_PKG_VERSION"))).into());
     return Column::with_children(content).spacing(10);
+}
+
+fn add_open_file_location_button(
+    content: &mut Vec<Element<WindowMessage, Theme, iced::Renderer>>,
+    file_path: &std::path::PathBuf,
+) {
+    if let Some(file_path) = file_path.parent() {
+        content.push(
+            button("Open file location")
+                .on_press(WindowMessage::OpenWithDefaultApplication(
+                    file_path.to_path_buf(),
+                ))
+                .into(),
+        );
+    }
 }
 
 pub fn format_keybind_hint(caches: &VisualCaches, hint: &str, action: config::AppAction) -> String {

@@ -532,20 +532,18 @@ pub fn read_config() -> AppConfig {
         }
     } else if let UpdateResult::Error(error) = update_result {
         let file_path = default_config.paths.config_path.clone();
-        match error {
+        return match error {
             JsonFileUpdaterError::UnknownVersion {
                 version,
                 latest_version,
-            } => {
-                return default_config_with_error(
-                    &default_config,
-                    ConfigReadError::UpdaterUnknownVersion {
-                        file_path,
-                        version,
-                        latest_version,
-                    },
-                );
-            }
+            } => default_config_with_error(
+                &default_config,
+                ConfigReadError::UpdaterUnknownVersion {
+                    file_path,
+                    version,
+                    latest_version,
+                },
+            ),
         };
     }
 
@@ -623,7 +621,7 @@ fn original_script_definition_search_predicate(
     }
 }
 
-pub fn get_current_rewritable_config<'a>(app_config: &'a AppConfig) -> &'a RewritableConfig {
+pub fn get_current_rewritable_config(app_config: &AppConfig) -> &RewritableConfig {
     if let Some(local_config) = &app_config.local_config_body {
         return &local_config.rewritable;
     }
@@ -713,17 +711,15 @@ fn read_local_config(
             }
         }
     } else if let UpdateResult::Error(error) = update_result {
-        match error {
+        return match error {
             JsonFileUpdaterError::UnknownVersion {
                 version,
                 latest_version,
-            } => {
-                return Err(ConfigReadError::UpdaterUnknownVersion {
-                    file_path: config_path,
-                    version,
-                    latest_version,
-                });
-            }
+            } => Err(ConfigReadError::UpdaterUnknownVersion {
+                file_path: config_path,
+                version,
+                latest_version,
+            }),
         };
     }
 
