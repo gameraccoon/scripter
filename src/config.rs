@@ -134,6 +134,7 @@ pub struct OriginalScriptDefinition {
     pub ignore_previous_failures: bool,
     pub requires_arguments: bool,
     pub arguments_hint: String,
+    pub is_hidden: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

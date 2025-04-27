@@ -239,6 +239,7 @@ pub(crate) enum WindowMessage {
     EditArgumentsHint(String),
     EditAutorerunCount(String),
     ToggleIgnoreFailures(bool),
+    ToggleIsHidden(bool),
     EnterWindowEditMode,
     ExitWindowEditMode,
     TrySwitchWindowEditMode,
@@ -645,6 +646,7 @@ impl Application for MainWindow {
                     ignore_previous_failures: false,
                     requires_arguments: false,
                     arguments_hint: "\"arg1\" \"arg2\"".to_string(),
+                    is_hidden: false,
                 };
                 add_script_to_config(self, config::ScriptDefinition::Original(script));
 
@@ -744,6 +746,9 @@ impl Application for MainWindow {
             }
             WindowMessage::ToggleIgnoreFailures(value) => {
                 apply_script_edit(self, |script| script.ignore_previous_failures = value)
+            }
+            WindowMessage::ToggleIsHidden(value) => {
+                apply_script_edit(self, |script| script.is_hidden = value)
             }
             WindowMessage::EnterWindowEditMode => enter_window_edit_mode(self),
             WindowMessage::ExitWindowEditMode => exit_window_edit_mode(self),
@@ -2808,6 +2813,13 @@ fn produce_script_edit_content<'a>(
             parameters.push(
                 checkbox("Ignore previous failures", script.ignore_previous_failures)
                     .on_toggle(move |val| WindowMessage::ToggleIgnoreFailures(val))
+                    .into(),
+            );
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            parameters.push(
+                checkbox("Is script hidden", script.is_hidden)
+                    .on_toggle(move |val| WindowMessage::ToggleIsHidden(val))
                     .into(),
             );
 

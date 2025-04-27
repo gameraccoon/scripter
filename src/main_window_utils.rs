@@ -613,7 +613,7 @@ pub fn update_config_cache(app: &mut MainWindow) {
                     }
                 }
                 config::ScriptDefinition::Original(script) => {
-                    let is_script_hidden = is_script_filtered_out(&script.name);
+                    let is_script_hidden = is_script_filtered_out(&script.name) || script.is_hidden;
                     if is_full_list || !is_script_hidden {
                         result_list.push(ScriptListCacheRecord {
                             name: script.name.clone(),
@@ -645,7 +645,7 @@ pub fn update_config_cache(app: &mut MainWindow) {
             match script_definition {
                 config::ScriptDefinition::ReferenceToShared(_) => {}
                 config::ScriptDefinition::Original(script) => {
-                    let is_script_hidden = is_script_filtered_out(&script.name);
+                    let is_script_hidden = is_script_filtered_out(&script.name) || script.is_hidden;
                     if is_full_list || !is_script_hidden {
                         result_list.push(ScriptListCacheRecord {
                             name: script.name.clone(),
