@@ -31,7 +31,7 @@ jobs:
     - name: Copy common data to data folder
       run: cp -r data/common/* data/linux/
     - name: Upload linux artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: scripter-Linux-x64
         path: data/linux/*
@@ -54,7 +54,7 @@ jobs:
     - name: Copy common data to data folder
       run: cp -r data/common/* data/windows/
     - name: Upload Windows artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: scripter-Windows-x64
         path: data/windows/*
@@ -77,7 +77,7 @@ jobs:
     - name: Copy common data to data folder
       run: cp -r data/common/* data/linux/
     - name: Upload macOS artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: scripter-MacOS-arm
         path: data/linux/*
