@@ -1404,3 +1404,33 @@ pub fn focus_filter(app: &mut MainWindow) -> Command<WindowMessage> {
     }
     return text_input::focus(FILTER_INPUT_ID.clone());
 }
+
+pub fn should_autoclean_on_success(
+    app: &mut MainWindow,
+    execution_id: execution_lists::ExecutionId,
+) -> bool {
+    if let Some(execution) = app
+        .execution_data
+        .get_started_executions()
+        .get(execution_id)
+    {
+        if !execution.has_finished_execution() || execution.has_failed_scripts() {
+            return false;
+        }
+
+        let execution = app
+            .execution_data
+            .get_started_executions()
+            .get(execution_id)
+            .unwrap();
+        return execution
+            .get_scheduled_scripts_cache()
+            .iter()
+            .all(|record| match &record.script {
+                config::ScriptDefinition::Original(script) => script.autoclean_on_success,
+                _ => false,
+            });
+    }
+
+    return false;
+}

@@ -239,6 +239,7 @@ pub(crate) enum WindowMessage {
     EditArgumentsHint(String),
     EditAutorerunCount(String),
     ToggleIgnoreFailures(bool),
+    ToggleAutocleanOnSuccess(bool),
     ToggleIsHidden(bool),
     EnterWindowEditMode,
     ExitWindowEditMode,
@@ -573,8 +574,14 @@ impl Application for MainWindow {
                 }
             }
             WindowMessage::Tick(_now) => {
-                let just_finished = self.execution_data.tick(&self.app_config);
-                if just_finished {
+                let just_finished_executions = self.execution_data.tick(&self.app_config);
+                if let Some(just_finished_executions) = just_finished_executions {
+                    for execution_id in just_finished_executions {
+                        if should_autoclean_on_success(self, execution_id) {
+                            self.execution_data.remove_execution(execution_id);
+                        }
+                    }
+
                     update_button_key_hint_caches(self);
 
                     if get_rewritable_config_opt(&self.app_config, &self.edit_data.window_edit_data)
@@ -647,6 +654,7 @@ impl Application for MainWindow {
                     requires_arguments: false,
                     arguments_hint: "\"arg1\" \"arg2\"".to_string(),
                     is_hidden: false,
+                    autoclean_on_success: false,
                 };
                 add_script_to_config(self, config::ScriptDefinition::Original(script));
 
@@ -746,6 +754,9 @@ impl Application for MainWindow {
             }
             WindowMessage::ToggleIgnoreFailures(value) => {
                 apply_script_edit(self, |script| script.ignore_previous_failures = value)
+            }
+            WindowMessage::ToggleAutocleanOnSuccess(value) => {
+                apply_script_edit(self, |script| script.autoclean_on_success = value)
             }
             WindowMessage::ToggleIsHidden(value) => {
                 apply_script_edit(self, |script| script.is_hidden = value)
@@ -2813,6 +2824,13 @@ fn produce_script_edit_content<'a>(
             parameters.push(
                 checkbox("Ignore previous failures", script.ignore_previous_failures)
                     .on_toggle(move |val| WindowMessage::ToggleIgnoreFailures(val))
+                    .into(),
+            );
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            parameters.push(
+                checkbox("Autoclean on success", script.autoclean_on_success)
+                    .on_toggle(move |val| WindowMessage::ToggleAutocleanOnSuccess(val))
                     .into(),
             );
 

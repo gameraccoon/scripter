@@ -169,6 +169,10 @@ impl Execution {
         self.currently_outputting_script
     }
 
+    pub fn has_failed_scripts(&self) -> bool {
+        self.has_failed_scripts
+    }
+
     pub fn get_scheduled_scripts_cache(&self) -> &Vec<ScheduledScriptCacheRecord> {
         &self.scheduled_scripts_cache
     }
@@ -371,8 +375,8 @@ impl ExecutionLists {
         }
     }
 
-    pub fn tick(&mut self, app_config: &config::AppConfig) -> bool {
-        let mut has_just_finished_execution = false;
+    pub fn tick(&mut self, app_config: &config::AppConfig) -> Option<Vec<ExecutionId>> {
+        let mut just_finished_executions = Vec::new();
 
         for execution in &mut self.started_executions.values_mut() {
             if execution.has_finished_execution() {
@@ -381,10 +385,15 @@ impl ExecutionLists {
 
             let has_just_finished = execution.tick(app_config);
             if has_just_finished {
-                has_just_finished_execution = true;
+                just_finished_executions.push(execution.get_id());
             }
         }
-        return has_just_finished_execution;
+
+        if just_finished_executions.is_empty() {
+            return None;
+        }
+
+        return Some(just_finished_executions);
     }
 
     pub fn has_any_execution_started(&self) -> bool {
