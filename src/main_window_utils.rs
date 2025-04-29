@@ -737,11 +737,9 @@ pub fn update_git_branch_visibility(app: &mut MainWindow) {
 
 pub fn update_theme_icons(app: &mut MainWindow) {
     let icons = &mut app.visual_caches.icons;
-    if app.theme.extended_palette().primary.strong.text.r > 0.5 {
-        icons.themed = icons.bright.clone()
-    } else {
-        icons.themed = icons.dark.clone();
-    }
+    icons.themed = icons
+        .get_theme_for_color(app.theme.extended_palette().primary.strong.text)
+        .clone()
 }
 
 pub fn on_execution_removed(app: &mut MainWindow, execution_id: execution_lists::ExecutionId) {

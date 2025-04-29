@@ -1799,13 +1799,11 @@ fn produce_script_list_content<'a>(
                     row![
                         Space::with_width(6),
                         image(
-                            (if theme.extended_palette().secondary.base.text.r > 0.5 {
-                                &visual_caches.icons.bright
-                            } else {
-                                &visual_caches.icons.dark
-                            })
-                            .quick_launch
-                            .clone()
+                            visual_caches
+                                .icons
+                                .get_theme_for_color(theme.extended_palette().secondary.base.text)
+                                .quick_launch
+                                .clone()
                         )
                         .width(22)
                         .height(22),
@@ -1956,13 +1954,11 @@ fn produce_script_list_content<'a>(
                     column![
                         Space::with_height(4.0),
                         button(image(
-                            (if theme.extended_palette().danger.base.text.r > 0.5 {
-                                &visual_caches.icons.bright
-                            } else {
-                                &visual_caches.icons.dark
-                            })
-                            .remove
-                            .clone()
+                            visual_caches
+                                .icons
+                                .get_theme_for_color(theme.extended_palette().danger.base.text)
+                                .remove
+                                .clone()
                         ))
                         .style(theme::Button::Destructive)
                         .height(Length::Fixed(22.0))
@@ -2040,13 +2036,10 @@ fn produce_execution_list_content<'a>(
             tooltip(
                 button(
                     image(
-                        (if theme.extended_palette().secondary.base.text.r > 0.5 {
-                            &icons.bright
-                        } else {
-                            &icons.dark
-                        })
-                        .edit
-                        .clone()
+                        icons
+                            .get_theme_for_color(theme.extended_palette().secondary.base.text)
+                            .edit
+                            .clone()
                     )
                     .width(Length::Fixed(8.0))
                     .height(Length::Fixed(8.0))
@@ -2410,13 +2403,10 @@ fn produce_execution_list_content<'a>(
                     row_data.push(
                         tooltip(
                             inline_icon_button(
-                                (if theme.extended_palette().danger.base.text.r > 0.5 {
-                                    &icons.bright
-                                } else {
-                                    &icons.dark
-                                })
-                                .remove
-                                .clone(),
+                                icons
+                                    .get_theme_for_color(theme.extended_palette().danger.base.text)
+                                    .remove
+                                    .clone(),
                                 WindowMessage::RemoveScript(EditScriptId {
                                     idx: i,
                                     script_type: EditScriptType::ExecutionList,
@@ -3358,13 +3348,11 @@ fn view_controls<'a>(
         row = row.push(
             tooltip(
                 edit_mode_button(
-                    (if theme.extended_palette().secondary.base.text.r > 0.5 {
-                        &visual_caches.icons.bright
-                    } else {
-                        &visual_caches.icons.dark
-                    })
-                    .settings
-                    .clone(),
+                    visual_caches
+                        .icons
+                        .get_theme_for_color(theme.extended_palette().secondary.base.text)
+                        .settings
+                        .clone(),
                     WindowMessage::EnterWindowEditMode,
                     window_state,
                     visual_caches,

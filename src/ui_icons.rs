@@ -2,6 +2,7 @@
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use iced::widget::image::Handle;
+use iced::Color;
 
 #[derive(Clone)]
 pub struct ThemedIcons {
@@ -47,6 +48,14 @@ impl IconCaches {
             dark: dark.clone(),
 
             themed: dark,
+        }
+    }
+
+    pub fn get_theme_for_color(&self, color: Color) -> &ThemedIcons {
+        if color.r > 0.5 {
+            &self.bright
+        } else {
+            &self.dark
         }
     }
 }
