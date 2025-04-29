@@ -74,28 +74,28 @@ impl ScriptExecutionData {
                 return true;
             }
         }
-        return false;
+        false
     }
 }
 
 impl ScriptExecutionStatus {
     pub fn has_script_started(self: &ScriptExecutionStatus) -> bool {
-        return self.start_time.is_some();
+        self.start_time.is_some()
     }
 
     pub fn has_script_finished(self: &ScriptExecutionStatus) -> bool {
         if !self.has_script_started() {
             return false;
         }
-        return self.finish_time.is_some();
+        self.finish_time.is_some()
     }
 
     pub fn has_script_failed(self: &ScriptExecutionStatus) -> bool {
-        return self.has_script_finished() && self.result == ScriptResultStatus::Failed;
+        self.has_script_finished() && self.result == ScriptResultStatus::Failed
     }
 
     pub fn has_script_been_skipped(self: &ScriptExecutionStatus) -> bool {
-        return self.has_script_finished() && self.result == ScriptResultStatus::Skipped;
+        self.has_script_finished() && self.result == ScriptResultStatus::Skipped
     }
 }
 
@@ -455,7 +455,7 @@ fn join_and_split_output(
         }
     });
 
-    return vec![read_stdio_thread, read_stderr_thread, join_and_split_thread];
+    vec![read_stdio_thread, read_stderr_thread, join_and_split_thread]
 }
 
 fn read_one_stdio<R: std::io::Read>(stdio: R, out_channel: Sender<(String, bool)>) {
@@ -495,7 +495,7 @@ fn try_split_log(
     } else {
         return Err(());
     }
-    return Ok(());
+    Ok(())
 }
 
 fn send_log_line(

@@ -93,7 +93,7 @@ pub fn process_key_press(
         return true;
     }
 
-    return false;
+    false
 }
 
 fn clear_app_action_keybind(app: &mut main_window::MainWindow, app_action: &config::AppAction) {

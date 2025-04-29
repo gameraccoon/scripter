@@ -201,9 +201,9 @@ impl Guid {
         rng.fill_bytes(&mut bytes);
         bytes[6] = (bytes[6] & 0x0F) | 0x40;
         bytes[8] = (bytes[8] & 0x3F) | 0x80;
-        return Guid {
+        Guid {
             data: u128::from_be_bytes(bytes),
-        };
+        }
     }
 }
 
@@ -331,7 +331,7 @@ pub fn save_config_to_file(config: &AppConfig) -> bool {
         }
     }
 
-    return true;
+    true
 }
 
 pub fn get_full_path(paths: &PathCaches, path_config: &PathConfig) -> PathBuf {
@@ -415,11 +415,11 @@ fn get_config_path(app_arguments: &AppArguments) -> PathBuf {
         return config_in_work_path;
     }
 
-    return std::env::current_exe()
+    std::env::current_exe()
         .unwrap_or_default()
         .parent()
         .unwrap_or(Path::new(""))
-        .join(DEFAULT_CONFIG_NAME);
+        .join(DEFAULT_CONFIG_NAME)
 }
 
 fn default_config_with_error(config: &AppConfig, error: ConfigReadError) -> AppConfig {
@@ -572,7 +572,7 @@ pub fn read_config() -> AppConfig {
         config.local_config_body = Some(Box::new(local_config));
     }
 
-    return config;
+    config
 }
 
 pub fn populate_shared_scripts_from_config(app_config: &mut AppConfig) {
@@ -599,7 +599,7 @@ pub fn get_original_script_definition_by_uid(
             return Some(script_definition.clone());
         }
     }
-    return None;
+    None
 }
 
 fn original_script_definition_search_predicate(
@@ -611,13 +611,13 @@ fn original_script_definition_search_predicate(
             if script.uid == *script_uid {
                 return true;
             }
-            return false;
+            false
         }
         ScriptDefinition::Preset(preset) => {
             if preset.uid == *script_uid {
                 return true;
             }
-            return false;
+            false
         }
         _ => false,
     }
@@ -628,7 +628,7 @@ pub fn get_current_rewritable_config(app_config: &AppConfig) -> &RewritableConfi
         return &local_config.rewritable;
     }
 
-    return &app_config.rewritable;
+    &app_config.rewritable
 }
 
 fn read_local_config(
@@ -727,7 +727,7 @@ fn read_local_config(
 
     populate_shared_scripts(&mut config, shared_config);
 
-    return Ok(config);
+    Ok(config)
 }
 
 fn get_exe_folder_path() -> PathBuf {
@@ -743,11 +743,11 @@ fn get_exe_folder_path() -> PathBuf {
 }
 
 fn get_default_logs_path() -> PathBuf {
-    return get_exe_folder_path().join("scripter_logs");
+    get_exe_folder_path().join("scripter_logs")
 }
 
 fn get_default_work_path() -> PathBuf {
-    return std::env::current_dir().unwrap_or_default();
+    std::env::current_dir().unwrap_or_default()
 }
 
 fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut AppConfig) {
@@ -851,7 +851,7 @@ fn has_write_permission(path: &Path) -> bool {
     let md = md.unwrap();
 
     let permissions = md.permissions();
-    return !permissions.readonly();
+    !permissions.readonly()
 }
 
 fn get_default_app_action_keybinds() -> Vec<AppActionKeybind> {
@@ -990,5 +990,5 @@ fn get_default_app_action_keybinds() -> Vec<AppActionKeybind> {
         },
     });
 
-    return keybinds;
+    keybinds
 }

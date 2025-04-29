@@ -184,7 +184,7 @@ impl JsonFileUpdater {
         json[&self.version_field_name] =
             serde_json::Value::String(self.patchers.last().unwrap().version_to.clone());
 
-        return UpdateResult::Updated;
+        UpdateResult::Updated
     }
 }
 

@@ -378,7 +378,7 @@ impl Application for MainWindow {
         update_config_cache(&mut main_window);
         keybind_editing::update_keybinds(&mut main_window);
 
-        return (main_window, Command::none());
+        (main_window, Command::none())
     }
 
     fn title(&self) -> String {
@@ -2583,7 +2583,7 @@ fn produce_execution_list_content<'a>(
         Space::with_height(8),
     ];
 
-    return column![
+    column![
         title,
         scrollable(column![
             if !execution_lists.get_started_executions().is_empty() {
@@ -2603,7 +2603,7 @@ fn produce_execution_list_content<'a>(
     .width(Length::Fill)
     .height(Length::Fill)
     .spacing(10)
-    .align_items(Alignment::Center);
+    .align_items(Alignment::Center)
 }
 
 fn produce_log_output_content<'a>(
@@ -2697,11 +2697,11 @@ fn produce_log_output_content<'a>(
 
     let data: Element<_> = column(data_lines).spacing(10).width(Length::Fill).into();
 
-    return column![tabs, scrollable(data)]
+    column![tabs, scrollable(data)]
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
-        .align_items(Alignment::Start);
+        .align_items(Alignment::Start)
 }
 
 fn produce_script_edit_content<'a>(
@@ -3011,11 +3011,11 @@ fn produce_script_edit_content<'a>(
 
     let content = column(parameters).spacing(10);
 
-    return column![scrollable(content)]
+    column![scrollable(content)]
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
-        .align_items(Alignment::Start);
+        .align_items(Alignment::Start)
 }
 
 fn produce_config_edit_content<'a>(
@@ -3260,10 +3260,10 @@ fn produce_config_edit_content<'a>(
 
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
-    return column![scrollable(column(list_elements).spacing(10))]
+    column![scrollable(column(list_elements).spacing(10))]
         .width(Length::Fill)
         .height(Length::Fill)
-        .align_items(Alignment::Start);
+        .align_items(Alignment::Start)
 }
 
 fn view_content<'a>(

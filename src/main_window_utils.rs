@@ -40,7 +40,7 @@ pub fn is_local_edited_script(
             }
         }
     }
-    return false;
+    false
 }
 
 pub fn is_script_missing_arguments(script: &config::ScriptDefinition) -> bool {
@@ -59,11 +59,11 @@ pub fn is_script_in_quick_launch_buttons(
     script_uid: &config::Guid,
 ) -> bool {
     // ToDo: this is not scalable, need to make a hash set to search
-    return visual_caches
+    visual_caches
         .quick_launch_buttons
         .iter()
         .find(|button| *script_uid == button.script_uid)
-        .is_some();
+        .is_some()
 }
 
 pub fn is_command_key(key: &keyboard::Key) -> bool {
@@ -124,10 +124,10 @@ pub fn get_rewritable_config_mut<'a>(
     config: &'a mut config::AppConfig,
     window_edit: &Option<WindowEditData>,
 ) -> &'a mut config::RewritableConfig {
-    return match window_edit {
+    match window_edit {
         Some(window_edit) => get_rewritable_config_mut_non_opt(config, window_edit),
         None => &mut config.rewritable,
-    };
+    }
 }
 
 fn get_rewritable_config_mut_non_opt<'a>(
@@ -189,7 +189,7 @@ pub fn get_script_definition<'a>(
         app_config.local_config_body.is_some()
     };
 
-    return if is_looking_at_local_config {
+    if is_looking_at_local_config {
         &app_config
             .local_config_body
             .as_ref()
@@ -197,7 +197,7 @@ pub fn get_script_definition<'a>(
             .script_definitions[script_idx]
     } else {
         &app_config.script_definitions[script_idx]
-    };
+    }
 }
 
 fn get_script_definition_mut<'a>(
@@ -211,7 +211,7 @@ fn get_script_definition_mut<'a>(
         app_config.local_config_body.is_some()
     };
 
-    return if is_looking_at_local_config {
+    if is_looking_at_local_config {
         &mut app_config
             .local_config_body
             .as_mut()
@@ -219,7 +219,7 @@ fn get_script_definition_mut<'a>(
             .script_definitions[script_idx]
     } else {
         &mut app_config.script_definitions[script_idx]
-    };
+    }
 }
 
 pub fn get_resulting_scripts_from_guid(
@@ -312,7 +312,7 @@ fn find_script_idx_by_id(
             }
         }
     }
-    return None;
+    None
 }
 
 pub fn get_editing_preset<'a>(
@@ -328,7 +328,7 @@ pub fn get_editing_preset<'a>(
             }
         }
     }
-    return None;
+    None
 }
 
 pub fn find_best_shared_script_insert_position(
@@ -376,7 +376,7 @@ pub fn find_best_shared_script_insert_position(
     }
 
     // if we didn't find any shared scripts, just insert at the end
-    return target_script_definitions.len();
+    target_script_definitions.len()
 }
 
 pub fn get_next_pane_selection(app: &MainWindow, is_forward: bool) -> PaneVariant {
@@ -481,7 +481,7 @@ pub fn get_run_script_window_message_from_guid(
             script_uid.clone(),
         ));
     }
-    return None;
+    None
 }
 
 pub fn try_add_edited_scripts_to_execution_or_start_new(app: &mut MainWindow) {
@@ -851,7 +851,7 @@ pub fn maximize_pane(
         );
     }
 
-    return Command::none();
+    Command::none()
 }
 
 pub fn restore_window(app: &mut MainWindow) -> Command<WindowMessage> {
@@ -867,7 +867,7 @@ pub fn restore_window(app: &mut MainWindow) -> Command<WindowMessage> {
             },
         );
     }
-    return Command::none();
+    Command::none()
 }
 
 pub fn move_cursor(app: &mut MainWindow, is_up: bool) {
@@ -1023,7 +1023,7 @@ pub fn add_script_to_execution(
         app.window_state.pane_focus = Some(app.pane_by_pane_type[&PaneVariant::ExecutionList]);
     }
 
-    return true;
+    true
 }
 
 pub fn add_script_to_config(app: &mut MainWindow, script: config::ScriptDefinition) {
@@ -1105,7 +1105,7 @@ fn add_script_to_shared_config(
     app_config.script_definitions.push(script);
     let script_idx = app_config.script_definitions.len() - 1;
     config::populate_shared_scripts_from_config(app_config);
-    return script_idx;
+    script_idx
 }
 
 fn add_script_to_local_config(
@@ -1120,11 +1120,11 @@ fn add_script_to_local_config(
 
     update_config_cache(app);
 
-    return if let Some(config) = &mut app.app_config.local_config_body {
+    if let Some(config) = &mut app.app_config.local_config_body {
         Some(config.script_definitions.len() - 1)
     } else {
         None
-    };
+    }
 }
 
 pub fn select_edited_script(app: &mut MainWindow, script_idx: usize) {
@@ -1400,7 +1400,7 @@ pub fn focus_filter(app: &mut MainWindow) -> Command<WindowMessage> {
             app.window_state.pane_focus = Some(app.pane_by_pane_type[&PaneVariant::ScriptList]);
         }
     }
-    return text_input::focus(FILTER_INPUT_ID.clone());
+    text_input::focus(FILTER_INPUT_ID.clone())
 }
 
 pub fn should_autoclean_on_success(
@@ -1430,5 +1430,5 @@ pub fn should_autoclean_on_success(
             });
     }
 
-    return false;
+    false
 }

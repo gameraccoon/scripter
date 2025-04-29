@@ -39,7 +39,7 @@ impl<T, const SIZE: usize> RingBuffer<T, SIZE> {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        return if self.empty {
+        if self.empty {
             self.buffer[..0].iter().chain(self.buffer[..0].iter())
         } else if self.head < self.tail {
             self.buffer[self.tail..]
@@ -49,7 +49,7 @@ impl<T, const SIZE: usize> RingBuffer<T, SIZE> {
             self.buffer[self.tail..=self.head]
                 .iter()
                 .chain(self.buffer[..0].iter())
-        };
+        }
     }
 
     pub fn is_empty(&self) -> bool {

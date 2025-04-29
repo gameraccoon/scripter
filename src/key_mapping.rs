@@ -298,7 +298,7 @@ impl<'de> Deserialize<'de> for CustomModifiers {
                     _ => {}
                 }
             });
-        return Ok(modifiers);
+        Ok(modifiers)
     }
 }
 

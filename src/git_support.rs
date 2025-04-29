@@ -123,7 +123,7 @@ impl GitCurrentBranchRequester {
             }
         }
 
-        return true;
+        true
     }
 
     fn request_current_branch(&mut self) {

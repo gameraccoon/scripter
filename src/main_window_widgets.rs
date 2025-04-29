@@ -335,7 +335,7 @@ pub fn get_config_error_content<'a>(
     }
 
     content.push(text(format!("Application version {}", env!("CARGO_PKG_VERSION"))).into());
-    return Column::with_children(content).spacing(10);
+    Column::with_children(content).spacing(10)
 }
 
 fn add_open_file_location_button(
@@ -360,5 +360,5 @@ pub fn format_keybind_hint(caches: &VisualCaches, hint: &str, action: config::Ap
     {
         return format!("{} ({})", hint, keybind_hint);
     }
-    return hint.to_string();
+    hint.to_string()
 }

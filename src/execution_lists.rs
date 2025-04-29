@@ -147,14 +147,14 @@ impl Execution {
                 .execution_data
                 .is_waiting_execution_thread_to_finish();
         }
-        return false;
+        false
     }
 
     pub fn has_finished_execution(&self) -> bool {
         if let Some(scheduled_script) = self.scheduled_scripts_cache.last() {
             return scheduled_script.status.has_script_finished();
         }
-        return false;
+        false
     }
 
     pub fn get_log_path(&self) -> &PathBuf {
@@ -214,7 +214,7 @@ impl Execution {
         } else {
             self.try_join_previous_execution_list_item_thread_and_start_the_next(app_config);
         }
-        return false;
+        false
     }
 
     fn try_join_previous_execution_list_item_thread_and_start_the_next(
@@ -289,7 +289,7 @@ impl Execution {
             return true;
         }
 
-        return false;
+        false
     }
 
     fn join_execution_thread(&mut self, list_idx: usize) {
@@ -357,7 +357,7 @@ impl ExecutionLists {
         new_execution.name = name;
 
         new_execution.execute_scripts(app_config, scripts_to_run);
-        return index;
+        index
     }
 
     pub fn remove_execution(&mut self, execution_index: ExecutionId) -> Option<Execution> {
@@ -393,7 +393,7 @@ impl ExecutionLists {
             return None;
         }
 
-        return Some(just_finished_executions);
+        Some(just_finished_executions)
     }
 
     pub fn has_any_execution_started(&self) -> bool {

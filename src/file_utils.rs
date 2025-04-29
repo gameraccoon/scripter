@@ -10,7 +10,7 @@ pub fn get_script_log_directory(
     execution_start_time: &chrono::DateTime<chrono::Local>,
 ) -> PathBuf {
     let run_directory_name = execution_start_time.format("%Y%m%d-%H%M%S");
-    return logs_path.join(format!("{}-{}", run_directory_name, process::id()));
+    logs_path.join(format!("{}-{}", run_directory_name, process::id()))
 }
 
 pub fn get_script_output_path(
