@@ -1627,6 +1627,7 @@ impl Application for MainWindow {
                         is_maximized,
                         size,
                         &self.window_state,
+                        &self.theme,
                     ))
                     .padding(10)
                     .style(if is_focused {
@@ -1797,9 +1798,17 @@ fn produce_script_list_content<'a>(
                 let icon = if will_run_on_click {
                     row![
                         Space::with_width(6),
-                        image(visual_caches.icons.themed.quick_launch.clone())
-                            .width(22)
-                            .height(22),
+                        image(
+                            (if theme.extended_palette().secondary.base.text.r > 0.5 {
+                                &visual_caches.icons.bright
+                            } else {
+                                &visual_caches.icons.dark
+                            })
+                            .quick_launch
+                            .clone()
+                        )
+                        .width(22)
+                        .height(22),
                     ]
                 } else if let Some(icon_path) = &script.full_icon_path {
                     row![Space::with_width(6), image(icon_path).width(22).height(22),]
@@ -2030,9 +2039,17 @@ fn produce_execution_list_content<'a>(
                 .width(Length::Shrink),
             tooltip(
                 button(
-                    image(icons.themed.edit.clone())
-                        .width(Length::Fixed(8.0))
-                        .height(Length::Fixed(8.0))
+                    image(
+                        (if theme.extended_palette().secondary.base.text.r > 0.5 {
+                            &icons.bright
+                        } else {
+                            &icons.dark
+                        })
+                        .edit
+                        .clone()
+                    )
+                    .width(Length::Fixed(8.0))
+                    .height(Length::Fixed(8.0))
                 )
                 .style(theme::Button::Secondary)
                 .on_press(WindowMessage::SetExecutionListTitleEditing(true)),
@@ -3328,6 +3345,7 @@ fn view_controls<'a>(
     is_maximized: bool,
     size: Size,
     window_state: &WindowState,
+    theme: &Theme,
 ) -> Element<'a, WindowMessage> {
     let mut row = row![].spacing(5);
 
@@ -3340,7 +3358,13 @@ fn view_controls<'a>(
         row = row.push(
             tooltip(
                 edit_mode_button(
-                    visual_caches.icons.themed.settings.clone(),
+                    (if theme.extended_palette().secondary.base.text.r > 0.5 {
+                        &visual_caches.icons.bright
+                    } else {
+                        &visual_caches.icons.dark
+                    })
+                    .settings
+                    .clone(),
                     WindowMessage::EnterWindowEditMode,
                     window_state,
                     visual_caches,
