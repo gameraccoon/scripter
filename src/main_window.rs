@@ -253,6 +253,7 @@ pub(crate) enum WindowMessage {
     ConfigToggleWindowStatusReactions(bool),
     ConfigToggleKeepWindowSize(bool),
     ConfigToggleScriptFiltering(bool),
+    ConfigToggleShowWorkingDirectory(bool),
     ConfigToggleTitleEditing(bool),
     ConfigUpdateBehaviorChanged(config::ConfigUpdateBehavior),
     ConfigToggleShowCurrentGitBranch(bool),
@@ -844,6 +845,11 @@ impl Application for MainWindow {
             WindowMessage::ConfigToggleScriptFiltering(is_checked) => {
                 get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
                     .enable_script_filtering = is_checked;
+                self.edit_data.is_dirty = true;
+            }
+            WindowMessage::ConfigToggleShowWorkingDirectory(is_checked) => {
+                get_rewritable_config_mut(&mut self.app_config, &self.edit_data.window_edit_data)
+                    .show_working_directory = is_checked;
                 self.edit_data.is_dirty = true;
             }
             WindowMessage::ConfigToggleTitleEditing(is_checked) => {
@@ -2009,7 +2015,7 @@ fn produce_execution_list_content<'a>(
     execution_lists: &execution_lists::ExecutionLists,
     path_caches: &config::PathCaches,
     theme: &Theme,
-    custom_title: &Option<String>,
+    config: &config::AppConfig,
     visual_caches: &VisualCaches,
     edit_data: &EditData,
     rewritable_config: &config::RewritableConfig,
@@ -2020,7 +2026,7 @@ fn produce_execution_list_content<'a>(
     let title_widget = if visual_caches.is_custom_title_editing {
         row![text_input(
             "Write a note for this execution here",
-            &custom_title.as_ref().unwrap_or(&EMPTY_STRING)
+            &config.custom_title.as_ref().unwrap_or(&EMPTY_STRING)
         )
         .on_input(WindowMessage::EditExecutionListTitle)
         .on_submit(WindowMessage::SetExecutionListTitleEditing(false))
@@ -2029,7 +2035,7 @@ fn produce_execution_list_content<'a>(
     } else if rewritable_config.enable_title_editing && edit_data.window_edit_data.is_none() {
         row![
             horizontal_space(),
-            text(custom_title.as_ref().unwrap_or(&EMPTY_STRING))
+            text(config.custom_title.as_ref().unwrap_or(&EMPTY_STRING))
                 .size(16)
                 .horizontal_alignment(alignment::Horizontal::Center)
                 .width(Length::Shrink),
@@ -2052,7 +2058,7 @@ fn produce_execution_list_content<'a>(
             horizontal_space(),
         ]
         .align_items(Alignment::Center)
-    } else if let Some(custom_title) = custom_title {
+    } else if let Some(custom_title) = &config.custom_title {
         if !custom_title.is_empty() {
             row![text(custom_title)
                 .size(16)
@@ -2066,27 +2072,27 @@ fn produce_execution_list_content<'a>(
         row![]
     };
 
-    let title = if let Some(git_branch_requester) = &visual_caches.git_branch_requester {
-        column![
+    let mut title = Column::new();
+
+    if config.rewritable.show_working_directory {
+        title = title.push(
             text(path_caches.work_path.to_str().unwrap_or_default())
                 .size(16)
                 .horizontal_alignment(alignment::Horizontal::Center)
                 .width(Length::Fill),
+        );
+    }
+
+    if let Some(git_branch_requester) = &visual_caches.git_branch_requester {
+        title = title.push(
             text(git_branch_requester.get_current_branch_ref())
                 .size(16)
                 .horizontal_alignment(alignment::Horizontal::Center)
                 .width(Length::Fill),
-            title_widget,
-        ]
-    } else {
-        column![
-            text(path_caches.work_path.to_str().unwrap_or_default())
-                .size(16)
-                .horizontal_alignment(alignment::Horizontal::Center)
-                .width(Length::Fill),
-            title_widget,
-        ]
-    };
+        )
+    }
+
+    title = title.push(title_widget);
 
     let started_execution_count = execution_lists.get_started_executions().size();
     let should_show_execution_names = started_execution_count > 1;
@@ -3057,6 +3063,15 @@ fn produce_config_edit_content<'a>(
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
         checkbox(
+            "Show working directory",
+            rewritable_config.show_working_directory,
+        )
+        .on_toggle(move |val| WindowMessage::ConfigToggleShowWorkingDirectory(val))
+        .into(),
+    );
+    list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    list_elements.push(
+        checkbox(
             "Allow edit custom title",
             rewritable_config.enable_title_editing,
         )
@@ -3293,7 +3308,7 @@ fn view_content<'a>(
             execution_lists,
             paths,
             theme,
-            &config.custom_title,
+            config,
             &visual_caches,
             edit_data,
             rewritable_config,

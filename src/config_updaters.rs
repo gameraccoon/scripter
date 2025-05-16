@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.16.5";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.16.5";
+pub static LATEST_CONFIG_VERSION: &str = "0.16.6";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.16.6";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -130,6 +130,7 @@ fn register_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.16.2", v0_16_2_add_quick_launch_scripts);
     json_config_updater.add_update_function("0.16.4", v0_16_4_add_is_hidden_field);
     json_config_updater.add_update_function("0.16.5", v0_16_5_add_autoclean_on_success_field);
+    json_config_updater.add_update_function("0.16.6", v0_16_6_add_show_working_directory_field);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -202,6 +203,7 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.16.2", v0_16_2_add_quick_launch_scripts);
     json_config_updater.add_update_function("0.16.4", v0_16_4_add_is_hidden_field);
     json_config_updater.add_update_function("0.16.5", v0_16_5_add_autoclean_on_success_field);
+    json_config_updater.add_update_function("0.16.6", v0_16_6_add_show_working_directory_field);
 
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
@@ -514,4 +516,10 @@ fn v0_16_5_add_autoclean_on_success_field(config_json: &mut JsonValue) {
     for_each_script_original_definition_post_0_10_0(config_json, |script| {
         script["autoclean_on_success"] = json!(false);
     });
+}
+
+fn v0_16_6_add_show_working_directory_field(config_json: &mut JsonValue) {
+    if let Some(rewritable) = config_json["rewritable"].as_object_mut() {
+        rewritable.insert("show_working_directory".to_string(), json!(true));
+    }
 }
