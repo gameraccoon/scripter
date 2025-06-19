@@ -240,6 +240,7 @@ pub(crate) enum WindowMessage {
     EditAutorerunCount(String),
     ToggleIgnoreFailures(bool),
     ToggleAutocleanOnSuccess(bool),
+    ToggleIgnoreOutput(bool),
     ToggleIsHidden(bool),
     EnterWindowEditMode,
     ExitWindowEditMode,
@@ -656,6 +657,7 @@ impl Application for MainWindow {
                     arguments_hint: "\"arg1\" \"arg2\"".to_string(),
                     is_hidden: false,
                     autoclean_on_success: false,
+                    ignore_output: false,
                 };
                 add_script_to_config(self, config::ScriptDefinition::Original(script));
 
@@ -758,6 +760,9 @@ impl Application for MainWindow {
             }
             WindowMessage::ToggleAutocleanOnSuccess(value) => {
                 apply_script_edit(self, |script| script.autoclean_on_success = value)
+            }
+            WindowMessage::ToggleIgnoreOutput(value) => {
+                apply_script_edit(self, |script| script.ignore_output = value)
             }
             WindowMessage::ToggleIsHidden(value) => {
                 apply_script_edit(self, |script| script.is_hidden = value)
@@ -2844,6 +2849,13 @@ fn produce_script_edit_content<'a>(
             parameters.push(
                 checkbox("Autoclean on success", script.autoclean_on_success)
                     .on_toggle(move |val| WindowMessage::ToggleAutocleanOnSuccess(val))
+                    .into(),
+            );
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            parameters.push(
+                checkbox("Ignore output", script.ignore_output)
+                    .on_toggle(move |val| WindowMessage::ToggleIgnoreOutput(val))
                     .into(),
             );
 

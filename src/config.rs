@@ -137,6 +137,7 @@ pub struct OriginalScriptDefinition {
     pub arguments_hint: String,
     pub is_hidden: bool,
     pub autoclean_on_success: bool,
+    pub ignore_output: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

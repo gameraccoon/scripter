@@ -188,7 +188,7 @@ pub fn run_scripts(
                     script_state.retry_count,
                 ));
 
-                let (stdout_type, stderr_type) = if output_file.is_ok() {
+                let (stdout_type, stderr_type) = if output_file.is_ok() && !script.ignore_output {
                     (std::process::Stdio::piped(), std::process::Stdio::piped())
                 } else {
                     (std::process::Stdio::null(), std::process::Stdio::null())
@@ -268,15 +268,22 @@ pub fn run_scripts(
                 };
 
                 let mut threads_to_join = Vec::new();
-                match (child.stdout.take(), child.stderr.take(), output_file) {
-                    (Some(stdout), Some(stderr), Ok(output_file)) => {
-                        threads_to_join =
-                            join_and_split_output(stdout, stderr, recent_logs.clone(), output_file);
-                    }
-                    _ => {
-                        println!(
-                            "Failed to redirect stdout/stderr. No diagnostic is provided for now"
-                        );
+
+                if !script.ignore_output {
+                    match (child.stdout.take(), child.stderr.take(), output_file) {
+                        (Some(stdout), Some(stderr), Ok(output_file)) => {
+                            threads_to_join = join_and_split_output(
+                                stdout,
+                                stderr,
+                                recent_logs.clone(),
+                                output_file,
+                            );
+                        }
+                        _ => {
+                            println!(
+                                "Failed to redirect stdout/stderr. No diagnostic is provided for now"
+                            );
+                        }
                     }
                 }
 
