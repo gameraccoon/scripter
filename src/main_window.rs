@@ -239,6 +239,8 @@ pub(crate) enum WindowMessage {
     EditArgumentsHint(String),
     EditAutorerunCount(String),
     ToggleIgnoreFailures(bool),
+    ToggleUseCustomExecutor(bool),
+    EditCustomExecutor(String, usize),
     ToggleAutocleanOnSuccess(bool),
     ToggleIgnoreOutput(bool),
     ToggleIsHidden(bool),
@@ -655,6 +657,7 @@ impl Application for MainWindow {
                     ignore_previous_failures: false,
                     requires_arguments: false,
                     arguments_hint: "\"arg1\" \"arg2\"".to_string(),
+                    custom_executor: None,
                     is_hidden: false,
                     autoclean_on_success: false,
                     ignore_output: false,
@@ -758,6 +761,26 @@ impl Application for MainWindow {
             WindowMessage::ToggleIgnoreFailures(value) => {
                 apply_script_edit(self, |script| script.ignore_previous_failures = value)
             }
+            WindowMessage::ToggleUseCustomExecutor(should_use_custom) => {
+                apply_script_edit(self, |script| {
+                    if script.custom_executor.is_none() && should_use_custom {
+                        script.custom_executor = Some(config::get_default_executor())
+                    } else if !should_use_custom {
+                        script.custom_executor = None;
+                    }
+                })
+            }
+            WindowMessage::EditCustomExecutor(value, index) => apply_script_edit(self, |script| {
+                if let Some(executor) = &mut script.custom_executor {
+                    if value.is_empty() && index + 1 == executor.len() {
+                        executor.pop();
+                    } else if !value.is_empty() && index == executor.len() {
+                        executor.push(value);
+                    } else if index < executor.len() {
+                        executor[index] = value;
+                    }
+                }
+            }),
             WindowMessage::ToggleAutocleanOnSuccess(value) => {
                 apply_script_edit(self, |script| script.autoclean_on_success = value)
             }
@@ -2837,6 +2860,35 @@ fn produce_script_edit_content<'a>(
                     .padding(5)
                     .into(),
             );
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            parameters.push(
+                checkbox("Set custom executor", script.custom_executor.is_some())
+                    .on_toggle(move |val| WindowMessage::ToggleUseCustomExecutor(val))
+                    .into(),
+            );
+
+            if let Some(mut custom_executor) = script.custom_executor.clone() {
+                custom_executor.push("".to_string());
+                parameters.push(
+                    row(custom_executor.iter().enumerate().map(|(idx, line)| {
+                        text_input(
+                            if idx + 1 == custom_executor.len() {
+                                "+"
+                            } else {
+                                ""
+                            },
+                            &line,
+                        )
+                        .on_input(move |new_value| {
+                            WindowMessage::EditCustomExecutor(new_value, idx)
+                        })
+                        .padding(5)
+                        .into()
+                    }))
+                    .into(),
+                );
+            }
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(

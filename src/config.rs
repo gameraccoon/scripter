@@ -135,6 +135,7 @@ pub struct OriginalScriptDefinition {
     pub ignore_previous_failures: bool,
     pub requires_arguments: bool,
     pub arguments_hint: String,
+    pub custom_executor: Option<Vec<String>>,
     pub is_hidden: bool,
     pub autoclean_on_success: bool,
     pub ignore_output: bool,
@@ -994,4 +995,21 @@ fn get_default_app_action_keybinds() -> Vec<AppActionKeybind> {
     });
 
     keybinds
+}
+
+pub fn get_default_executor() -> Vec<String> {
+    let mut executor = Vec::with_capacity(2);
+    #[cfg(target_os = "windows")]
+    {
+        executor.push("cmd".to_string());
+        executor.push("/C".to_string());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        executor.push("sh".to_string());
+        executor.push("-c".to_string());
+    }
+
+    executor
 }

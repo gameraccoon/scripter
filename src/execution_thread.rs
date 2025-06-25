@@ -196,22 +196,37 @@ pub fn run_scripts(
 
                 let command_line = get_script_with_arguments(&script, &path_caches);
 
-                #[cfg(target_os = "windows")]
-                let mut command = std::process::Command::new("cmd");
+                let executor = script
+                    .custom_executor
+                    .clone()
+                    .unwrap_or(config::get_default_executor());
+
+                if executor.is_empty() {
+                    let mut recent_logs = recent_logs.lock().unwrap(); // it is fine to panic on a poisoned mutex
+                    recent_logs.push(OutputLine {
+                        text: "Empty executor is not supported".to_string(),
+                        output_type: OutputType::Error,
+                        timestamp: chrono::Local::now(),
+                    });
+                    script_state.result = ScriptResultStatus::Failed;
+                    script_state.finish_time = Some(Instant::now());
+                    send_script_execution_status(
+                        &progress_sender,
+                        script_idx,
+                        script_state.clone(),
+                    );
+                    has_previous_script_failed = true;
+                    break 'retry_loop;
+                }
+
+                let mut command = std::process::Command::new(&executor[0]);
+
+                for i in 1..executor.len() {
+                    command.arg(&executor[i]);
+                }
 
                 #[cfg(target_os = "windows")]
-                {
-                    command
-                        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                        .arg("/C");
-                }
-                #[cfg(not(target_os = "windows"))]
-                let mut command = std::process::Command::new("sh");
-
-                #[cfg(not(target_os = "windows"))]
-                {
-                    command.arg("-c");
-                }
+                command.creation_flags(0x08000000); // CREATE_NO_WINDOW
 
                 command
                     .arg(command_line)
