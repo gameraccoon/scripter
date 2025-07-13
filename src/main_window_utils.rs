@@ -969,8 +969,6 @@ pub fn start_new_execution_from_provided_scripts(
         .execution_data
         .start_new_execution(&app.app_config, name, scripts);
 
-    app.edit_data.script_filter = String::new();
-    update_config_cache(app);
     app.visual_caches.selected_execution_log = Some(new_execution_id);
     update_button_key_hint_caches(app);
 }
