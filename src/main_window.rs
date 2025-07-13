@@ -1906,7 +1906,7 @@ fn produce_script_list_content<'a>(
                         .style(theme::Button::Positive)
                         .on_press(WindowMessage::SaveConfigAndExitEditing),
                     Space::with_width(4.0),
-                    button(text("Cancel").size(16))
+                    button(text("Revert").size(16))
                         .style(theme::Button::Destructive)
                         .on_press(WindowMessage::RevertConfigAndExitEditing),
                     Space::with_width(4.0),
@@ -1954,7 +1954,7 @@ fn produce_script_list_content<'a>(
                         .style(theme::Button::Positive)
                         .on_press(WindowMessage::SaveConfigAndExitEditing),
                     Space::with_width(4.0),
-                    button(text("Cancel").size(16))
+                    button(text("Revert").size(16))
                         .style(theme::Button::Destructive)
                         .on_press(WindowMessage::RevertConfigAndExitEditing),
                 ];
