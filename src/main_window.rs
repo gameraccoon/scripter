@@ -1783,6 +1783,7 @@ impl AppPane {
 }
 
 fn produce_script_list_content<'a>(
+    execution_lists: &execution_lists::ExecutionLists,
     config: &config::AppConfig,
     rewritable_config: &config::RewritableConfig,
     displayed_configs_list_cache: &Vec<ScriptListCacheRecord>,
@@ -1947,17 +1948,25 @@ fn produce_script_list_content<'a>(
         ]
     } else if edit_data.is_dirty {
         column![
-            row![
-                button(text("Save").size(16))
-                    .style(theme::Button::Positive)
-                    .on_press(WindowMessage::SaveConfigAndExitEditing),
-                Space::with_width(4.0),
-                button(text("Cancel").size(16))
-                    .style(theme::Button::Destructive)
-                    .on_press(WindowMessage::RevertConfigAndExitEditing),
-                Space::with_width(4.0),
-                button(text("Back to edit").size(16)).on_press(WindowMessage::EnterWindowEditMode),
-            ],
+            {
+                let mut buttons = row![
+                    button(text("Save").size(16))
+                        .style(theme::Button::Positive)
+                        .on_press(WindowMessage::SaveConfigAndExitEditing),
+                    Space::with_width(4.0),
+                    button(text("Cancel").size(16))
+                        .style(theme::Button::Destructive)
+                        .on_press(WindowMessage::RevertConfigAndExitEditing),
+                ];
+                if !execution_lists.has_any_execution_started() {
+                    buttons = buttons.push(Space::with_width(4.0));
+                    buttons = buttons.push(
+                        button(text("Back to edit").size(16))
+                            .on_press(WindowMessage::EnterWindowEditMode),
+                    );
+                }
+                buttons
+            },
             Space::with_height(4.0),
         ]
     } else {
@@ -3360,6 +3369,7 @@ fn view_content<'a>(
 
     let content = match variant {
         PaneVariant::ScriptList => produce_script_list_content(
+            execution_lists,
             config,
             rewritable_config,
             displayed_configs_list_cache,
