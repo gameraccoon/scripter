@@ -759,12 +759,12 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
     let mut previous_script_idx = None;
     let mut has_configs_to_remove = false;
     for script in &shared_config.script_definitions {
-        let original_script_uid = match script {
+        let (original_script_uid, is_hidden) = match script {
             ScriptDefinition::ReferenceToShared(_) => {
                 continue;
             }
-            ScriptDefinition::Original(script) => script.uid.clone(),
-            ScriptDefinition::Preset(preset) => preset.uid.clone(),
+            ScriptDefinition::Original(script) => (script.uid.clone(), script.is_hidden),
+            ScriptDefinition::Preset(preset) => (preset.uid.clone(), false),
         };
 
         // find position of the script in the local config
@@ -792,7 +792,7 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
                             *previous_script_idx + 1,
                             ScriptDefinition::ReferenceToShared(ReferenceToSharedScript {
                                 uid: original_script_uid.clone(),
-                                is_hidden: false,
+                                is_hidden,
                             }),
                         );
                         *previous_script_idx = *previous_script_idx + 1;
@@ -803,7 +803,7 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
                             0,
                             ScriptDefinition::ReferenceToShared(ReferenceToSharedScript {
                                 uid: original_script_uid.clone(),
-                                is_hidden: false,
+                                is_hidden,
                             }),
                         );
                         previous_script_idx = Some(0);
