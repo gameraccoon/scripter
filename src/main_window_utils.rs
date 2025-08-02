@@ -1030,8 +1030,10 @@ pub fn add_script_to_config(app: &mut MainWindow, script: config::ScriptDefiniti
             ConfigEditType::Shared => {
                 Some(add_script_to_shared_config(&mut app.app_config, script))
             }
-            ConfigEditType::Local => add_script_to_local_config(app, script),
+            ConfigEditType::Local => add_script_to_local_config(&mut app.app_config, script),
         };
+
+        update_config_cache(app);
 
         app.edit_data
             .window_edit_data
@@ -1107,18 +1109,16 @@ fn add_script_to_shared_config(
 }
 
 fn add_script_to_local_config(
-    app: &mut MainWindow,
+    app_config: &mut config::AppConfig,
     script: config::ScriptDefinition,
 ) -> Option<usize> {
-    if let Some(config) = &mut app.app_config.local_config_body {
+    if let Some(config) = &mut app_config.local_config_body {
         config.script_definitions.push(script);
     } else {
         return None;
     }
 
-    update_config_cache(app);
-
-    if let Some(config) = &mut app.app_config.local_config_body {
+    if let Some(config) = &mut app_config.local_config_body {
         Some(config.script_definitions.len() - 1)
     } else {
         None
