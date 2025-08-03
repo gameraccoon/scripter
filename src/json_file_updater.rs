@@ -1,10 +1,10 @@
-// Copyright (C) Pavel Grebnev 2023-2024
+// Copyright (C) Pavel Grebnev 2023-2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use serde_json::Value as JsonValue;
 
-/// JsonFileUpdater is a helper struct that handles updating json files to ensure forward
-/// compatibility of the json file format between versions of the app.
+/// JsonFileUpdater is a helper struct that handles updating json files to maintain compatibility
+/// with the newer versions of the application.
 /// It can be used to update any json files needed for the app, as long as prerequisites below are
 /// met.
 ///
@@ -36,15 +36,17 @@ use serde_json::Value as JsonValue;
 ///  - You can create an empty update function if you want to have that version in json, but don't
 ///    need to update anything for that version. This only useful if you use this field for something
 ///    else than the updater.
-///  - Version field name never changes.
+///  - Version field name never changes, or its change should be patched in the json object, before
+///    it is being passed to the update_json function.
 ///  - Updater functions should only be added and not changed, the only exception described in
 ///    Q&A section below.
 ///  - Updater functions should be self-contained, and should not call any of the app code that can
 ///    potentially change in the future. Otherwise, this will invalidate the whole purpose of the
 ///    updater and the app code would need to be versioned as well. This is not the place for DRY.
-///  - When a field is removed from the target struct, the update function should remove it as well
-///    (this will save you from headache a few years in the future when you add a new field with
-///    the same name).
+///  - When fields are added or removed, the update functions should still be created even if the
+///    update can be handled by serde itself. This ensures that users who try to use older versions
+///    of the app can always be detected correctly, and that you don't have surprises in the future
+///    when you would need to add a new field with the same name.
 ///
 /// Limitations:
 ///  - If no update functions are provided, the json file is not changed
