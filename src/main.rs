@@ -1,4 +1,4 @@
-// Copyright (C) Pavel Grebnev 2023-2024
+// Copyright (C) Pavel Grebnev 2023-2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 #![windows_subsystem = "windows"]
@@ -8,7 +8,6 @@ mod color_utils;
 mod config;
 mod config_updaters;
 mod custom_keybinds;
-mod execution_lists;
 mod execution_thread;
 mod file_utils;
 mod git_support;
@@ -18,6 +17,7 @@ mod keybind_editing;
 mod main_window;
 mod main_window_utils;
 mod main_window_widgets;
+mod parallel_execution_manager;
 mod ring_buffer;
 mod style;
 mod ui_icons;

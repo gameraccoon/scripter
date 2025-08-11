@@ -1,4 +1,4 @@
-// Copyright (C) Pavel Grebnev 2023-2024
+// Copyright (C) Pavel Grebnev 2023-2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 #[cfg(target_os = "windows")]
@@ -7,10 +7,8 @@ use std::os::windows::process::CommandExt;
 use chrono;
 use crossbeam_channel::{unbounded, Receiver, RecvError, Sender};
 use std::io::{BufRead, Write};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
-};
+use std::sync::atomic::AtomicU8;
+use std::sync::{atomic::Ordering, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::config;
@@ -22,6 +20,8 @@ pub enum ScriptResultStatus {
     Success,
     Failed,
     Skipped,
+    // the script was disconnected from the execution
+    Disconnected,
 }
 
 #[derive(Clone)]
@@ -49,11 +49,14 @@ pub struct OutputLine {
 }
 
 pub(crate) type LogBuffer = RingBuffer<OutputLine, 30>;
+const REQUESTED_ACTION_NONE: u8 = 0;
+const REQUESTED_ACTION_STOP: u8 = 1;
+const REQUESTED_ACTION_DISCONNECT: u8 = 2;
 
 pub struct ScriptExecutionData {
     pub scripts_to_run: Vec<config::ScriptDefinition>,
     pub progress_receiver: Option<Receiver<(usize, ScriptExecutionStatus)>>,
-    pub is_termination_requested: Arc<AtomicBool>,
+    pub requested_action: Arc<AtomicU8>,
     pub thread_join_handle: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -62,7 +65,7 @@ impl ScriptExecutionData {
         ScriptExecutionData {
             scripts_to_run: Vec::new(),
             progress_receiver: None,
-            is_termination_requested: Arc::new(AtomicBool::new(false)),
+            requested_action: Arc::new(AtomicU8::new(0)),
             thread_join_handle: None,
         }
     }
@@ -96,6 +99,10 @@ impl ScriptExecutionStatus {
 
     pub fn has_script_been_skipped(self: &ScriptExecutionStatus) -> bool {
         self.has_script_finished() && self.result == ScriptResultStatus::Skipped
+    }
+
+    pub fn has_script_been_disconnected(self: &ScriptExecutionStatus) -> bool {
+        self.result == ScriptResultStatus::Disconnected
     }
 }
 
@@ -133,7 +140,7 @@ pub fn run_scripts(
     let log_directory = log_directory.clone();
 
     let scripts_to_run = execution_data.scripts_to_run.clone();
-    let is_termination_requested = execution_data.is_termination_requested.clone();
+    let requested_action = execution_data.requested_action.clone();
     let path_caches = app_config.paths.clone();
     let env_vars = app_config.env_vars.clone();
 
@@ -141,6 +148,7 @@ pub fn run_scripts(
         let mut has_previous_script_failed = had_failures_before;
         let mut kill_requested = false;
         for script_idx in 0..scripts_to_run.len() {
+            let mut disconnect_requested = false;
             let config::ScriptDefinition::Original(script) = &scripts_to_run[script_idx] else {
                 panic!("run_scripts() can only be used with OriginalScriptDefinition");
             };
@@ -343,15 +351,35 @@ pub fn run_scripts(
                         }
                     }
 
-                    if is_termination_requested.load(Ordering::Acquire) {
-                        kill_process(&mut child);
-                        kill_requested = true;
-                        is_termination_requested.store(false, Ordering::Release);
+                    let requested_action_raw = requested_action.load(Ordering::Acquire);
+                    if requested_action_raw > 0 {
+                        if requested_action_raw == REQUESTED_ACTION_STOP {
+                            kill_process(&mut child);
+                            kill_requested = true;
+                        } else if requested_action_raw == REQUESTED_ACTION_DISCONNECT {
+                            let first_disconnected_script_idx = script_idx + 1;
+                            let size_of_script_list = if disconnect_requested {
+                                first_disconnected_script_idx
+                            } else {
+                                scripts_to_run.len()
+                            };
+                            send_non_executed_disconnect_statuses(
+                                &progress_sender,
+                                first_disconnected_script_idx,
+                                size_of_script_list,
+                            );
+                            disconnect_requested = true;
+                        }
+                        requested_action.store(REQUESTED_ACTION_NONE, Ordering::Release);
                     }
 
                     std::thread::sleep(Duration::from_millis(100));
                 }
                 join_threads(threads_to_join);
+            }
+
+            if disconnect_requested {
+                break;
             }
         }
     }));
@@ -359,8 +387,14 @@ pub fn run_scripts(
 
 pub fn request_stop_execution(execution_data: &mut ScriptExecutionData) {
     execution_data
-        .is_termination_requested
-        .store(true, Ordering::Relaxed);
+        .requested_action
+        .store(REQUESTED_ACTION_STOP, Ordering::Relaxed);
+}
+
+pub fn request_disconnect_non_executed_scripts(execution_data: &mut ScriptExecutionData) {
+    execution_data
+        .requested_action
+        .store(REQUESTED_ACTION_DISCONNECT, Ordering::Relaxed);
 }
 
 fn send_script_execution_status(
@@ -440,6 +474,37 @@ fn kill_process(process: &mut std::process::Child) {
     if let Err(result) = kill_result {
         println!("failed to kill child process: {}", result);
     }
+}
+
+fn send_non_executed_disconnect_statuses(
+    tx: &Sender<(usize, ScriptExecutionStatus)>,
+    first_script_to_disconnect_idx: usize,
+    scripts_number: usize,
+) {
+    for i in first_script_to_disconnect_idx..scripts_number {
+        send_script_execution_status(
+            tx,
+            i,
+            ScriptExecutionStatus {
+                start_time: None,
+                finish_time: None,
+                result: ScriptResultStatus::Disconnected,
+                retry_count: 0,
+            },
+        );
+    }
+
+    // send a non-executed status to signal the end of the transmission
+    send_script_execution_status(
+        tx,
+        scripts_number,
+        ScriptExecutionStatus {
+            start_time: None,
+            finish_time: None,
+            result: ScriptResultStatus::Disconnected,
+            retry_count: 0,
+        },
+    );
 }
 
 fn join_and_split_output(

@@ -1,4 +1,4 @@
-// Copyright (C) Pavel Grebnev 2023-2024
+// Copyright (C) Pavel Grebnev 2023-2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use iced::alignment::{self, Alignment};
@@ -24,13 +24,13 @@ use std::time::{Duration, Instant};
 use crate::color_utils;
 use crate::config;
 use crate::custom_keybinds;
-use crate::execution_lists;
 use crate::execution_thread;
 use crate::file_utils;
 use crate::git_support;
 use crate::keybind_editing;
 use crate::main_window_utils::*;
 use crate::main_window_widgets::*;
+use crate::parallel_execution_manager;
 use crate::style;
 use crate::ui_icons;
 
@@ -78,7 +78,7 @@ pub(crate) struct VisualCaches {
     pub(crate) icons: ui_icons::IconCaches,
     pub(crate) keybind_hints: HashMap<keybind_editing::KeybindAssociatedData, String>,
     pane_drag_start_time: Instant,
-    pub(crate) selected_execution_log: Option<execution_lists::ExecutionId>,
+    pub(crate) selected_execution_log: Option<parallel_execution_manager::ExecutionId>,
     pub(crate) git_branch_requester: Option<git_support::GitCurrentBranchRequester>,
     pub(crate) last_execution_id: u32,
     pub(crate) button_key_caches: ButtonKeyCaches,
@@ -87,8 +87,8 @@ pub(crate) struct VisualCaches {
 
 #[derive(Default)]
 pub(crate) struct ButtonKeyCaches {
-    pub(crate) last_stoppable_execution_id: Option<execution_lists::ExecutionId>,
-    pub(crate) last_cleanable_execution_id: Option<execution_lists::ExecutionId>,
+    pub(crate) last_stoppable_execution_id: Option<parallel_execution_manager::ExecutionId>,
+    pub(crate) last_cleanable_execution_id: Option<parallel_execution_manager::ExecutionId>,
 }
 
 pub(crate) struct ScriptListCacheRecord {
@@ -101,7 +101,7 @@ pub(crate) struct ScriptListCacheRecord {
 pub(crate) struct MainWindow {
     pub(crate) panes: pane_grid::State<AppPane>,
     pub(crate) pane_by_pane_type: HashMap<PaneVariant, pane_grid::Pane>,
-    pub(crate) execution_data: execution_lists::ExecutionLists,
+    pub(crate) execution_manager: parallel_execution_manager::ParallelExecutionManager,
     pub(crate) app_config: config::AppConfig,
     pub(crate) theme: Theme,
     pub(crate) visual_caches: VisualCaches,
@@ -211,13 +211,14 @@ pub(crate) enum WindowMessage {
     AddScriptToExecutionWithoutRunning(config::Guid),
     RunEditedScriptsInParallel,
     RunEditedScriptsAfterExecutionHotkey,
-    RunEditedScriptsWithExecution(execution_lists::ExecutionId),
-    StopScripts(execution_lists::ExecutionId),
+    RunEditedScriptsWithExecution(parallel_execution_manager::ExecutionId),
+    StopScripts(parallel_execution_manager::ExecutionId),
     StopScriptsHotkey,
+    EditExecutedScripts(parallel_execution_manager::ExecutionId),
     ClearEditedExecutionScripts,
-    ClearFinishedExecutionScripts(execution_lists::ExecutionId),
+    ClearFinishedExecutionScripts(parallel_execution_manager::ExecutionId),
     ClearExecutionScriptsHotkey,
-    RescheduleScripts(execution_lists::ExecutionId),
+    RescheduleScripts(parallel_execution_manager::ExecutionId),
     RescheduleScriptsHotkey,
     Tick(Instant),
     OpenScriptEditing(usize),
@@ -292,12 +293,12 @@ pub(crate) enum WindowMessage {
     EditExecutionListTitle(String),
     OpenWithDefaultApplication(PathBuf),
     OpenUrl(String),
-    OpenLogFileOrFolder(execution_lists::ExecutionId, usize),
+    OpenLogFileOrFolder(parallel_execution_manager::ExecutionId, usize),
     SwitchToOriginalSharedScript(EditScriptId),
     ProcessKeyPress(keyboard::Key, keyboard::Modifiers),
     StartRecordingKeybind(keybind_editing::KeybindAssociatedData),
     StopRecordingKeybind,
-    SelectExecutionLog(execution_lists::ExecutionId),
+    SelectExecutionLog(parallel_execution_manager::ExecutionId),
     OnQuickLaunchButtonPressed(config::Guid),
     AddToQuickLaunchPanel(config::Guid),
     RemoveFromQuickLaunchPanel(config::Guid),
@@ -342,7 +343,7 @@ impl Application for MainWindow {
         let mut main_window = MainWindow {
             panes,
             pane_by_pane_type,
-            execution_data: execution_lists::ExecutionLists::new(),
+            execution_manager: parallel_execution_manager::ParallelExecutionManager::new(),
             theme: get_theme(&app_config, &None),
             app_config,
             visual_caches: VisualCaches {
@@ -393,9 +394,9 @@ impl Application for MainWindow {
                 }
                 _ => "scripter [Editing]".to_string(),
             }
-        } else if self.execution_data.has_any_execution_started() {
-            if self.execution_data.has_all_executions_finished() {
-                if self.execution_data.has_any_execution_failed() {
+        } else if self.execution_manager.has_any_execution_started() {
+            if self.execution_manager.has_all_executions_finished() {
+                if self.execution_manager.has_any_execution_failed() {
                     "scripter [Finished with errors]".to_string()
                 } else {
                     "scripter [Finished]".to_string()
@@ -457,8 +458,8 @@ impl Application for MainWindow {
                 if self.window_state.has_maximized_pane {
                     return restore_window(self);
                 } else {
-                    if (self.execution_data.has_any_execution_started()
-                        || !self.execution_data.get_edited_scripts().is_empty())
+                    if (self.execution_manager.has_any_execution_started()
+                        || !self.execution_manager.get_edited_scripts().is_empty())
                         && self.edit_data.window_edit_data.is_none()
                     {
                         return maximize_pane(
@@ -496,13 +497,7 @@ impl Application for MainWindow {
                 add_edited_scripts_to_started_execution(self, execution_id);
             }
             WindowMessage::StopScripts(execution_id) => {
-                if let Some(execution) = self
-                    .execution_data
-                    .get_started_executions_mut()
-                    .get_mut(execution_id)
-                {
-                    execution.request_stop_execution();
-                };
+                self.execution_manager.request_stop_execution(execution_id);
             }
             WindowMessage::StopScriptsHotkey => {
                 // we use the same script that we hinted visually
@@ -511,35 +506,33 @@ impl Application for MainWindow {
                     .button_key_caches
                     .last_stoppable_execution_id
                 {
-                    if let Some(execution) = self
-                        .execution_data
-                        .get_started_executions_mut()
-                        .get_mut(execution_id)
-                    {
-                        execution.request_stop_execution();
-                    }
+                    self.execution_manager.request_stop_execution(execution_id);
                 }
+            }
+            WindowMessage::EditExecutedScripts(execution_id) => {
+                self.execution_manager
+                    .request_edit_non_executed_scripts(execution_id);
             }
             WindowMessage::ClearEditedExecutionScripts => clear_edited_scripts(self),
             WindowMessage::ClearFinishedExecutionScripts(execution_id) => {
-                self.execution_data.remove_execution(execution_id);
+                self.execution_manager.remove_execution(execution_id);
                 on_execution_removed(self, execution_id);
             }
             WindowMessage::ClearExecutionScriptsHotkey => {
-                if !self.execution_data.get_edited_scripts().is_empty() {
+                if !self.execution_manager.get_edited_scripts().is_empty() {
                     clear_edited_scripts(self);
                 } else {
                     clear_execution_scripts(self);
                 }
             }
             WindowMessage::RescheduleScripts(execution_id) => {
-                let mut execution = self.execution_data.remove_execution(execution_id);
+                let mut execution = self.execution_manager.remove_execution(execution_id);
                 if let Some(execution) = &mut execution {
                     execution
                         .get_scheduled_scripts_cache_mut()
                         .drain(..)
                         .for_each(|record| {
-                            self.execution_data
+                            self.execution_manager
                                 .get_edited_scripts_mut()
                                 .push(record.script);
                         });
@@ -553,7 +546,7 @@ impl Application for MainWindow {
                     .button_key_caches
                     .last_cleanable_execution_id
                     .and_then(|execution_id| {
-                        self.execution_data
+                        self.execution_manager
                             .get_started_executions()
                             .get(execution_id)
                             .filter(|execution| execution.has_finished_execution())
@@ -562,14 +555,14 @@ impl Application for MainWindow {
 
                 if let Some(execution_to_reschedule) = execution_to_reschedule {
                     let mut execution = self
-                        .execution_data
+                        .execution_manager
                         .remove_execution(execution_to_reschedule);
                     if let Some(execution) = &mut execution {
                         execution
                             .get_scheduled_scripts_cache_mut()
                             .drain(..)
                             .for_each(|record| {
-                                self.execution_data
+                                self.execution_manager
                                     .get_edited_scripts_mut()
                                     .push(record.script);
                             });
@@ -578,11 +571,11 @@ impl Application for MainWindow {
                 }
             }
             WindowMessage::Tick(_now) => {
-                let just_finished_executions = self.execution_data.tick(&self.app_config);
+                let just_finished_executions = self.execution_manager.tick(&self.app_config);
                 if let Some(just_finished_executions) = just_finished_executions {
                     for execution_id in just_finished_executions {
                         if should_autoclean_on_success(self, execution_id) {
-                            self.execution_data.remove_execution(execution_id);
+                            self.execution_manager.remove_execution(execution_id);
                         }
                     }
 
@@ -667,13 +660,13 @@ impl Application for MainWindow {
                 update_config_cache(self);
             }
             WindowMessage::MoveExecutionScriptUp(script_idx) => {
-                self.execution_data
+                self.execution_manager
                     .get_edited_scripts_mut()
                     .swap(script_idx, script_idx - 1);
                 select_execution_script(self, script_idx - 1);
             }
             WindowMessage::MoveExecutionScriptDown(script_idx) => {
-                self.execution_data
+                self.execution_manager
                     .get_edited_scripts_mut()
                     .swap(script_idx, script_idx + 1);
                 select_execution_script(self, script_idx + 1);
@@ -793,7 +786,7 @@ impl Application for MainWindow {
             WindowMessage::EnterWindowEditMode => enter_window_edit_mode(self),
             WindowMessage::ExitWindowEditMode => exit_window_edit_mode(self),
             WindowMessage::TrySwitchWindowEditMode => {
-                if !self.execution_data.has_any_execution_started() {
+                if !self.execution_manager.has_any_execution_started() {
                     if !self.edit_data.window_edit_data.is_some() {
                         enter_window_edit_mode(self);
                     } else {
@@ -1160,7 +1153,7 @@ impl Application for MainWindow {
                     items: vec![],
                 };
 
-                for script in self.execution_data.get_edited_scripts() {
+                for script in self.execution_manager.get_edited_scripts() {
                     match script {
                         config::ScriptDefinition::Original(script) => {
                             let original_script = config::get_original_script_definition_by_uid(
@@ -1260,9 +1253,12 @@ impl Application for MainWindow {
                     })
                 };
 
-                if self.execution_data.has_any_execution_started() {
-                    if self.execution_data.has_all_executions_finished() {
-                        if !self.execution_data.is_waiting_on_any_execution_to_finish() {
+                if self.execution_manager.has_any_execution_started() {
+                    if self.execution_manager.has_all_executions_finished() {
+                        if !self
+                            .execution_manager
+                            .is_waiting_on_any_execution_to_finish()
+                        {
                             return exit_thread_command();
                         }
                     }
@@ -1290,7 +1286,7 @@ impl Application for MainWindow {
                 move_cursor(self, false);
             }
             WindowMessage::MoveScriptDown => {
-                if self.execution_data.has_any_execution_started() {
+                if self.execution_manager.has_any_execution_started() {
                     return Command::none();
                 }
 
@@ -1310,11 +1306,11 @@ impl Application for MainWindow {
                     if let Some(cursor_script) = &self.window_state.cursor_script {
                         if cursor_script.script_type == EditScriptType::ExecutionList {
                             if cursor_script.idx + 1
-                                >= self.execution_data.get_edited_scripts().len()
+                                >= self.execution_manager.get_edited_scripts().len()
                             {
                                 return Command::none();
                             }
-                            self.execution_data
+                            self.execution_manager
                                 .get_edited_scripts_mut()
                                 .swap(cursor_script.idx, cursor_script.idx + 1);
                             select_execution_script(self, cursor_script.idx + 1);
@@ -1341,7 +1337,7 @@ impl Application for MainWindow {
                             if cursor_script.idx == 0 {
                                 return Command::none();
                             }
-                            self.execution_data
+                            self.execution_manager
                                 .get_edited_scripts_mut()
                                 .swap(cursor_script.idx, cursor_script.idx - 1);
                             select_execution_script(self, cursor_script.idx - 1);
@@ -1390,7 +1386,7 @@ impl Application for MainWindow {
                 }
             }
             WindowMessage::RemoveCursorScript => {
-                if self.execution_data.has_any_execution_started() {
+                if self.execution_manager.has_any_execution_started() {
                     return Command::none();
                 }
 
@@ -1461,7 +1457,7 @@ impl Application for MainWindow {
             }
             WindowMessage::OpenLogFileOrFolder(execution_id, script_index) => {
                 if let Some(execution) = self
-                    .execution_data
+                    .execution_manager
                     .get_started_executions()
                     .get(execution_id)
                 {
@@ -1657,7 +1653,7 @@ impl Application for MainWindow {
                         &self.visual_caches,
                         &self.edit_data,
                         &self.app_config,
-                        &self.execution_data,
+                        &self.execution_manager,
                         is_maximized,
                         size,
                         &self.window_state,
@@ -1665,9 +1661,9 @@ impl Application for MainWindow {
                     ))
                     .padding(10)
                     .style(if is_focused {
-                        if self.execution_data.has_any_execution_failed() {
+                        if self.execution_manager.has_any_execution_failed() {
                             style::title_bar_focused_failed
-                        } else if self.execution_data.has_all_executions_finished() {
+                        } else if self.execution_manager.has_all_executions_finished() {
                             style::title_bar_focused_completed
                         } else {
                             style::title_bar_focused
@@ -1678,7 +1674,7 @@ impl Application for MainWindow {
 
                 pane_grid::Content::new(responsive(move |_size| {
                     view_content(
-                        &self.execution_data,
+                        &self.execution_manager,
                         variant,
                         &self.theme,
                         &self.displayed_configs_list_cache,
@@ -1783,7 +1779,7 @@ impl AppPane {
 }
 
 fn produce_script_list_content<'a>(
-    execution_lists: &execution_lists::ExecutionLists,
+    execution_lists: &parallel_execution_manager::ParallelExecutionManager,
     config: &config::AppConfig,
     rewritable_config: &config::RewritableConfig,
     displayed_configs_list_cache: &Vec<ScriptListCacheRecord>,
@@ -2049,7 +2045,7 @@ fn produce_script_list_content<'a>(
 }
 
 fn produce_execution_list_content<'a>(
-    execution_lists: &execution_lists::ExecutionLists,
+    execution_lists: &parallel_execution_manager::ParallelExecutionManager,
     path_caches: &config::PathCaches,
     theme: &Theme,
     config: &config::AppConfig,
@@ -2188,11 +2184,15 @@ fn produce_execution_list_content<'a>(
                     execution_thread::ScriptResultStatus::Failed => image(icons.failed.clone()),
                     execution_thread::ScriptResultStatus::Success => image(icons.succeeded.clone()),
                     execution_thread::ScriptResultStatus::Skipped => image(icons.skipped.clone()),
+                    execution_thread::ScriptResultStatus::Disconnected => {
+                        image(icons.skipped.clone())
+                    }
                 };
                 status_tooltip = match script_status.result {
                     execution_thread::ScriptResultStatus::Failed => "Failed",
                     execution_thread::ScriptResultStatus::Success => "Success",
                     execution_thread::ScriptResultStatus::Skipped => "Skipped",
+                    execution_thread::ScriptResultStatus::Disconnected => "",
                 };
                 if script_status.result != execution_thread::ScriptResultStatus::Skipped {
                     let time_taken_sec = script_status
@@ -2342,26 +2342,37 @@ fn produce_execution_list_content<'a>(
                 {
                     row![text("Waiting for the execution to stop")]
                 } else {
-                    if window_state.is_command_key_down
-                        && visual_caches.button_key_caches.last_stoppable_execution_id
-                            == Some(execution_id)
-                    {
-                        row![main_icon_button_string(
-                            icons.themed.stop.clone(),
-                            format_keybind_hint(
-                                visual_caches,
+                    row![
+                        if window_state.is_command_key_down
+                            && visual_caches.button_key_caches.last_stoppable_execution_id
+                                == Some(execution_id)
+                        {
+                            row![main_icon_button_string(
+                                icons.themed.stop.clone(),
+                                format_keybind_hint(
+                                    visual_caches,
+                                    "Stop",
+                                    config::AppAction::StopScripts
+                                ),
+                                Some(WindowMessage::StopScripts(execution_id))
+                            )]
+                        } else {
+                            row![main_icon_button(
+                                icons.themed.stop.clone(),
                                 "Stop",
-                                config::AppAction::StopScripts
-                            ),
-                            Some(WindowMessage::StopScripts(execution_id))
-                        )]
-                    } else {
-                        row![main_icon_button(
-                            icons.themed.stop.clone(),
-                            "Stop",
-                            Some(WindowMessage::StopScripts(execution_id))
-                        )]
-                    }
+                                Some(WindowMessage::StopScripts(execution_id))
+                            )]
+                        },
+                        if execution.has_potentially_editable_scripts() {
+                            row![main_icon_button(
+                                icons.themed.edit.clone(),
+                                "Edit",
+                                Some(WindowMessage::EditExecutedScripts(execution_id))
+                            )]
+                        } else {
+                            row![]
+                        }
+                    ]
                 }
             } else {
                 row![]
@@ -2650,7 +2661,7 @@ fn produce_execution_list_content<'a>(
 }
 
 fn produce_log_output_content<'a>(
-    execution_lists: &execution_lists::ExecutionLists,
+    execution_lists: &parallel_execution_manager::ParallelExecutionManager,
     theme: &Theme,
     rewritable_config: &config::RewritableConfig,
     visual_caches: &VisualCaches,
@@ -2748,7 +2759,7 @@ fn produce_log_output_content<'a>(
 }
 
 fn produce_script_edit_content<'a>(
-    execution_lists: &execution_lists::ExecutionLists,
+    execution_lists: &parallel_execution_manager::ParallelExecutionManager,
     visual_caches: &VisualCaches,
     edit_data: &EditData,
     app_config: &config::AppConfig,
@@ -3355,7 +3366,7 @@ fn produce_config_edit_content<'a>(
 }
 
 fn view_content<'a>(
-    execution_lists: &execution_lists::ExecutionLists,
+    execution_lists: &parallel_execution_manager::ParallelExecutionManager,
     variant: &PaneVariant,
     theme: &Theme,
     displayed_configs_list_cache: &Vec<ScriptListCacheRecord>,
@@ -3420,7 +3431,7 @@ fn view_controls<'a>(
     visual_caches: &VisualCaches,
     edit_data: &EditData,
     config: &config::AppConfig,
-    execution_lists: &execution_lists::ExecutionLists,
+    execution_lists: &parallel_execution_manager::ParallelExecutionManager,
     is_maximized: bool,
     size: Size,
     window_state: &WindowState,

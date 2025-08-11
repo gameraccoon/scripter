@@ -1,4 +1,4 @@
-// Copyright (C) Pavel Grebnev 2023-2024
+// Copyright (C) Pavel Grebnev 2023-2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use iced::advanced::image::Handle;
@@ -8,10 +8,10 @@ use iced::{keyboard, window, Command, Size, Theme};
 
 use crate::color_utils;
 use crate::config;
-use crate::execution_lists;
 use crate::git_support;
 use crate::keybind_editing;
 use crate::main_window::*;
+use crate::parallel_execution_manager;
 use crate::style;
 
 const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
@@ -390,7 +390,7 @@ pub fn get_next_pane_selection(app: &MainWindow, is_forward: bool) -> PaneVarian
             .as_ref()
             .map(|s| &s.script_type);
 
-        let have_scripts_in_execution = !app.execution_data.get_edited_scripts().is_empty();
+        let have_scripts_in_execution = !app.execution_manager.get_edited_scripts().is_empty();
         let have_parameters_open = if let Some(selected_script_type) = selected_script_type {
             selected_script_type == &EditScriptType::ExecutionList || is_editing
         } else {
@@ -487,10 +487,10 @@ pub fn get_run_script_window_message_from_guid(
 pub fn try_add_edited_scripts_to_execution_or_start_new(app: &mut MainWindow) {
     // we can accept this hotkey only if we definitely know what execution we
     // supposed to add it to
-    let executions_number = app.execution_data.get_started_executions().size();
+    let executions_number = app.execution_manager.get_started_executions().size();
     if executions_number == 1 {
         let execution_id = app
-            .execution_data
+            .execution_manager
             .get_started_executions()
             .values()
             .next()
@@ -505,19 +505,19 @@ pub fn try_add_edited_scripts_to_execution_or_start_new(app: &mut MainWindow) {
 pub fn try_add_script_to_execution_or_start_new(app: &mut MainWindow, script_uid: config::Guid) {
     // we can accept this hotkey only if we definitely know what execution we
     // supposed to add it to
-    let executions_number = app.execution_data.get_started_executions().size();
+    let executions_number = app.execution_manager.get_started_executions().size();
     let scripts_to_add = get_resulting_scripts_from_guid(app, script_uid);
 
     if executions_number == 1 {
         let execution_id = app
-            .execution_data
+            .execution_manager
             .get_started_executions()
             .values()
             .next()
             .unwrap()
             .get_id();
 
-        app.execution_data.add_script_to_running_execution(
+        app.execution_manager.add_script_to_running_execution(
             &app.app_config,
             execution_id,
             scripts_to_add,
@@ -704,7 +704,12 @@ pub fn update_button_key_hint_caches(app: &mut MainWindow) {
     let mut last_stoppable_execution_id = None;
     let mut last_cleanable_execution_id = None;
 
-    for execution in app.execution_data.get_started_executions().values().rev() {
+    for execution in app
+        .execution_manager
+        .get_started_executions()
+        .values()
+        .rev()
+    {
         if last_stoppable_execution_id.is_none() && !execution.has_finished_execution() {
             last_stoppable_execution_id = Some(execution.get_id());
         }
@@ -742,7 +747,10 @@ pub fn update_theme_icons(app: &mut MainWindow) {
         .clone()
 }
 
-pub fn on_execution_removed(app: &mut MainWindow, execution_id: execution_lists::ExecutionId) {
+pub fn on_execution_removed(
+    app: &mut MainWindow,
+    execution_id: parallel_execution_manager::ExecutionId,
+) {
     // switch current log tab if the removed execution was selected
     if let Some(selected_execution) = app.visual_caches.selected_execution_log {
         if selected_execution == execution_id {
@@ -750,7 +758,11 @@ pub fn on_execution_removed(app: &mut MainWindow, execution_id: execution_lists:
             // but just for the sake of debugging, let's clean it
             app.visual_caches.selected_execution_log = None;
 
-            let last_execution = app.execution_data.get_started_executions().values().last();
+            let last_execution = app
+                .execution_manager
+                .get_started_executions()
+                .values()
+                .last();
             if let Some(first_execution) = last_execution {
                 app.visual_caches.selected_execution_log = Some(first_execution.get_id());
             }
@@ -758,7 +770,7 @@ pub fn on_execution_removed(app: &mut MainWindow, execution_id: execution_lists:
     }
 
     // reset executions count if we removed last execution
-    if app.execution_data.get_started_executions().is_empty() {
+    if app.execution_manager.get_started_executions().is_empty() {
         app.visual_caches.last_execution_id = 0;
     }
 
@@ -794,17 +806,17 @@ pub fn maximize_pane(
             return Command::none();
         };
 
-        let executions_count = app.execution_data.get_started_executions().size() as u32;
+        let executions_count = app.execution_manager.get_started_executions().size() as u32;
         let should_show_execution_names = executions_count > 1;
 
         let scheduled_elements_count = app
-            .execution_data
+            .execution_manager
             .get_started_executions()
             .values()
             .fold(0, |acc, x| {
                 acc + x.get_scheduled_scripts_cache().len() as u32
             });
-        let edited_elements_count = app.execution_data.get_edited_scripts().len() as u32;
+        let edited_elements_count = app.execution_manager.get_edited_scripts().len() as u32;
         let mut title_lines = if app.visual_caches.is_custom_title_editing {
             // for now the edit field is only one line high
             1
@@ -886,7 +898,7 @@ pub fn move_cursor(app: &mut MainWindow, is_up: bool) {
 
         let scripts_count = match focused_pane {
             PaneVariant::ScriptList => app.displayed_configs_list_cache.len(),
-            PaneVariant::ExecutionList => app.execution_data.get_edited_scripts().len(),
+            PaneVariant::ExecutionList => app.execution_manager.get_edited_scripts().len(),
             _ => unreachable!(),
         };
 
@@ -931,12 +943,12 @@ pub fn move_cursor(app: &mut MainWindow, is_up: bool) {
 }
 
 pub fn start_new_execution_from_edited_scripts(app: &mut MainWindow) {
-    if app.execution_data.get_edited_scripts().is_empty() {
+    if app.execution_manager.get_edited_scripts().is_empty() {
         return;
     }
 
     if app
-        .execution_data
+        .execution_manager
         .get_edited_scripts()
         .iter()
         .any(|script| is_script_missing_arguments(script))
@@ -944,7 +956,7 @@ pub fn start_new_execution_from_edited_scripts(app: &mut MainWindow) {
         return;
     }
 
-    let scripts_to_execute = app.execution_data.consume_edited_scripts();
+    let scripts_to_execute = app.execution_manager.consume_edited_scripts();
 
     start_new_execution_from_provided_scripts(app, scripts_to_execute);
 }
@@ -965,9 +977,9 @@ pub fn start_new_execution_from_provided_scripts(
     let name = format!("Execution #{}", app.visual_caches.last_execution_id);
 
     clean_script_selection(&mut app.window_state.cursor_script);
-    let new_execution_id = app
-        .execution_data
-        .start_new_execution(&app.app_config, name, scripts);
+    let new_execution_id =
+        app.execution_manager
+            .start_new_execution(&app.app_config, name, scripts);
 
     app.visual_caches.selected_execution_log = Some(new_execution_id);
     update_button_key_hint_caches(app);
@@ -975,14 +987,14 @@ pub fn start_new_execution_from_provided_scripts(
 
 pub fn add_edited_scripts_to_started_execution(
     app: &mut MainWindow,
-    execution_id: execution_lists::ExecutionId,
+    execution_id: parallel_execution_manager::ExecutionId,
 ) {
-    if app.execution_data.get_edited_scripts().is_empty() {
+    if app.execution_manager.get_edited_scripts().is_empty() {
         return;
     }
 
     if app
-        .execution_data
+        .execution_manager
         .get_edited_scripts()
         .iter()
         .any(|script| is_script_missing_arguments(script))
@@ -992,8 +1004,8 @@ pub fn add_edited_scripts_to_started_execution(
 
     clean_script_selection(&mut app.window_state.cursor_script);
 
-    let scripts_to_execute = app.execution_data.consume_edited_scripts();
-    app.execution_data.add_script_to_running_execution(
+    let scripts_to_execute = app.execution_manager.consume_edited_scripts();
+    app.execution_manager.add_script_to_running_execution(
         &app.app_config,
         execution_id,
         scripts_to_execute,
@@ -1012,11 +1024,11 @@ pub fn add_script_to_execution(
     }
 
     for script in scripts {
-        app.execution_data.add_script_to_edited_list(script);
+        app.execution_manager.add_script_to_edited_list(script);
     }
 
     if should_focus {
-        let script_idx = app.execution_data.get_edited_scripts().len() - 1;
+        let script_idx = app.execution_manager.get_edited_scripts().len() - 1;
         select_execution_script(app, script_idx);
         app.window_state.pane_focus = Some(app.pane_by_pane_type[&PaneVariant::ExecutionList]);
     }
@@ -1090,7 +1102,7 @@ pub fn remove_script(app: &mut MainWindow, script_id: &EditScriptId) {
             update_config_cache(app);
         }
         EditScriptType::ExecutionList => {
-            app.execution_data
+            app.execution_manager
                 .remove_script_from_edited_list(script_id.idx);
         }
     }
@@ -1128,7 +1140,7 @@ fn add_script_to_local_config(
 pub fn select_edited_script(app: &mut MainWindow, script_idx: usize) {
     set_selected_script(
         &mut app.window_state.cursor_script,
-        &app.execution_data.get_edited_scripts(),
+        &app.execution_manager.get_edited_scripts(),
         &get_script_definition_list_opt(&app.app_config, &app.edit_data.window_edit_data),
         &mut app.visual_caches,
         script_idx,
@@ -1142,8 +1154,8 @@ pub fn select_edited_script(app: &mut MainWindow, script_idx: usize) {
 pub fn select_execution_script(app: &mut MainWindow, script_idx: usize) {
     set_selected_script(
         &mut app.window_state.cursor_script,
-        &app.execution_data.get_edited_scripts(),
-        &app.execution_data.get_edited_scripts(),
+        &app.execution_manager.get_edited_scripts(),
+        &app.execution_manager.get_edited_scripts(),
         &mut app.visual_caches,
         script_idx,
         EditScriptType::ExecutionList,
@@ -1283,7 +1295,7 @@ pub fn apply_script_edit(
                 },
             },
             EditScriptType::ExecutionList => {
-                match &mut app.execution_data.get_edited_scripts_mut()[script_id.idx] {
+                match &mut app.execution_manager.get_edited_scripts_mut()[script_id.idx] {
                     config::ScriptDefinition::Original(script) => {
                         edit_fn(script);
                     }
@@ -1295,7 +1307,7 @@ pub fn apply_script_edit(
 }
 
 pub fn clear_edited_scripts(app: &mut MainWindow) {
-    app.execution_data.clear_edited_scripts();
+    app.execution_manager.clear_edited_scripts();
     clean_script_selection(&mut app.window_state.cursor_script);
 }
 
@@ -1306,7 +1318,7 @@ pub fn clear_execution_scripts(app: &mut MainWindow) {
         .button_key_caches
         .last_cleanable_execution_id
         .and_then(|execution_id| {
-            app.execution_data
+            app.execution_manager
                 .get_started_executions()
                 .get(execution_id)
                 .filter(|execution| execution.has_finished_execution())
@@ -1317,7 +1329,7 @@ pub fn clear_execution_scripts(app: &mut MainWindow) {
         return;
     };
 
-    app.execution_data.remove_execution(execution_id);
+    app.execution_manager.remove_execution(execution_id);
     clean_script_selection(&mut app.window_state.cursor_script);
     on_execution_removed(app, execution_id);
 }
@@ -1406,10 +1418,10 @@ pub fn focus_filter(app: &mut MainWindow) -> Command<WindowMessage> {
 
 pub fn should_autoclean_on_success(
     app: &mut MainWindow,
-    execution_id: execution_lists::ExecutionId,
+    execution_id: parallel_execution_manager::ExecutionId,
 ) -> bool {
     if let Some(execution) = app
-        .execution_data
+        .execution_manager
         .get_started_executions()
         .get(execution_id)
     {
@@ -1418,7 +1430,7 @@ pub fn should_autoclean_on_success(
         }
 
         let execution = app
-            .execution_data
+            .execution_manager
             .get_started_executions()
             .get(execution_id)
             .unwrap();

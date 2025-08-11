@@ -1,4 +1,4 @@
-// Copyright (C) Pavel Grebnev 2023-2024
+// Copyright (C) Pavel Grebnev 2023-2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use chrono;
@@ -21,6 +21,12 @@ struct ExecutionList {
 }
 
 pub type ExecutionId = SparseKey;
+
+pub enum ExecutionTickStatus {
+    Continue,
+    ExecutionFinished,
+    DisconnectFinished,
+}
 
 // executions can be run in parallel, each of them tracks its own progress
 pub struct Execution {
@@ -46,7 +52,7 @@ pub struct Execution {
 //   E2 : EL[S21] => EL[S22, S23]
 // ]
 
-pub struct ExecutionLists {
+pub struct ParallelExecutionManager {
     started_executions: SparseSet<Execution>,
     edited_scripts: Vec<config::ScriptDefinition>,
 }
@@ -135,6 +141,18 @@ impl Execution {
         }
     }
 
+    pub fn request_edit_non_executed_scripts(&mut self) {
+        if self.current_execution_list_index < self.execution_lists.len() {
+            execution_thread::request_disconnect_non_executed_scripts(
+                &mut self.execution_lists[self.current_execution_list_index].execution_data,
+            );
+        } else {
+            eprintln!(
+                "We are requesting to disconnect non-executed scripts that is already finished"
+            );
+        }
+    }
+
     pub fn is_waiting_execution_to_finish(&self) -> bool {
         if self.execution_lists.is_empty() {
             return false;
@@ -155,6 +173,10 @@ impl Execution {
             return scheduled_script.status.has_script_finished();
         }
         false
+    }
+
+    pub fn has_potentially_editable_scripts(&self) -> bool {
+        self.currently_outputting_script + 1 < self.scheduled_scripts_cache.len() as isize
     }
 
     pub fn get_log_path(&self) -> &PathBuf {
@@ -180,19 +202,40 @@ impl Execution {
         &mut self.scheduled_scripts_cache
     }
 
-    pub fn tick(&mut self, app_config: &config::AppConfig) -> bool {
+    pub fn tick(&mut self, app_config: &config::AppConfig) -> ExecutionTickStatus {
         let current_execution_list = &mut self.execution_lists[self.current_execution_list_index];
         if let Some(rx) = &current_execution_list.execution_data.progress_receiver {
             if let Ok(progress) = rx.try_recv() {
-                if progress.1.has_script_failed() {
-                    self.has_failed_scripts = true;
-                }
                 let script_local_idx = progress.0;
                 let script_status = progress.1;
 
+                if script_status.has_script_failed() {
+                    self.has_failed_scripts = true;
+                }
+
+                let mut no_execution_progress_change = false;
+                // some script was disconnected to become editable
+                if script_status.has_script_been_disconnected() {
+                    // we only mark future scripts, no actual changes in the execution progress
+                    no_execution_progress_change = true;
+                }
+
                 let script_cache_idx = current_execution_list.first_cache_index + script_local_idx;
 
+                // some script was disconnected to become editable
+                if no_execution_progress_change {
+                    return if script_local_idx
+                        == current_execution_list.execution_data.scripts_to_run.len()
+                    {
+                        ExecutionTickStatus::DisconnectFinished
+                    } else {
+                        self.scheduled_scripts_cache[script_cache_idx].status = script_status;
+                        ExecutionTickStatus::Continue
+                    };
+                }
+
                 self.scheduled_scripts_cache[script_cache_idx].status = script_status;
+
                 self.currently_outputting_script = progress.0 as isize;
 
                 if self.scheduled_scripts_cache[script_cache_idx]
@@ -208,13 +251,13 @@ impl Execution {
                 }
 
                 if self.has_finished_execution() {
-                    return true;
+                    return ExecutionTickStatus::ExecutionFinished;
                 }
             }
         } else {
             self.try_join_previous_execution_list_item_thread_and_start_the_next(app_config);
         }
-        false
+        ExecutionTickStatus::Continue
     }
 
     fn try_join_previous_execution_list_item_thread_and_start_the_next(
@@ -303,9 +346,97 @@ impl Execution {
             join_handle.join().unwrap(); // have no idea what to do if this fails, crashing is probably fine
         };
     }
+
+    fn get_script_idx_from_script_cache_idx(
+        &self,
+        script_cache_idx: usize,
+    ) -> Option<(usize, usize)> {
+        for i in 0..self.execution_lists.len() {
+            let execution_list = &self.execution_lists[i];
+            if script_cache_idx >= execution_list.first_cache_index
+                && script_cache_idx
+                    < execution_list.first_cache_index
+                        + execution_list.execution_data.scripts_to_run.len()
+            {
+                return Some((i, script_cache_idx - execution_list.first_cache_index));
+            }
+        }
+
+        eprintln!(
+            "Failed to find script idx from script cache idx {}",
+            script_cache_idx
+        );
+        None
+    }
+
+    fn consume_disconnected_and_not_started_scripts(&mut self) -> Vec<config::ScriptDefinition> {
+        let mut result = Vec::new();
+
+        if self.current_execution_list_index >= self.execution_lists.len() {
+            return result;
+        }
+
+        let first_disconnected_script_cache_idx = self
+            .scheduled_scripts_cache
+            .iter()
+            .position(|record| record.status.has_script_been_disconnected());
+        if let Some(first_disconnected_script_cache_idx) = first_disconnected_script_cache_idx {
+            let script_idx = match self
+                .get_script_idx_from_script_cache_idx(first_disconnected_script_cache_idx)
+            {
+                Some(tuple) => tuple,
+                None => {
+                    eprintln!(
+                        "Failed to find script idx from script cache idx {}",
+                        first_disconnected_script_cache_idx
+                    );
+                    return result;
+                }
+            };
+
+            if script_idx.0 != self.current_execution_list_index {
+                eprintln!(
+                    "The found script list idx {} is not the current execution list idx {}",
+                    script_idx.0, self.current_execution_list_index
+                );
+                return result;
+            }
+
+            let current_execution_list = &mut self.execution_lists[script_idx.0];
+
+            result.extend(
+                current_execution_list
+                    .execution_data
+                    .scripts_to_run
+                    .drain(script_idx.1..),
+            );
+        }
+
+        if let Some(first_disconnected_script_cache_idx) = first_disconnected_script_cache_idx {
+            self.scheduled_scripts_cache
+                .drain(first_disconnected_script_cache_idx..);
+        } else {
+            if let Some(next_list) = self
+                .execution_lists
+                .get(self.current_execution_list_index + 1)
+            {
+                self.scheduled_scripts_cache
+                    .drain(next_list.first_cache_index..);
+            }
+        }
+
+        result.extend(
+            self.execution_lists
+                .drain(self.current_execution_list_index + 1..)
+                .map(|execution_list| execution_list.execution_data.scripts_to_run)
+                .flatten(),
+        );
+
+        result
+    }
 }
 
-impl ExecutionLists {
+impl ParallelExecutionManager {
     pub fn new() -> Self {
         Self {
             started_executions: SparseSet::new(),
@@ -341,10 +472,6 @@ impl ExecutionLists {
         &self.started_executions
     }
 
-    pub fn get_started_executions_mut(&mut self) -> &mut SparseSet<Execution> {
-        &mut self.started_executions
-    }
-
     pub fn start_new_execution(
         &mut self,
         app_config: &config::AppConfig,
@@ -377,16 +504,27 @@ impl ExecutionLists {
 
     pub fn tick(&mut self, app_config: &config::AppConfig) -> Option<Vec<ExecutionId>> {
         let mut just_finished_executions = Vec::new();
+        let mut just_disconnected_executions = Vec::new();
 
         for execution in &mut self.started_executions.values_mut() {
             if execution.has_finished_execution() {
                 continue;
             }
 
-            let has_just_finished = execution.tick(app_config);
-            if has_just_finished {
-                just_finished_executions.push(execution.get_id());
+            let execution_tick_status = execution.tick(app_config);
+            match execution_tick_status {
+                ExecutionTickStatus::Continue => {}
+                ExecutionTickStatus::ExecutionFinished => {
+                    just_finished_executions.push(execution.get_id());
+                }
+                ExecutionTickStatus::DisconnectFinished => {
+                    just_disconnected_executions.push(execution.get_id());
+                }
             }
+        }
+
+        for execution_id in just_disconnected_executions {
+            self.move_not_started_execution_lists_to_edited_list(execution_id);
         }
 
         if just_finished_executions.is_empty() {
@@ -420,5 +558,27 @@ impl ExecutionLists {
         self.started_executions
             .values()
             .any(|execution| execution.has_failed_scripts)
+    }
+
+    pub fn request_stop_execution(&mut self, execution_id: ExecutionId) {
+        if let Some(execution) = &mut self.started_executions.get_mut(execution_id) {
+            execution.request_stop_execution();
+        }
+    }
+
+    pub fn request_edit_non_executed_scripts(&mut self, execution_id: ExecutionId) {
+        if let Some(execution) = &mut self.started_executions.get_mut(execution_id) {
+            execution.request_edit_non_executed_scripts();
+        }
+    }
+
+    fn move_not_started_execution_lists_to_edited_list(&mut self, execution_index: ExecutionId) {
+        let execution = self.started_executions.get_mut(execution_index);
+        let Some(execution) = execution else {
+            return;
+        };
+
+        self.edited_scripts
+            .extend(execution.consume_disconnected_and_not_started_scripts());
     }
 }
