@@ -36,6 +36,8 @@ use crate::ui_icons;
 
 static EMPTY_STRING: String = String::new();
 
+const SEPARATOR_HEIGHT: u16 = 8;
+
 const CONFIG_UPDATE_BEHAVIOR_PICK_LIST: &[config::ConfigUpdateBehavior] = &[
     config::ConfigUpdateBehavior::OnStartup,
     config::ConfigUpdateBehavior::OnManualSave,
@@ -2798,8 +2800,6 @@ fn produce_script_edit_content<'a>(
         return Column::new();
     };
 
-    const SEPARATOR_HEIGHT: u16 = 8;
-
     if currently_edited_script.script_type == EditScriptType::ScriptConfig {
         if edit_data.window_edit_data.is_none() {
             return Column::new();
@@ -2890,7 +2890,6 @@ fn produce_script_edit_content<'a>(
             }
 
             if currently_edited_script.script_type == EditScriptType::ExecutionList {
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                 populate_argument_placeholders_content(
                     &mut parameters,
                     &script.argument_placeholders,
@@ -2992,9 +2991,8 @@ fn produce_script_edit_content<'a>(
                     .into(),
             );
 
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-
             if let Some(window_edit) = &edit_data.window_edit_data {
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                 keybind_editing::populate_keybind_editing_content(
                     &mut parameters,
                     &window_edit,
@@ -3004,9 +3002,12 @@ fn produce_script_edit_content<'a>(
                 );
             }
 
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-
-            parameters.push(get_quick_launch_edit_button(&visual_caches, &script.uid).into());
+            populate_quick_launch_edit_button(
+                &mut parameters,
+                &visual_caches,
+                &script.uid,
+                &edit_data.window_edit_data,
+            );
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
@@ -3053,8 +3054,9 @@ fn produce_script_edit_content<'a>(
                     .into(),
             );
 
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             if let Some(window_edit) = &edit_data.window_edit_data {
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+
                 keybind_editing::populate_keybind_editing_content(
                     &mut parameters,
                     &window_edit,
@@ -3064,8 +3066,12 @@ fn produce_script_edit_content<'a>(
                 );
             }
 
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            parameters.push(get_quick_launch_edit_button(&visual_caches, &reference.uid).into());
+            populate_quick_launch_edit_button(
+                &mut parameters,
+                &visual_caches,
+                &reference.uid,
+                &edit_data.window_edit_data,
+            );
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             if currently_edited_script.script_type == EditScriptType::ScriptConfig {
@@ -3108,9 +3114,9 @@ fn produce_script_edit_content<'a>(
                 |val| WindowMessage::EditScriptIconPathRelativeToScripter(val),
             );
 
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-
             if let Some(window_edit) = &edit_data.window_edit_data {
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+
                 keybind_editing::populate_keybind_editing_content(
                     &mut parameters,
                     &window_edit,
@@ -3120,9 +3126,12 @@ fn produce_script_edit_content<'a>(
                 );
             }
 
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-
-            parameters.push(get_quick_launch_edit_button(&visual_caches, &preset.uid).into());
+            populate_quick_launch_edit_button(
+                &mut parameters,
+                &visual_caches,
+                &preset.uid,
+                &edit_data.window_edit_data,
+            );
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
@@ -3170,8 +3179,6 @@ fn produce_config_edit_content<'a>(
     let rewritable_config = get_rewritable_config(&config, &window_edit.edit_type);
 
     let mut list_elements: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
-
-    const SEPARATOR_HEIGHT: u16 = 8;
 
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());

@@ -12,6 +12,8 @@ use iced::widget::{
 };
 use iced::{alignment, theme, Alignment, Element, Length, Theme};
 
+const SEPARATOR_HEIGHT: u16 = 8;
+
 pub(crate) const PATH_TYPE_PICK_LIST: &[config::PathType] = &[
     config::PathType::WorkingDirRelative,
     config::PathType::ScripterExecutableRelative,
@@ -61,20 +63,33 @@ pub fn edit_button(label: &str, message: WindowMessage) -> Button<WindowMessage>
     .on_press(message)
 }
 
-pub fn get_quick_launch_edit_button<'a>(
+pub fn populate_quick_launch_edit_button<'a>(
+    content: &mut Vec<Element<'a, WindowMessage, Theme, iced::Renderer>>,
     visual_caches: &VisualCaches,
     script_uid: &config::Guid,
-) -> Button<'a, WindowMessage> {
-    if is_script_in_quick_launch_buttons(&visual_caches, &script_uid) {
-        edit_button(
-            "Remove from quick launch panel",
-            WindowMessage::RemoveFromQuickLaunchPanel(script_uid.clone()),
-        )
-    } else {
-        edit_button(
-            "Add to quick launch panel",
-            WindowMessage::AddToQuickLaunchPanel(script_uid.clone()),
-        )
+    window_edit_data: &Option<WindowEditData>,
+) {
+    if let Some(window_edit_data) = window_edit_data {
+        if window_edit_data.edit_type == ConfigEditType::Local {
+            content.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            if is_script_in_quick_launch_buttons(&visual_caches, &script_uid) {
+                content.push(
+                    edit_button(
+                        "Remove from quick launch panel",
+                        WindowMessage::RemoveFromQuickLaunchPanel(script_uid.clone()),
+                    )
+                    .into(),
+                );
+            } else {
+                content.push(
+                    edit_button(
+                        "Add to quick launch panel",
+                        WindowMessage::AddToQuickLaunchPanel(script_uid.clone()),
+                    )
+                    .into(),
+                );
+            }
+        }
     }
 }
 
@@ -448,6 +463,10 @@ pub fn populate_argument_placeholders_content<'a>(
     content: &mut Vec<Element<'a, WindowMessage, Theme, iced::Renderer>>,
     argument_placeholders: &Vec<config::ArgumentPlaceholder>,
 ) {
+    if !argument_placeholders.is_empty() {
+        content.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    }
+
     for i in 0..argument_placeholders.len() {
         let argument_placeholder = &argument_placeholders[i];
         content.push(
