@@ -36,20 +36,6 @@ use crate::ui_icons;
 
 static EMPTY_STRING: String = String::new();
 
-impl std::fmt::Display for config::PathType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                config::PathType::WorkingDirRelative => "Path relative to working directory",
-                config::PathType::ScripterExecutableRelative =>
-                    "Path relative to scripter executable",
-            }
-        )
-    }
-}
-
 const CONFIG_UPDATE_BEHAVIOR_PICK_LIST: &[config::ConfigUpdateBehavior] = &[
     config::ConfigUpdateBehavior::OnStartup,
     config::ConfigUpdateBehavior::OnManualSave,
@@ -236,8 +222,13 @@ pub(crate) enum WindowMessage {
     EditScriptIconPath(String),
     EditScriptIconPathRelativeToScripter(config::PathType),
     EditArguments(String),
-    ToggleRequiresArguments(bool),
+    EditArgumentsRequirement(config::ArgumentRequirement),
     EditArgumentsHint(String),
+    AddArgumentPlaceholder,
+    RemoveArgumentPlaceholder(usize),
+    EditArgumentPlaceholderName(usize, String),
+    EditArgumentPlaceholderPlaceholder(usize, String),
+    EditArgumentPlaceholderValue(usize, String),
     EditAutorerunCount(String),
     ToggleIgnoreFailures(bool),
     ToggleUseCustomExecutor(bool),
@@ -646,9 +637,10 @@ impl Application for MainWindow {
                         path_type: config::PathType::WorkingDirRelative,
                     },
                     arguments: "".to_string(),
+                    argument_placeholders: Vec::new(),
                     autorerun_count: 0,
                     ignore_previous_failures: false,
-                    requires_arguments: false,
+                    arguments_requirement: config::ArgumentRequirement::Optional,
                     arguments_hint: "\"arg1\" \"arg2\"".to_string(),
                     custom_executor: None,
                     is_hidden: false,
@@ -723,15 +715,54 @@ impl Application for MainWindow {
             WindowMessage::EditArguments(new_arguments) => {
                 apply_script_edit(self, move |script| script.arguments = new_arguments)
             }
-            WindowMessage::ToggleRequiresArguments(new_requires_arguments) => {
+            WindowMessage::EditArgumentsRequirement(new_requirement) => {
                 apply_script_edit(self, move |script| {
-                    script.requires_arguments = new_requires_arguments
+                    script.arguments_requirement = new_requirement
                 })
             }
             WindowMessage::EditArgumentsHint(new_arguments_hint) => {
                 apply_script_edit(self, move |script| {
                     script.arguments_hint = new_arguments_hint
                 })
+            }
+            WindowMessage::AddArgumentPlaceholder => {
+                apply_script_edit(self, |script| {
+                    script
+                        .argument_placeholders
+                        .push(config::ArgumentPlaceholder {
+                            name: String::new(),
+                            placeholder: String::new(),
+                            value: String::new(),
+                        });
+                });
+            }
+            WindowMessage::RemoveArgumentPlaceholder(index) => {
+                apply_script_edit(self, move |script| {
+                    if index < script.argument_placeholders.len() {
+                        script.argument_placeholders.remove(index);
+                    }
+                });
+            }
+            WindowMessage::EditArgumentPlaceholderName(index, new_name) => {
+                apply_script_edit(self, move |script| {
+                    if let Some(placeholder) = script.argument_placeholders.get_mut(index) {
+                        placeholder.name = new_name;
+                    }
+                });
+            }
+            WindowMessage::EditArgumentPlaceholderPlaceholder(index, new_placeholder) => {
+                apply_script_edit(self, move |script| {
+                    if let Some(placeholder) = script.argument_placeholders.get_mut(index) {
+                        placeholder.placeholder = new_placeholder;
+                    }
+                });
+            }
+            WindowMessage::EditArgumentPlaceholderValue(index, new_value) => {
+                apply_script_edit(self, move |script| {
+                    if let Some(placeholder) = script.argument_placeholders.get_mut(index) {
+                        placeholder.value = new_value;
+                    }
+                });
             }
             WindowMessage::EditAutorerunCount(new_autorerun_count_str) => {
                 let parse_result = usize::from_str(&new_autorerun_count_str);
@@ -2828,40 +2859,47 @@ fn produce_script_edit_content<'a>(
                 );
             }
 
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            parameters.push(
-                text(
-                    if currently_edited_script.script_type == EditScriptType::ExecutionList {
-                        "Arguments line:"
-                    } else {
-                        "Default arguments:"
-                    },
-                )
-                .into(),
-            );
-            parameters.push(
-                text_input(&script.arguments_hint, &script.arguments)
-                    .on_input(move |new_value| WindowMessage::EditArguments(new_value))
-                    .style(
-                        if currently_edited_script.script_type == EditScriptType::ExecutionList
-                            && is_original_script_missing_arguments(&script)
-                        {
-                            theme::TextInput::Custom(Box::new(style::InvalidInputStyleSheet))
+            if currently_edited_script.script_type == EditScriptType::ScriptConfig
+                || script.arguments_requirement != config::ArgumentRequirement::Hidden
+            {
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+                parameters.push(
+                    text(
+                        if currently_edited_script.script_type == EditScriptType::ExecutionList {
+                            "Arguments line:"
                         } else {
-                            theme::TextInput::Default
+                            "Default arguments:"
                         },
                     )
-                    .padding(5)
-                    .id(ARGUMENTS_INPUT_ID.clone())
                     .into(),
-            );
-            if currently_edited_script.script_type == EditScriptType::ScriptConfig {
+                );
                 parameters.push(
-                    checkbox("Arguments are required", script.requires_arguments)
-                        .on_toggle(move |val| WindowMessage::ToggleRequiresArguments(val))
+                    text_input(&script.arguments_hint, &script.arguments)
+                        .on_input(move |new_value| WindowMessage::EditArguments(new_value))
+                        .style(
+                            if currently_edited_script.script_type == EditScriptType::ExecutionList
+                                && is_original_script_missing_arguments(&script)
+                            {
+                                theme::TextInput::Custom(Box::new(style::InvalidInputStyleSheet))
+                            } else {
+                                theme::TextInput::Default
+                            },
+                        )
+                        .padding(5)
+                        .id(ARGUMENTS_INPUT_ID.clone())
                         .into(),
                 );
+            }
 
+            if currently_edited_script.script_type == EditScriptType::ExecutionList {
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+                populate_argument_placeholders_content(
+                    &mut parameters,
+                    &script.argument_placeholders,
+                );
+            }
+
+            if currently_edited_script.script_type == EditScriptType::ScriptConfig {
                 parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                 parameters.push(text("Argument hint:").into());
                 parameters.push(
@@ -2869,6 +2907,24 @@ fn produce_script_edit_content<'a>(
                         .on_input(move |new_value| WindowMessage::EditArgumentsHint(new_value))
                         .padding(5)
                         .into(),
+                );
+
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+                parameters.push(text("Argument placeholders:").into());
+                populate_argument_placeholders_config_content(
+                    &mut parameters,
+                    &script.argument_placeholders,
+                );
+
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+                parameters.push(text("Are arguments required:").into());
+                parameters.push(
+                    pick_list(
+                        ARGUMENT_REQUIREMENT_PICK_LIST,
+                        Some(script.arguments_requirement.clone()),
+                        move |val| WindowMessage::EditArgumentsRequirement(val),
+                    )
+                    .into(),
                 );
             }
 

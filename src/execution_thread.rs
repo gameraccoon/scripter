@@ -168,19 +168,20 @@ pub fn run_scripts(
                     break;
                 }
 
+                let command_line = get_script_with_arguments(&script, &path_caches);
+
                 {
                     let mut recent_logs = recent_logs.lock().unwrap(); // it is fine to panic on a poisoned mutex
                     recent_logs.push(OutputLine {
                         text: format!(
-                            "Running \"{}\"{}\n[{} {}]",
+                            "Running \"{}\"{}\n[{}]",
                             script.name,
                             if script_state.retry_count > 0 {
                                 format!(" retry #{}", script_state.retry_count)
                             } else {
                                 "".to_string()
                             },
-                            script.command.path,
-                            script.arguments
+                            command_line,
                         ),
                         output_type: OutputType::Event,
                         timestamp: chrono::Local::now(),
@@ -201,8 +202,6 @@ pub fn run_scripts(
                 } else {
                     (std::process::Stdio::null(), std::process::Stdio::null())
                 };
-
-                let command_line = get_script_with_arguments(&script, &path_caches);
 
                 let executor = script
                     .custom_executor
@@ -424,8 +423,72 @@ fn get_script_with_arguments(
     if script.arguments.is_empty() {
         escaped_path
     } else {
-        format!("{} {}", escaped_path, script.arguments)
+        format!(
+            "{} {}",
+            escaped_path,
+            replace_placeholders(script.arguments.clone(), &script.argument_placeholders)
+        )
     }
+}
+
+struct PlaceholderOccurrence {
+    start: usize,
+    end: usize,
+    replacement: String,
+}
+
+fn replace_placeholders(
+    mut arguments: String,
+    placeholders: &Vec<config::ArgumentPlaceholder>,
+) -> String {
+    // we need to make sure we don't replace placeholders from other placeholders
+    // first find all the placeholder occurrences
+    let mut placeholder_occurrences = Vec::<PlaceholderOccurrence>::new();
+    for placeholder in placeholders {
+        let mut next_start = 0;
+        loop {
+            let start = arguments[next_start..].find(&placeholder.placeholder);
+            let start = if let Some(start) = start {
+                next_start + start
+            } else {
+                break;
+            };
+            let end = start + placeholder.placeholder.len();
+            next_start = end;
+            placeholder_occurrences.push(PlaceholderOccurrence {
+                start,
+                end,
+                replacement: placeholder.value.clone(),
+            });
+        }
+    }
+
+    // sort them from back to front
+    placeholder_occurrences.sort_by(|a, b| b.start.cmp(&a.start));
+
+    // remove intersecting occurrences
+    if placeholder_occurrences.len() > 1 {
+        // going in reverse order makes us actually go from the first to the last
+        let mut pos = placeholder_occurrences[placeholder_occurrences.len() - 1].end;
+        for i in (0..placeholder_occurrences.len() - 1).rev() {
+            // if the next occurrence starts before the current one ends, this is an intersection
+            if placeholder_occurrences[i].start < pos {
+                placeholder_occurrences.remove(i);
+                continue;
+            }
+            pos = placeholder_occurrences[i].end;
+        }
+    }
+
+    // replace placeholders with their values
+    for placeholder_occurrence in placeholder_occurrences {
+        arguments.replace_range(
+            placeholder_occurrence.start..placeholder_occurrence.end,
+            &placeholder_occurrence.replacement,
+        );
+    }
+
+    arguments
 }
 
 fn get_default_script_execution_status() -> ScriptExecutionStatus {

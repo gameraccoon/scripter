@@ -1,4 +1,4 @@
-// Copyright (C) Pavel Grebnev 2023-2024
+// Copyright (C) Pavel Grebnev 2023-2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use crate::main_window::*;
@@ -7,14 +7,49 @@ use crate::{config, keybind_editing};
 use iced::advanced::image::Handle;
 use iced::widget::text::LineHeight;
 use iced::widget::{
-    button, image, pick_list, row, text, text_input, tooltip, Button, Column, Space,
+    button, horizontal_rule, image, pick_list, row, text, text_input, tooltip, Button, Column,
+    Space,
 };
 use iced::{alignment, theme, Alignment, Element, Length, Theme};
 
-const PATH_TYPE_PICK_LIST: &[config::PathType] = &[
+pub(crate) const PATH_TYPE_PICK_LIST: &[config::PathType] = &[
     config::PathType::WorkingDirRelative,
     config::PathType::ScripterExecutableRelative,
 ];
+
+impl std::fmt::Display for config::PathType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                config::PathType::WorkingDirRelative => "Path relative to working directory",
+                config::PathType::ScripterExecutableRelative =>
+                    "Path relative to scripter executable",
+            }
+        )
+    }
+}
+
+pub(crate) const ARGUMENT_REQUIREMENT_PICK_LIST: &[config::ArgumentRequirement] = &[
+    config::ArgumentRequirement::Required,
+    config::ArgumentRequirement::Optional,
+    config::ArgumentRequirement::Hidden,
+];
+
+impl std::fmt::Display for config::ArgumentRequirement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                config::ArgumentRequirement::Required => "Required",
+                config::ArgumentRequirement::Optional => "Optional",
+                config::ArgumentRequirement::Hidden => "Hidden",
+            }
+        )
+    }
+}
 
 pub fn edit_button(label: &str, message: WindowMessage) -> Button<WindowMessage> {
     button(
@@ -361,4 +396,73 @@ pub fn format_keybind_hint(caches: &VisualCaches, hint: &str, action: config::Ap
         return format!("{} ({})", hint, keybind_hint);
     }
     hint.to_string()
+}
+
+pub fn populate_argument_placeholders_config_content<'a>(
+    content: &mut Vec<Element<'a, WindowMessage, Theme, iced::Renderer>>,
+    argument_placeholders: &Vec<config::ArgumentPlaceholder>,
+) {
+    for i in 0..argument_placeholders.len() {
+        let argument_placeholder = &argument_placeholders[i];
+        content.push(
+            row![
+                text_input("Name", &argument_placeholder.name,)
+                    .on_input(move |new_value| {
+                        WindowMessage::EditArgumentPlaceholderName(i, new_value)
+                    })
+                    .padding(5),
+                text_input("Placeholder", &argument_placeholder.placeholder,)
+                    .on_input(move |new_value| {
+                        WindowMessage::EditArgumentPlaceholderPlaceholder(i, new_value)
+                    })
+                    .padding(5),
+            ]
+            .into(),
+        );
+        content.push(
+            text_input("Default value", &argument_placeholder.value)
+                .on_input(move |new_value| {
+                    WindowMessage::EditArgumentPlaceholderValue(i, new_value)
+                })
+                .padding(5)
+                .into(),
+        );
+        content.push(
+            button("Remove Placeholder")
+                .on_press(WindowMessage::RemoveArgumentPlaceholder(i))
+                .into(),
+        );
+        if i + 1 < argument_placeholders.len() {
+            content.push(horizontal_rule(1).into());
+        }
+    }
+
+    content.push(
+        button("+")
+            .on_press(WindowMessage::AddArgumentPlaceholder)
+            .into(),
+    );
+}
+
+pub fn populate_argument_placeholders_content<'a>(
+    content: &mut Vec<Element<'a, WindowMessage, Theme, iced::Renderer>>,
+    argument_placeholders: &Vec<config::ArgumentPlaceholder>,
+) {
+    for i in 0..argument_placeholders.len() {
+        let argument_placeholder = &argument_placeholders[i];
+        content.push(
+            text(format!("{}:", argument_placeholder.name))
+                .size(16)
+                .horizontal_alignment(alignment::Horizontal::Left)
+                .into(),
+        );
+        content.push(
+            text_input("Value", &argument_placeholder.value)
+                .on_input(move |new_value| {
+                    WindowMessage::EditArgumentPlaceholderValue(i, new_value)
+                })
+                .padding(5)
+                .into(),
+        );
+    }
 }

@@ -51,7 +51,8 @@ pub fn is_script_missing_arguments(script: &config::ScriptDefinition) -> bool {
 }
 
 pub fn is_original_script_missing_arguments(script: &config::OriginalScriptDefinition) -> bool {
-    script.requires_arguments && script.arguments.is_empty()
+    script.arguments_requirement == config::ArgumentRequirement::Required
+        && script.arguments.is_empty()
 }
 
 pub fn is_script_in_quick_launch_buttons(

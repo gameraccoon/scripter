@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.17.0";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.17.0";
+pub static LATEST_CONFIG_VERSION: &str = "0.17.2";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.17.2";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -133,6 +133,10 @@ fn register_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.16.6", v0_16_6_add_show_working_directory_field);
     json_config_updater.add_update_function("0.16.7", v0_16_7_add_ignore_output_field);
     json_config_updater.add_update_function("0.17.0", v0_17_0_add_custom_executor_field);
+    json_config_updater.add_update_function(
+        "0.17.2",
+        v0_17_2_add_argument_placeholders_field_and_arg_requirement,
+    );
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -208,6 +212,10 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.16.6", v0_16_6_add_show_working_directory_field);
     json_config_updater.add_update_function("0.16.7", v0_16_7_add_ignore_output_field);
     json_config_updater.add_update_function("0.17.0", v0_17_0_add_custom_executor_field);
+    json_config_updater.add_update_function(
+        "0.17.2",
+        v0_17_2_add_argument_placeholders_field_and_arg_requirement,
+    );
 
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
@@ -541,5 +549,23 @@ fn v0_17_0_add_custom_executor_field(config_json: &mut JsonValue) {
         if script["custom_executor"].is_null() {
             script["custom_executor"] = json!(None::<bool>);
         }
+    });
+}
+
+fn v0_17_2_add_argument_placeholders_field_and_arg_requirement(config_json: &mut JsonValue) {
+    for_each_script_original_definition_post_0_10_0(config_json, |script| {
+        if script["argument_placeholders"].is_null() {
+            script["argument_placeholders"] = json!([]);
+        }
+
+        let are_arguments_required = script["requires_arguments"]
+            .take()
+            .as_bool()
+            .unwrap_or(false);
+        script["arguments_requirement"] = if are_arguments_required {
+            json!("Required")
+        } else {
+            json!("Optional")
+        };
     });
 }
