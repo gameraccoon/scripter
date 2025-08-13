@@ -475,20 +475,23 @@ impl ParallelExecutionManager {
     pub fn start_new_execution(
         &mut self,
         app_config: &config::AppConfig,
-        name: String,
         scripts_to_run: Vec<config::ScriptDefinition>,
     ) -> ExecutionId {
         let index = self.started_executions.push(Execution::new());
         let new_execution = self.started_executions.get_mut(index).unwrap();
         new_execution.id = Some(index.clone());
-        new_execution.name = name;
 
         new_execution.execute_scripts(app_config, scripts_to_run);
+
+        self.update_execution_names();
+
         index
     }
 
     pub fn remove_execution(&mut self, execution_index: ExecutionId) -> Option<Execution> {
-        self.started_executions.remove(execution_index)
+        let execution = self.started_executions.remove(execution_index);
+        self.update_execution_names();
+        execution
     }
 
     pub fn add_script_to_running_execution(
@@ -580,5 +583,13 @@ impl ParallelExecutionManager {
 
         self.edited_scripts
             .extend(execution.consume_disconnected_and_not_started_scripts());
+    }
+
+    fn update_execution_names(&mut self) {
+        let mut execution_index = 1;
+        for execution in &mut self.started_executions.values_mut() {
+            execution.name = format!("Execution #{}", execution_index);
+            execution_index += 1;
+        }
     }
 }

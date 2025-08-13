@@ -66,7 +66,6 @@ pub(crate) struct VisualCaches {
     pane_drag_start_time: Instant,
     pub(crate) selected_execution_log: Option<parallel_execution_manager::ExecutionId>,
     pub(crate) git_branch_requester: Option<git_support::GitCurrentBranchRequester>,
-    pub(crate) last_execution_id: u32,
     pub(crate) button_key_caches: ButtonKeyCaches,
     pub(crate) quick_launch_buttons: Vec<QuickLaunchButton>,
 }
@@ -349,7 +348,6 @@ impl Application for MainWindow {
                 } else {
                     None
                 },
-                last_execution_id: 0,
                 button_key_caches: ButtonKeyCaches::default(),
                 quick_launch_buttons: Vec::new(),
             },

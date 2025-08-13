@@ -770,11 +770,6 @@ pub fn on_execution_removed(
         }
     }
 
-    // reset executions count if we removed last execution
-    if app.execution_manager.get_started_executions().is_empty() {
-        app.visual_caches.last_execution_id = 0;
-    }
-
     update_button_key_hint_caches(app);
 }
 
@@ -974,13 +969,10 @@ pub fn start_new_execution_from_provided_scripts(
         return;
     }
 
-    app.visual_caches.last_execution_id += 1;
-    let name = format!("Execution #{}", app.visual_caches.last_execution_id);
-
     clean_script_selection(&mut app.window_state.cursor_script);
-    let new_execution_id =
-        app.execution_manager
-            .start_new_execution(&app.app_config, name, scripts);
+    let new_execution_id = app
+        .execution_manager
+        .start_new_execution(&app.app_config, scripts);
 
     app.visual_caches.selected_execution_log = Some(new_execution_id);
     update_button_key_hint_caches(app);
