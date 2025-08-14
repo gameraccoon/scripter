@@ -2983,15 +2983,14 @@ fn produce_script_edit_content<'a>(
                     .on_toggle(move |val| WindowMessage::ToggleIgnoreOutput(val))
                     .into(),
             );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            parameters.push(
-                checkbox("Is script hidden", script.is_hidden)
-                    .on_toggle(move |val| WindowMessage::ToggleIsHidden(val))
-                    .into(),
-            );
-
             if let Some(window_edit) = &edit_data.window_edit_data {
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+                parameters.push(
+                    checkbox("Is script hidden", script.is_hidden)
+                        .on_toggle(move |val| WindowMessage::ToggleIsHidden(val))
+                        .into(),
+                );
+
                 parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                 keybind_editing::populate_keybind_editing_content(
                     &mut parameters,
