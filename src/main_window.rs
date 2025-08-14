@@ -2394,7 +2394,9 @@ fn produce_execution_list_content<'a>(
                                 Some(WindowMessage::StopScripts(execution_id))
                             )]
                         },
-                        if execution.has_potentially_editable_scripts() {
+                        if !window_state.has_maximized_pane
+                            && execution.has_potentially_editable_scripts()
+                        {
                             row![main_icon_button(
                                 icons.themed.edit.clone(),
                                 "Edit",
