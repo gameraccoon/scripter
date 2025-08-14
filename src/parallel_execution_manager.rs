@@ -176,7 +176,17 @@ impl Execution {
     }
 
     pub fn has_potentially_editable_scripts(&self) -> bool {
-        self.currently_outputting_script + 1 < self.scheduled_scripts_cache.len() as isize
+        if self.current_execution_list_index + 1 < self.execution_lists.len() {
+            return true;
+        }
+
+        let Some(execution_list) = self.execution_lists.get(self.current_execution_list_index)
+        else {
+            return false;
+        };
+
+        execution_list.first_cache_index as isize + self.currently_outputting_script + 1
+            < self.scheduled_scripts_cache.len() as isize
     }
 
     pub fn get_log_path(&self) -> &PathBuf {
