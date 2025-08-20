@@ -210,8 +210,9 @@ pub(crate) enum WindowMessage {
     Tick(Instant),
     OpenScriptEditing(usize),
     CloseScriptEditing,
-    DuplicateConfigScript(EditScriptId),
-    RemoveScript(EditScriptId),
+    DuplicateConfigScript(usize),
+    RemoveConfigScript(usize),
+    RemoveExecutionListScript(usize),
     AddScriptToConfig,
     MoveExecutionScriptUp(usize),
     MoveExecutionScriptDown(usize),
@@ -266,8 +267,8 @@ pub(crate) enum WindowMessage {
     SwitchToSharedConfig,
     SwitchToLocalConfig,
     ToggleScriptHidden(bool),
-    CreateCopyOfSharedScript(EditScriptId),
-    MoveToShared(EditScriptId),
+    CreateCopyOfSharedScript(usize),
+    MoveToShared(usize),
     SaveAsPreset,
     ScriptFilterChanged(String),
     RequestCloseApp,
@@ -286,7 +287,7 @@ pub(crate) enum WindowMessage {
     OpenWithDefaultApplication(PathBuf),
     OpenUrl(String),
     OpenLogFileOrFolder(parallel_execution_manager::ExecutionId, usize),
-    SwitchToOriginalSharedScript(EditScriptId),
+    SwitchToOriginalSharedScript(usize),
     ProcessKeyPress(keyboard::Key, keyboard::Modifiers),
     StartRecordingKeybind(keybind_editing::KeybindAssociatedData),
     StopRecordingKeybind,
@@ -592,40 +593,38 @@ impl Application for MainWindow {
             WindowMessage::CloseScriptEditing => {
                 clean_script_selection(&mut self.window_state.cursor_script);
             }
-            WindowMessage::DuplicateConfigScript(script_id) => {
-                match script_id.script_type {
-                    EditScriptType::ScriptConfig => match &self.edit_data.window_edit_data {
-                        Some(WindowEditData {
-                            edit_type: ConfigEditType::Local,
-                            ..
-                        }) => {
-                            if let Some(config) = self.app_config.local_config_body.as_mut() {
-                                config.script_definitions.insert(
-                                    script_id.idx + 1,
-                                    make_script_copy(
-                                        config.script_definitions[script_id.idx].clone(),
-                                    ),
-                                );
-                            }
-                        }
-                        _ => {
-                            self.app_config.script_definitions.insert(
-                                script_id.idx + 1,
-                                make_script_copy(
-                                    self.app_config.script_definitions[script_id.idx].clone(),
-                                ),
+            WindowMessage::DuplicateConfigScript(script_idx) => {
+                match &self.edit_data.window_edit_data {
+                    Some(WindowEditData {
+                        edit_type: ConfigEditType::Local,
+                        ..
+                    }) => {
+                        if let Some(config) = self.app_config.local_config_body.as_mut() {
+                            config.script_definitions.insert(
+                                script_idx + 1,
+                                make_script_copy(config.script_definitions[script_idx].clone()),
                             );
                         }
-                    },
-                    EditScriptType::ExecutionList => {}
-                };
+                    }
+                    _ => {
+                        self.app_config.script_definitions.insert(
+                            script_idx + 1,
+                            make_script_copy(
+                                self.app_config.script_definitions[script_idx].clone(),
+                            ),
+                        );
+                    }
+                }
                 if let Some(script) = &mut self.window_state.cursor_script {
-                    script.idx = script_id.idx + 1;
-                    script.script_type = script_id.script_type;
+                    script.idx = script_idx + 1;
+                    script.script_type = EditScriptType::ScriptConfig;
                 }
                 update_config_cache(self);
             }
-            WindowMessage::RemoveScript(script_id) => remove_script(self, &script_id),
+            WindowMessage::RemoveConfigScript(script_idx) => remove_config_script(self, script_idx),
+            WindowMessage::RemoveExecutionListScript(script_idx) => {
+                remove_execution_list_script(self, script_idx)
+            }
             WindowMessage::AddScriptToConfig => {
                 let script = config::OriginalScriptDefinition {
                     uid: config::Guid::new(),
@@ -1080,9 +1079,9 @@ impl Application for MainWindow {
                 }
                 update_config_cache(self);
             }
-            WindowMessage::CreateCopyOfSharedScript(script_id) => {
+            WindowMessage::CreateCopyOfSharedScript(script_idx) => {
                 let script = if let Some(config) = &self.app_config.local_config_body {
-                    if let Some(script) = config.script_definitions.get(script_id.idx) {
+                    if let Some(script) = config.script_definitions.get(script_idx) {
                         script
                     } else {
                         return Command::none();
@@ -1123,27 +1122,25 @@ impl Application for MainWindow {
                 };
 
                 if let Some(config) = &mut self.app_config.local_config_body {
-                    config
-                        .script_definitions
-                        .insert(script_id.idx + 1, new_script);
-                    select_edited_script(self, script_id.idx + 1);
+                    config.script_definitions.insert(script_idx + 1, new_script);
+                    select_edited_script(self, script_idx + 1);
                     self.edit_data.is_dirty = true;
                 }
                 update_config_cache(self);
             }
-            WindowMessage::MoveToShared(script_id) => {
+            WindowMessage::MoveToShared(script_idx) => {
                 if let Some(config) = &mut self.app_config.local_config_body {
-                    if config.script_definitions.len() <= script_id.idx {
+                    if config.script_definitions.len() <= script_idx {
                         return Command::none();
                     }
 
                     let insert_position = find_best_shared_script_insert_position(
                         &config.script_definitions,
                         &self.app_config.script_definitions,
-                        &script_id,
+                        script_idx,
                     );
 
-                    if let Some(script) = config.script_definitions.get_mut(script_id.idx) {
+                    if let Some(script) = config.script_definitions.get_mut(script_idx) {
                         let mut replacement_script = match script {
                             config::ScriptDefinition::Original(definition) => {
                                 config::ScriptDefinition::ReferenceToShared(
@@ -1425,7 +1422,7 @@ impl Application for MainWindow {
 
                 if let Some(cursor_script) = self.window_state.cursor_script.clone() {
                     if cursor_script.script_type == EditScriptType::ExecutionList {
-                        remove_script(self, &cursor_script);
+                        remove_execution_list_script(self, cursor_script.idx);
                     }
                 }
             }
@@ -1512,13 +1509,10 @@ impl Application for MainWindow {
                     }
                 }
             }
-            WindowMessage::SwitchToOriginalSharedScript(local_script_id) => {
+            WindowMessage::SwitchToOriginalSharedScript(local_script_idx) => {
                 let original_script_uid = {
-                    let script = get_script_definition(
-                        &self.app_config,
-                        &self.edit_data,
-                        local_script_id.idx,
-                    );
+                    let script =
+                        get_script_definition(&self.app_config, &self.edit_data, local_script_idx);
                     match script {
                         config::ScriptDefinition::ReferenceToShared(reference) => {
                             reference.uid.clone()
@@ -2490,10 +2484,7 @@ fn produce_execution_list_content<'a>(
                                     .get_theme_for_color(theme.extended_palette().danger.base.text)
                                     .remove
                                     .clone(),
-                                WindowMessage::RemoveScript(EditScriptId {
-                                    idx: i,
-                                    script_type: EditScriptType::ExecutionList,
-                                }),
+                                WindowMessage::RemoveExecutionListScript(i),
                             )
                             .style(theme::Button::Destructive),
                             "Remove script from execution list",
@@ -2794,22 +2785,47 @@ fn produce_script_edit_content<'a>(
     app_config: &config::AppConfig,
     window_state: &WindowState,
 ) -> Column<'a, WindowMessage> {
-    let Some(currently_edited_script) = &window_state.cursor_script else {
+    let Some(edited_script) = &window_state.cursor_script else {
         return Column::new();
     };
 
-    if currently_edited_script.script_type == EditScriptType::ScriptConfig {
+    if edited_script.script_type == EditScriptType::ScriptConfig {
         if edit_data.window_edit_data.is_none() {
             return Column::new();
         }
-    }
 
-    let script = if currently_edited_script.script_type == EditScriptType::ScriptConfig {
-        get_script_definition(&app_config, edit_data, currently_edited_script.idx)
+        produce_script_config_edit_content(
+            visual_caches,
+            edit_data,
+            app_config,
+            edited_script.idx,
+            get_script_definition(&app_config, edit_data, edited_script.idx),
+        )
     } else {
-        &execution_lists.get_edited_scripts()[currently_edited_script.idx]
-    };
+        match execution_lists.get_edited_scripts().get(edited_script.idx) {
+            Some(config::ScriptDefinition::Original(script)) => {
+                produce_script_to_execute_edit_content(
+                    visual_caches,
+                    edit_data,
+                    edited_script.idx,
+                    &script,
+                )
+            }
+            _ => {
+                eprintln!("Only original scripts expected in the edited execution list");
+                Column::new()
+            }
+        }
+    }
+}
 
+fn produce_script_config_edit_content<'a>(
+    visual_caches: &VisualCaches,
+    edit_data: &EditData,
+    app_config: &config::AppConfig,
+    edited_script_idx: usize,
+    script: &config::ScriptDefinition,
+) -> Column<'a, WindowMessage> {
     let mut parameters: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
 
     match script {
@@ -2823,105 +2839,73 @@ fn produce_script_edit_content<'a>(
                     .into(),
             );
 
-            if currently_edited_script.script_type == EditScriptType::ScriptConfig {
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-                populate_path_editing_content(
-                    "Command:",
-                    "command",
-                    &script.command,
-                    &mut parameters,
-                    |path| WindowMessage::EditScriptCommand(path),
-                    |val| WindowMessage::EditScriptCommandRelativeToScripter(val),
-                );
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            populate_path_editing_content(
+                "Command:",
+                "command",
+                &script.command,
+                &mut parameters,
+                |path| WindowMessage::EditScriptCommand(path),
+                |val| WindowMessage::EditScriptCommandRelativeToScripter(val),
+            );
 
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-                populate_path_editing_content(
-                    "Working directory override:",
-                    "path/to/directory",
-                    &script.working_directory,
-                    &mut parameters,
-                    |path| WindowMessage::EditScriptWorkingDirectory(path),
-                    |val| WindowMessage::EditScriptWorkingDirectoryRelativeToScripter(val),
-                );
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            populate_path_editing_content(
+                "Working directory override:",
+                "path/to/directory",
+                &script.working_directory,
+                &mut parameters,
+                |path| WindowMessage::EditScriptWorkingDirectory(path),
+                |val| WindowMessage::EditScriptWorkingDirectoryRelativeToScripter(val),
+            );
 
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-                populate_path_editing_content(
-                    "Path to the icon:",
-                    "path/to/icon.png",
-                    &script.icon,
-                    &mut parameters,
-                    |path| WindowMessage::EditScriptIconPath(path),
-                    |val| WindowMessage::EditScriptIconPathRelativeToScripter(val),
-                );
-            }
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            populate_path_editing_content(
+                "Path to the icon:",
+                "path/to/icon.png",
+                &script.icon,
+                &mut parameters,
+                |path| WindowMessage::EditScriptIconPath(path),
+                |val| WindowMessage::EditScriptIconPathRelativeToScripter(val),
+            );
 
-            if currently_edited_script.script_type == EditScriptType::ScriptConfig
-                || script.arguments_requirement != config::ArgumentRequirement::Hidden
-            {
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-                parameters.push(
-                    text(
-                        if currently_edited_script.script_type == EditScriptType::ExecutionList {
-                            "Arguments line:"
-                        } else {
-                            "Default arguments:"
-                        },
-                    )
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            parameters.push(text("Default arguments:").into());
+            parameters.push(
+                text_input(&script.arguments_hint, &script.arguments)
+                    .on_input(move |new_value| WindowMessage::EditArguments(new_value))
+                    .style(theme::TextInput::Default)
+                    .padding(5)
+                    .id(ARGUMENTS_INPUT_ID.clone())
                     .into(),
-                );
-                parameters.push(
-                    text_input(&script.arguments_hint, &script.arguments)
-                        .on_input(move |new_value| WindowMessage::EditArguments(new_value))
-                        .style(
-                            if currently_edited_script.script_type == EditScriptType::ExecutionList
-                                && is_original_script_missing_arguments(&script)
-                            {
-                                theme::TextInput::Custom(Box::new(style::InvalidInputStyleSheet))
-                            } else {
-                                theme::TextInput::Default
-                            },
-                        )
-                        .padding(5)
-                        .id(ARGUMENTS_INPUT_ID.clone())
-                        .into(),
-                );
-            }
+            );
 
-            if currently_edited_script.script_type == EditScriptType::ExecutionList {
-                populate_argument_placeholders_content(
-                    &mut parameters,
-                    &script.argument_placeholders,
-                );
-            }
-
-            if currently_edited_script.script_type == EditScriptType::ScriptConfig {
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-                parameters.push(text("Argument hint:").into());
-                parameters.push(
-                    text_input("", &script.arguments_hint)
-                        .on_input(move |new_value| WindowMessage::EditArgumentsHint(new_value))
-                        .padding(5)
-                        .into(),
-                );
-
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-                parameters.push(text("Argument placeholders:").into());
-                populate_argument_placeholders_config_content(
-                    &mut parameters,
-                    &script.argument_placeholders,
-                );
-
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-                parameters.push(text("Are arguments required:").into());
-                parameters.push(
-                    pick_list(
-                        ARGUMENT_REQUIREMENT_PICK_LIST,
-                        Some(script.arguments_requirement.clone()),
-                        move |val| WindowMessage::EditArgumentsRequirement(val),
-                    )
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            parameters.push(text("Argument hint:").into());
+            parameters.push(
+                text_input("", &script.arguments_hint)
+                    .on_input(move |new_value| WindowMessage::EditArgumentsHint(new_value))
+                    .padding(5)
                     .into(),
-                );
-            }
+            );
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            parameters.push(text("Argument placeholders:").into());
+            populate_argument_placeholders_config_content(
+                &mut parameters,
+                &script.argument_placeholders,
+            );
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            parameters.push(text("Are arguments required:").into());
+            parameters.push(
+                pick_list(
+                    ARGUMENT_REQUIREMENT_PICK_LIST,
+                    Some(script.arguments_requirement.clone()),
+                    move |val| WindowMessage::EditArgumentsRequirement(val),
+                )
+                .into(),
+            );
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(text("Retry count:").into());
@@ -3007,26 +2991,19 @@ fn produce_script_edit_content<'a>(
             );
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            parameters.push(
+                edit_button(
+                    "Duplicate script",
+                    WindowMessage::DuplicateConfigScript(edited_script_idx),
+                )
+                .into(),
+            );
 
-            if currently_edited_script.script_type == EditScriptType::ScriptConfig {
-                parameters.push(
-                    edit_button(
-                        "Duplicate script",
-                        WindowMessage::DuplicateConfigScript(currently_edited_script.clone()),
-                    )
-                    .into(),
-                );
-            }
-
-            if is_local_edited_script(
-                currently_edited_script.idx,
-                &app_config,
-                &edit_data.window_edit_data,
-            ) {
+            if is_local_edited_script(edited_script_idx, &app_config, &edit_data.window_edit_data) {
                 parameters.push(
                     edit_button(
                         "Make shared",
-                        WindowMessage::MoveToShared(currently_edited_script.clone()),
+                        WindowMessage::MoveToShared(edited_script_idx),
                     )
                     .into(),
                 );
@@ -3035,13 +3012,11 @@ fn produce_script_edit_content<'a>(
             parameters.push(
                 edit_button(
                     "Remove script",
-                    WindowMessage::RemoveScript(currently_edited_script.clone()),
+                    WindowMessage::RemoveConfigScript(edited_script_idx),
                 )
                 .style(theme::Button::Destructive)
                 .into(),
             );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
         }
         config::ScriptDefinition::ReferenceToShared(reference) => {
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -3071,26 +3046,21 @@ fn produce_script_edit_content<'a>(
             );
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            if currently_edited_script.script_type == EditScriptType::ScriptConfig {
-                parameters.push(
-                    edit_button(
-                        "Edit as a copy",
-                        WindowMessage::CreateCopyOfSharedScript(currently_edited_script.clone()),
-                    )
-                    .into(),
-                );
+            parameters.push(
+                edit_button(
+                    "Edit as a copy",
+                    WindowMessage::CreateCopyOfSharedScript(edited_script_idx),
+                )
+                .into(),
+            );
 
-                parameters.push(
-                    edit_button(
-                        "Edit original",
-                        WindowMessage::SwitchToOriginalSharedScript(
-                            currently_edited_script.clone(),
-                        ),
-                    )
-                    .into(),
-                );
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            }
+            parameters.push(
+                edit_button(
+                    "Edit original",
+                    WindowMessage::SwitchToOriginalSharedScript(edited_script_idx),
+                )
+                .into(),
+            );
         }
         config::ScriptDefinition::Preset(preset) => {
             parameters.push(text("Preset name:").into());
@@ -3132,15 +3102,11 @@ fn produce_script_edit_content<'a>(
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
-            if is_local_edited_script(
-                currently_edited_script.idx,
-                &app_config,
-                &edit_data.window_edit_data,
-            ) {
+            if is_local_edited_script(edited_script_idx, &app_config, &edit_data.window_edit_data) {
                 parameters.push(
                     edit_button(
                         "Make shared",
-                        WindowMessage::MoveToShared(currently_edited_script.clone()),
+                        WindowMessage::MoveToShared(edited_script_idx),
                     )
                     .into(),
                 );
@@ -3149,15 +3115,153 @@ fn produce_script_edit_content<'a>(
             parameters.push(
                 edit_button(
                     "Remove preset",
-                    WindowMessage::RemoveScript(currently_edited_script.clone()),
+                    WindowMessage::RemoveConfigScript(edited_script_idx),
                 )
                 .style(theme::Button::Destructive)
                 .into(),
             );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
         }
     }
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+
+    let content = column(parameters).spacing(10);
+
+    column![scrollable(content)]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .spacing(10)
+        .align_items(Alignment::Start)
+}
+
+fn produce_script_to_execute_edit_content<'a>(
+    visual_caches: &VisualCaches,
+    edit_data: &EditData,
+    edited_script_idx: usize,
+    script: &config::OriginalScriptDefinition,
+) -> Column<'a, WindowMessage> {
+    let mut parameters: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(text("Name:").into());
+    parameters.push(
+        text_input("name", &script.name)
+            .on_input(move |new_arg| WindowMessage::EditScriptName(new_arg))
+            .padding(5)
+            .into(),
+    );
+
+    if script.arguments_requirement != config::ArgumentRequirement::Hidden {
+        parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+        parameters.push(text("Arguments line:").into());
+        parameters.push(
+            text_input(&script.arguments_hint, &script.arguments)
+                .on_input(move |new_value| WindowMessage::EditArguments(new_value))
+                .style(if is_original_script_missing_arguments(&script) {
+                    theme::TextInput::Custom(Box::new(style::InvalidInputStyleSheet))
+                } else {
+                    theme::TextInput::Default
+                })
+                .padding(5)
+                .id(ARGUMENTS_INPUT_ID.clone())
+                .into(),
+        );
+    }
+
+    populate_argument_placeholders_content(&mut parameters, &script.argument_placeholders);
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(text("Retry count:").into());
+    parameters.push(
+        text_input("0", &visual_caches.autorerun_count)
+            .on_input(move |new_value| WindowMessage::EditAutorerunCount(new_value))
+            .padding(5)
+            .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(
+        checkbox("Set custom executor", script.custom_executor.is_some())
+            .on_toggle(move |val| WindowMessage::ToggleUseCustomExecutor(val))
+            .into(),
+    );
+
+    if let Some(mut custom_executor) = script.custom_executor.clone() {
+        custom_executor.push("".to_string());
+        parameters.push(
+            row(custom_executor.iter().enumerate().map(|(idx, line)| {
+                text_input(
+                    if idx + 1 == custom_executor.len() {
+                        "+"
+                    } else {
+                        ""
+                    },
+                    &line,
+                )
+                .on_input(move |new_value| WindowMessage::EditCustomExecutor(new_value, idx))
+                .padding(5)
+                .into()
+            }))
+            .into(),
+        );
+    }
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(
+        checkbox("Ignore previous failures", script.ignore_previous_failures)
+            .on_toggle(move |val| WindowMessage::ToggleIgnoreFailures(val))
+            .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(
+        checkbox("Autoclean on success", script.autoclean_on_success)
+            .on_toggle(move |val| WindowMessage::ToggleAutocleanOnSuccess(val))
+            .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(
+        checkbox("Ignore output", script.ignore_output)
+            .on_toggle(move |val| WindowMessage::ToggleIgnoreOutput(val))
+            .into(),
+    );
+    if let Some(window_edit) = &edit_data.window_edit_data {
+        parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+        parameters.push(
+            checkbox("Is script hidden", script.is_hidden)
+                .on_toggle(move |val| WindowMessage::ToggleIsHidden(val))
+                .into(),
+        );
+
+        parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+        keybind_editing::populate_keybind_editing_content(
+            &mut parameters,
+            &window_edit,
+            visual_caches,
+            "Keybind to schedule:",
+            keybind_editing::KeybindAssociatedData::Script(script.uid.clone()),
+        );
+    }
+
+    populate_quick_launch_edit_button(
+        &mut parameters,
+        &visual_caches,
+        &script.uid,
+        &edit_data.window_edit_data,
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(
+        edit_button(
+            "Remove script",
+            WindowMessage::RemoveExecutionListScript(edited_script_idx),
+        )
+        .style(theme::Button::Destructive)
+        .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
     let content = column(parameters).spacing(10);
 

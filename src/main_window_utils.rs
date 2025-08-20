@@ -335,10 +335,8 @@ pub fn get_editing_preset<'a>(
 pub fn find_best_shared_script_insert_position(
     source_script_definitions: &Vec<config::ScriptDefinition>,
     target_script_definitions: &Vec<config::ScriptDefinition>,
-    script_id: &EditScriptId,
+    script_idx: usize,
 ) -> usize {
-    let script_idx = script_id.idx;
-
     // first search up to find if we have reference to shared scripts
     let mut last_shared_script_idx = script_idx;
     let mut target_shared_script_uid = config::GUID_NULL;
@@ -1073,34 +1071,32 @@ pub fn make_script_copy(script: config::ScriptDefinition) -> config::ScriptDefin
     }
 }
 
-pub fn remove_script(app: &mut MainWindow, script_id: &EditScriptId) {
-    match script_id.script_type {
-        EditScriptType::ScriptConfig => {
-            if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
-                match window_edit_data.edit_type {
-                    ConfigEditType::Shared => {
-                        app.app_config.script_definitions.remove(script_id.idx);
-                        app.edit_data.is_dirty = true;
-                    }
-                    ConfigEditType::Local => {
-                        if let Some(config) = &mut app.app_config.local_config_body {
-                            config.script_definitions.remove(script_id.idx);
-                            app.edit_data.is_dirty = true;
-                        }
-                    }
+pub fn remove_config_script(app: &mut MainWindow, script_idx: usize) {
+    if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
+        match window_edit_data.edit_type {
+            ConfigEditType::Shared => {
+                app.app_config.script_definitions.remove(script_idx);
+                app.edit_data.is_dirty = true;
+            }
+            ConfigEditType::Local => {
+                if let Some(config) = &mut app.app_config.local_config_body {
+                    config.script_definitions.remove(script_idx);
+                    app.edit_data.is_dirty = true;
                 }
             }
-
-            config::populate_shared_scripts_from_config(&mut app.app_config);
-            update_config_cache(app);
-        }
-        EditScriptType::ExecutionList => {
-            app.execution_manager
-                .remove_script_from_edited_list(script_id.idx);
         }
     }
+
+    config::populate_shared_scripts_from_config(&mut app.app_config);
+    update_config_cache(app);
     clean_script_selection(&mut app.window_state.cursor_script);
     keybind_editing::prune_unused_keybinds(app);
+}
+
+pub fn remove_execution_list_script(app: &mut MainWindow, script_idx: usize) {
+    app.execution_manager
+        .remove_script_from_edited_list(script_idx);
+    clean_script_selection(&mut app.window_state.cursor_script);
 }
 
 fn add_script_to_shared_config(
