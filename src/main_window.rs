@@ -1417,10 +1417,6 @@ impl Application for MainWindow {
                 }
             }
             WindowMessage::RemoveCursorScript => {
-                if self.execution_manager.has_any_execution_started() {
-                    return Command::none();
-                }
-
                 if let Some(focus) = self.window_state.pane_focus {
                     if &self.panes.panes[&focus].variant != &PaneVariant::ExecutionList {
                         return Command::none();
