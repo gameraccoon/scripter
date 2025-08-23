@@ -2938,7 +2938,7 @@ fn produce_script_config_edit_content<'a>(
         config::ScriptDefinition::Original(script) => {
             populate_original_script_config_edit_content(&mut parameters, script, visual_caches);
 
-            if let Some(window_edit) = &edit_data.window_edit_data {
+            if let Some(window_edit_data) = &edit_data.window_edit_data {
                 parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                 parameters.push(
                     checkbox("Is script hidden", script.is_hidden)
@@ -2946,22 +2946,18 @@ fn produce_script_config_edit_content<'a>(
                         .into(),
                 );
 
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-                keybind_editing::populate_keybind_editing_content(
-                    &mut parameters,
-                    &window_edit,
-                    visual_caches,
-                    "Keybind to schedule:",
-                    keybind_editing::KeybindAssociatedData::Script(script.uid.clone()),
-                );
+                if window_edit_data.edit_type == ConfigEditType::Local {
+                    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+                    keybind_editing::populate_keybind_editing_content(
+                        &mut parameters,
+                        &window_edit_data,
+                        visual_caches,
+                        "Keybind to schedule:",
+                        keybind_editing::KeybindAssociatedData::Script(script.uid.clone()),
+                    );
+                    populate_quick_launch_edit_button(&mut parameters, &visual_caches, &script.uid);
+                }
             }
-
-            populate_quick_launch_edit_button(
-                &mut parameters,
-                &visual_caches,
-                &script.uid,
-                &edit_data.window_edit_data,
-            );
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
@@ -3011,12 +3007,7 @@ fn produce_script_config_edit_content<'a>(
                 );
             }
 
-            populate_quick_launch_edit_button(
-                &mut parameters,
-                &visual_caches,
-                &reference.uid,
-                &edit_data.window_edit_data,
-            );
+            populate_quick_launch_edit_button(&mut parameters, &visual_caches, &reference.uid);
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
@@ -3054,24 +3045,20 @@ fn produce_script_config_edit_content<'a>(
                 |val| WindowMessage::EditScriptIconPathType(val),
             );
 
-            if let Some(window_edit) = &edit_data.window_edit_data {
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            if let Some(window_edit_data) = &edit_data.window_edit_data {
+                if window_edit_data.edit_type == ConfigEditType::Local {
+                    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+                    keybind_editing::populate_keybind_editing_content(
+                        &mut parameters,
+                        &window_edit_data,
+                        visual_caches,
+                        "Keybind to schedule:",
+                        keybind_editing::KeybindAssociatedData::Script(preset.uid.clone()),
+                    );
 
-                keybind_editing::populate_keybind_editing_content(
-                    &mut parameters,
-                    &window_edit,
-                    visual_caches,
-                    "Keybind to schedule:",
-                    keybind_editing::KeybindAssociatedData::Script(preset.uid.clone()),
-                );
+                    populate_quick_launch_edit_button(&mut parameters, &visual_caches, &preset.uid);
+                }
             }
-
-            populate_quick_launch_edit_button(
-                &mut parameters,
-                &visual_caches,
-                &preset.uid,
-                &edit_data.window_edit_data,
-            );
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 

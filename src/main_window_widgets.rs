@@ -67,29 +67,24 @@ pub fn populate_quick_launch_edit_button<'a>(
     content: &mut Vec<Element<'a, WindowMessage, Theme, iced::Renderer>>,
     visual_caches: &VisualCaches,
     script_uid: &config::Guid,
-    window_edit_data: &Option<WindowEditData>,
 ) {
-    if let Some(window_edit_data) = window_edit_data {
-        if window_edit_data.edit_type == ConfigEditType::Local {
-            content.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            if is_script_in_quick_launch_buttons(&visual_caches, &script_uid) {
-                content.push(
-                    edit_button(
-                        "Remove from quick launch panel",
-                        WindowMessage::RemoveFromQuickLaunchPanel(script_uid.clone()),
-                    )
-                    .into(),
-                );
-            } else {
-                content.push(
-                    edit_button(
-                        "Add to quick launch panel",
-                        WindowMessage::AddToQuickLaunchPanel(script_uid.clone()),
-                    )
-                    .into(),
-                );
-            }
-        }
+    content.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    if is_script_in_quick_launch_buttons(&visual_caches, &script_uid) {
+        content.push(
+            edit_button(
+                "Remove from quick launch panel",
+                WindowMessage::RemoveFromQuickLaunchPanel(script_uid.clone()),
+            )
+            .into(),
+        );
+    } else {
+        content.push(
+            edit_button(
+                "Add to quick launch panel",
+                WindowMessage::AddToQuickLaunchPanel(script_uid.clone()),
+            )
+            .into(),
+        );
     }
 }
 
