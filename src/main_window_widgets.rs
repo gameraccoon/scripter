@@ -437,7 +437,7 @@ pub fn populate_argument_placeholders_config_content<'a>(
         content.push(
             text_input("Default value", &argument_placeholder.value)
                 .on_input(move |new_value| {
-                    WindowMessage::EditArgumentPlaceholderValue(i, new_value)
+                    WindowMessage::EditArgumentPlaceholderValueForConfig(i, new_value)
                 })
                 .padding(5)
                 .into(),
@@ -478,7 +478,7 @@ pub fn populate_argument_placeholders_content<'a>(
         content.push(
             text_input("Value", &argument_placeholder.value)
                 .on_input(move |new_value| {
-                    WindowMessage::EditArgumentPlaceholderValue(i, new_value)
+                    WindowMessage::EditArgumentPlaceholderValueForScriptExecution(i, new_value)
                 })
                 .padding(5)
                 .into(),

@@ -1255,43 +1255,49 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
     update_config_cache(app);
 }
 
-pub fn apply_script_edit(
+pub fn apply_config_script_edit(
     app: &mut MainWindow,
+    script_idx: usize,
     edit_fn: impl FnOnce(&mut config::OriginalScriptDefinition),
 ) {
-    if let Some(script_id) = &app.window_state.cursor_script {
-        match script_id.script_type {
-            EditScriptType::ScriptConfig => match &app.edit_data.window_edit_data {
-                Some(window_edit_data) if window_edit_data.edit_type == ConfigEditType::Local => {
-                    if let Some(config) = &mut app.app_config.local_config_body {
-                        match &mut config.script_definitions[script_id.idx] {
-                            config::ScriptDefinition::Original(script) => {
-                                edit_fn(script);
-                                app.edit_data.is_dirty = true;
-                                update_config_cache(app);
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                _ => match &mut app.app_config.script_definitions[script_id.idx] {
-                    config::ScriptDefinition::Original(script) => {
+    match &app.edit_data.window_edit_data {
+        Some(window_edit_data) if window_edit_data.edit_type == ConfigEditType::Local => {
+            if let Some(config) = &mut app.app_config.local_config_body {
+                match &mut config.script_definitions.get_mut(script_idx) {
+                    Some(config::ScriptDefinition::Original(script)) => {
                         edit_fn(script);
                         app.edit_data.is_dirty = true;
                         update_config_cache(app);
                     }
                     _ => {}
-                },
-            },
-            EditScriptType::ExecutionList => {
-                match &mut app.execution_manager.get_edited_scripts_mut()[script_id.idx] {
-                    config::ScriptDefinition::Original(script) => {
-                        edit_fn(script);
-                    }
-                    _ => {}
                 }
             }
         }
+        _ => match &mut app.app_config.script_definitions.get_mut(script_idx) {
+            Some(config::ScriptDefinition::Original(script)) => {
+                edit_fn(script);
+                app.edit_data.is_dirty = true;
+                update_config_cache(app);
+            }
+            _ => {}
+        },
+    }
+}
+
+pub fn apply_execution_script_edit(
+    app: &mut MainWindow,
+    script_idx: usize,
+    edit_fn: impl FnOnce(&mut config::OriginalScriptDefinition),
+) {
+    match &mut app
+        .execution_manager
+        .get_edited_scripts_mut()
+        .get_mut(script_idx)
+    {
+        Some(config::ScriptDefinition::Original(script)) => {
+            edit_fn(script);
+        }
+        _ => {}
     }
 }
 

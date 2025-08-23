@@ -216,26 +216,32 @@ pub(crate) enum WindowMessage {
     AddScriptToConfig,
     MoveExecutionScriptUp(usize),
     MoveExecutionScriptDown(usize),
-    EditScriptName(String),
+    EditScriptNameForConfig(String),
+    EditScriptNameForExecutionList(String),
     EditScriptCommand(String),
-    EditScriptCommandRelativeToScripter(config::PathType),
+    EditScriptCommandPathType(config::PathType),
     EditScriptWorkingDirectory(String),
-    EditScriptWorkingDirectoryRelativeToScripter(config::PathType),
+    EditScriptWorkingDirectoryPathType(config::PathType),
     EditScriptIconPath(String),
-    EditScriptIconPathRelativeToScripter(config::PathType),
-    EditArguments(String),
+    EditScriptIconPathType(config::PathType),
+    EditArgumentsForConfig(String),
+    EditArgumentsForScriptExecution(String),
     EditArgumentsRequirement(config::ArgumentRequirement),
     EditArgumentsHint(String),
     AddArgumentPlaceholder,
     RemoveArgumentPlaceholder(usize),
     EditArgumentPlaceholderName(usize, String),
     EditArgumentPlaceholderPlaceholder(usize, String),
-    EditArgumentPlaceholderValue(usize, String),
-    EditAutorerunCount(String),
-    ToggleIgnoreFailures(bool),
+    EditArgumentPlaceholderValueForConfig(usize, String),
+    EditArgumentPlaceholderValueForScriptExecution(usize, String),
+    EditAutorerunCountForConfig(String),
+    EditAutorerunCountForExecutionList(String),
+    ToggleIgnoreFailuresForConfig(bool),
+    ToggleIgnoreFailuresForExecutionList(bool),
     ToggleUseCustomExecutor(bool),
     EditCustomExecutor(String, usize),
-    ToggleAutocleanOnSuccess(bool),
+    ToggleAutocleanOnSuccessForConfig(bool),
+    ToggleAutocleanOnSuccessForExecutionList(bool),
     ToggleIgnoreOutput(bool),
     ToggleIsHidden(bool),
     EnterWindowEditMode,
@@ -662,7 +668,7 @@ impl Application for MainWindow {
                     .swap(script_idx, script_idx + 1);
                 select_execution_script(self, script_idx + 1);
             }
-            WindowMessage::EditScriptName(new_name) => {
+            WindowMessage::EditScriptNameForConfig(new_name) => {
                 if let Some(preset) =
                     get_editing_preset(&mut self.app_config, &self.edit_data, &self.window_state)
                 {
@@ -670,22 +676,47 @@ impl Application for MainWindow {
                     self.edit_data.is_dirty = true;
                     update_config_cache(self);
                 } else {
-                    apply_script_edit(self, move |script| script.name = new_name);
+                    if let Some(script) = &self.window_state.cursor_script {
+                        apply_config_script_edit(self, script.idx, move |script| {
+                            script.name = new_name
+                        });
+                    }
+                }
+            }
+            WindowMessage::EditScriptNameForExecutionList(new_name) => {
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_execution_script_edit(self, script.idx, move |script| {
+                        script.name = new_name
+                    });
                 }
             }
             WindowMessage::EditScriptCommand(new_command) => {
-                apply_script_edit(self, move |script| script.command.path = new_command);
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_execution_script_edit(self, script.idx, move |script| {
+                        script.command.path = new_command
+                    });
+                }
             }
-            WindowMessage::EditScriptCommandRelativeToScripter(value) => {
-                apply_script_edit(self, |script| script.command.path_type = value);
+            WindowMessage::EditScriptCommandPathType(value) => {
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, |script| {
+                        script.command.path_type = value
+                    });
+                }
             }
             WindowMessage::EditScriptWorkingDirectory(new_working_directory) => {
-                apply_script_edit(self, move |script| {
-                    script.working_directory.path = new_working_directory
-                });
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, move |script| {
+                        script.working_directory.path = new_working_directory
+                    });
+                }
             }
-            WindowMessage::EditScriptWorkingDirectoryRelativeToScripter(value) => {
-                apply_script_edit(self, |script| script.working_directory.path_type = value);
+            WindowMessage::EditScriptWorkingDirectoryPathType(value) => {
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, |script| {
+                        script.working_directory.path_type = value
+                    });
+                }
             }
             WindowMessage::EditScriptIconPath(new_icon_path) => {
                 if let Some(preset) =
@@ -695,10 +726,14 @@ impl Application for MainWindow {
                     self.edit_data.is_dirty = true;
                     update_config_cache(self);
                 } else {
-                    apply_script_edit(self, move |script| script.icon.path = new_icon_path);
+                    if let Some(script) = &self.window_state.cursor_script {
+                        apply_config_script_edit(self, script.idx, move |script| {
+                            script.icon.path = new_icon_path
+                        });
+                    }
                 }
             }
-            WindowMessage::EditScriptIconPathRelativeToScripter(new_path_type) => {
+            WindowMessage::EditScriptIconPathType(new_path_type) => {
                 if let Some(preset) =
                     get_editing_preset(&mut self.app_config, &self.edit_data, &self.window_state)
                 {
@@ -706,112 +741,188 @@ impl Application for MainWindow {
                     self.edit_data.is_dirty = true;
                     update_config_cache(self);
                 } else {
-                    apply_script_edit(self, move |script| {
-                        script.icon.path_type = new_path_type;
+                    if let Some(script) = &self.window_state.cursor_script {
+                        apply_config_script_edit(self, script.idx, move |script| {
+                            script.icon.path_type = new_path_type;
+                        });
+                    }
+                }
+            }
+            WindowMessage::EditArgumentsForConfig(new_arguments) => {
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, move |script| {
+                        script.arguments = new_arguments;
                     });
                 }
             }
-            WindowMessage::EditArguments(new_arguments) => {
-                apply_script_edit(self, move |script| script.arguments = new_arguments)
+            WindowMessage::EditArgumentsForScriptExecution(new_arguments) => {
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_execution_script_edit(self, script.idx, move |script| {
+                        script.arguments = new_arguments;
+                    });
+                }
             }
             WindowMessage::EditArgumentsRequirement(new_requirement) => {
-                apply_script_edit(self, move |script| {
-                    script.arguments_requirement = new_requirement
-                })
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, move |script| {
+                        script.arguments_requirement = new_requirement
+                    });
+                }
             }
             WindowMessage::EditArgumentsHint(new_arguments_hint) => {
-                apply_script_edit(self, move |script| {
-                    script.arguments_hint = new_arguments_hint
-                })
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, move |script| {
+                        script.arguments_hint = new_arguments_hint
+                    });
+                }
             }
             WindowMessage::AddArgumentPlaceholder => {
-                apply_script_edit(self, |script| {
-                    script
-                        .argument_placeholders
-                        .push(config::ArgumentPlaceholder {
-                            name: String::new(),
-                            placeholder: String::new(),
-                            value: String::new(),
-                        });
-                });
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, |script| {
+                        script
+                            .argument_placeholders
+                            .push(config::ArgumentPlaceholder {
+                                name: String::new(),
+                                placeholder: String::new(),
+                                value: String::new(),
+                            });
+                    });
+                }
             }
             WindowMessage::RemoveArgumentPlaceholder(index) => {
-                apply_script_edit(self, move |script| {
-                    if index < script.argument_placeholders.len() {
-                        script.argument_placeholders.remove(index);
-                    }
-                });
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, move |script| {
+                        if index < script.argument_placeholders.len() {
+                            script.argument_placeholders.remove(index);
+                        }
+                    });
+                }
             }
             WindowMessage::EditArgumentPlaceholderName(index, new_name) => {
-                apply_script_edit(self, move |script| {
-                    if let Some(placeholder) = script.argument_placeholders.get_mut(index) {
-                        placeholder.name = new_name;
-                    }
-                });
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, move |script| {
+                        if let Some(placeholder) = script.argument_placeholders.get_mut(index) {
+                            placeholder.name = new_name;
+                        }
+                    });
+                }
             }
             WindowMessage::EditArgumentPlaceholderPlaceholder(index, new_placeholder) => {
-                apply_script_edit(self, move |script| {
-                    if let Some(placeholder) = script.argument_placeholders.get_mut(index) {
-                        placeholder.placeholder = new_placeholder;
-                    }
-                });
-            }
-            WindowMessage::EditArgumentPlaceholderValue(index, new_value) => {
-                apply_script_edit(self, move |script| {
-                    if let Some(placeholder) = script.argument_placeholders.get_mut(index) {
-                        placeholder.value = new_value;
-                    }
-                });
-            }
-            WindowMessage::EditAutorerunCount(new_autorerun_count_str) => {
-                let parse_result = usize::from_str(&new_autorerun_count_str);
-                let mut new_autorerun_count = None;
-                if let Ok(parse_result) = parse_result {
-                    self.visual_caches.autorerun_count = new_autorerun_count_str;
-                    new_autorerun_count = Some(parse_result);
-                } else {
-                    // if input is empty, then keep it empty and assume 0, otherwise keep the old value
-                    if new_autorerun_count_str.is_empty() {
-                        self.visual_caches.autorerun_count = new_autorerun_count_str;
-                        new_autorerun_count = Some(0);
-                    }
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, move |script| {
+                        if let Some(placeholder) = script.argument_placeholders.get_mut(index) {
+                            placeholder.placeholder = new_placeholder;
+                        }
+                    });
                 }
+            }
+            WindowMessage::EditArgumentPlaceholderValueForConfig(index, new_value) => {
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, move |script| {
+                        if let Some(placeholder) = script.argument_placeholders.get_mut(index) {
+                            placeholder.value = new_value;
+                        }
+                    });
+                }
+            }
+            WindowMessage::EditArgumentPlaceholderValueForScriptExecution(index, new_value) => {
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_execution_script_edit(self, script.idx, move |script| {
+                        if let Some(placeholder) = script.argument_placeholders.get_mut(index) {
+                            placeholder.value = new_value;
+                        }
+                    });
+                }
+            }
+            WindowMessage::EditAutorerunCountForConfig(new_autorerun_count_str) => {
+                let new_autorerun_count =
+                    update_autorerun_count_text(self, new_autorerun_count_str);
 
                 if let Some(new_autorerun_count) = new_autorerun_count {
-                    apply_script_edit(self, |script| script.autorerun_count = new_autorerun_count)
+                    if let Some(script) = &self.window_state.cursor_script {
+                        apply_config_script_edit(self, script.idx, |script| {
+                            script.autorerun_count = new_autorerun_count
+                        });
+                    }
                 }
             }
-            WindowMessage::ToggleIgnoreFailures(value) => {
-                apply_script_edit(self, |script| script.ignore_previous_failures = value)
+            WindowMessage::EditAutorerunCountForExecutionList(new_autorerun_count_str) => {
+                let new_autorerun_count =
+                    update_autorerun_count_text(self, new_autorerun_count_str);
+
+                if let Some(new_autorerun_count) = new_autorerun_count {
+                    if let Some(script) = &self.window_state.cursor_script {
+                        apply_execution_script_edit(self, script.idx, |script| {
+                            script.autorerun_count = new_autorerun_count;
+                        });
+                    }
+                }
+            }
+            WindowMessage::ToggleIgnoreFailuresForConfig(value) => {
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, |script| {
+                        script.ignore_previous_failures = value
+                    });
+                }
+            }
+            WindowMessage::ToggleIgnoreFailuresForExecutionList(value) => {
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_execution_script_edit(self, script.idx, |script| {
+                        script.ignore_previous_failures = value
+                    });
+                }
             }
             WindowMessage::ToggleUseCustomExecutor(should_use_custom) => {
-                apply_script_edit(self, |script| {
-                    if script.custom_executor.is_none() && should_use_custom {
-                        script.custom_executor = Some(config::get_default_executor())
-                    } else if !should_use_custom {
-                        script.custom_executor = None;
-                    }
-                })
-            }
-            WindowMessage::EditCustomExecutor(value, index) => apply_script_edit(self, |script| {
-                if let Some(executor) = &mut script.custom_executor {
-                    if value.is_empty() && index + 1 == executor.len() {
-                        executor.pop();
-                    } else if !value.is_empty() && index == executor.len() {
-                        executor.push(value);
-                    } else if index < executor.len() {
-                        executor[index] = value;
-                    }
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, |script| {
+                        if script.custom_executor.is_none() && should_use_custom {
+                            script.custom_executor = Some(config::get_default_executor())
+                        } else if !should_use_custom {
+                            script.custom_executor = None;
+                        }
+                    });
                 }
-            }),
-            WindowMessage::ToggleAutocleanOnSuccess(value) => {
-                apply_script_edit(self, |script| script.autoclean_on_success = value)
+            }
+            WindowMessage::EditCustomExecutor(value, index) => {
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, |script| {
+                        if let Some(executor) = &mut script.custom_executor {
+                            if value.is_empty() && index + 1 == executor.len() {
+                                executor.pop();
+                            } else if !value.is_empty() && index == executor.len() {
+                                executor.push(value);
+                            } else if index < executor.len() {
+                                executor[index] = value;
+                            }
+                        }
+                    });
+                }
+            }
+            WindowMessage::ToggleAutocleanOnSuccessForConfig(value) => {
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, |script| {
+                        script.autoclean_on_success = value
+                    });
+                }
+            }
+            WindowMessage::ToggleAutocleanOnSuccessForExecutionList(value) => {
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_execution_script_edit(self, script.idx, |script| {
+                        script.autoclean_on_success = value
+                    });
+                }
             }
             WindowMessage::ToggleIgnoreOutput(value) => {
-                apply_script_edit(self, |script| script.ignore_output = value)
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, |script| {
+                        script.ignore_output = value
+                    });
+                }
             }
             WindowMessage::ToggleIsHidden(value) => {
-                apply_script_edit(self, |script| script.is_hidden = value)
+                if let Some(script) = &self.window_state.cursor_script {
+                    apply_config_script_edit(self, script.idx, |script| script.is_hidden = value);
+                }
             }
             WindowMessage::EnterWindowEditMode => enter_window_edit_mode(self),
             WindowMessage::ExitWindowEditMode => exit_window_edit_mode(self),
@@ -2804,12 +2915,7 @@ fn produce_script_edit_content<'a>(
     } else {
         match execution_lists.get_edited_scripts().get(edited_script.idx) {
             Some(config::ScriptDefinition::Original(script)) => {
-                produce_script_to_execute_edit_content(
-                    visual_caches,
-                    edit_data,
-                    edited_script.idx,
-                    &script,
-                )
+                produce_script_to_execute_edit_content(visual_caches, edited_script.idx, &script)
             }
             _ => {
                 eprintln!("Only original scripts expected in the edited execution list");
@@ -2830,141 +2936,8 @@ fn produce_script_config_edit_content<'a>(
 
     match script {
         config::ScriptDefinition::Original(script) => {
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            parameters.push(text("Name:").into());
-            parameters.push(
-                text_input("name", &script.name)
-                    .on_input(move |new_arg| WindowMessage::EditScriptName(new_arg))
-                    .padding(5)
-                    .into(),
-            );
+            populate_original_script_config_edit_content(&mut parameters, script, visual_caches);
 
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            populate_path_editing_content(
-                "Command:",
-                "command",
-                &script.command,
-                &mut parameters,
-                |path| WindowMessage::EditScriptCommand(path),
-                |val| WindowMessage::EditScriptCommandRelativeToScripter(val),
-            );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            populate_path_editing_content(
-                "Working directory override:",
-                "path/to/directory",
-                &script.working_directory,
-                &mut parameters,
-                |path| WindowMessage::EditScriptWorkingDirectory(path),
-                |val| WindowMessage::EditScriptWorkingDirectoryRelativeToScripter(val),
-            );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            populate_path_editing_content(
-                "Path to the icon:",
-                "path/to/icon.png",
-                &script.icon,
-                &mut parameters,
-                |path| WindowMessage::EditScriptIconPath(path),
-                |val| WindowMessage::EditScriptIconPathRelativeToScripter(val),
-            );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            parameters.push(text("Default arguments:").into());
-            parameters.push(
-                text_input(&script.arguments_hint, &script.arguments)
-                    .on_input(move |new_value| WindowMessage::EditArguments(new_value))
-                    .style(theme::TextInput::Default)
-                    .padding(5)
-                    .id(ARGUMENTS_INPUT_ID.clone())
-                    .into(),
-            );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            parameters.push(text("Argument hint:").into());
-            parameters.push(
-                text_input("", &script.arguments_hint)
-                    .on_input(move |new_value| WindowMessage::EditArgumentsHint(new_value))
-                    .padding(5)
-                    .into(),
-            );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            parameters.push(text("Argument placeholders:").into());
-            populate_argument_placeholders_config_content(
-                &mut parameters,
-                &script.argument_placeholders,
-            );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            parameters.push(text("Are arguments required:").into());
-            parameters.push(
-                pick_list(
-                    ARGUMENT_REQUIREMENT_PICK_LIST,
-                    Some(script.arguments_requirement.clone()),
-                    move |val| WindowMessage::EditArgumentsRequirement(val),
-                )
-                .into(),
-            );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            parameters.push(text("Retry count:").into());
-            parameters.push(
-                text_input("0", &visual_caches.autorerun_count)
-                    .on_input(move |new_value| WindowMessage::EditAutorerunCount(new_value))
-                    .padding(5)
-                    .into(),
-            );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            parameters.push(
-                checkbox("Set custom executor", script.custom_executor.is_some())
-                    .on_toggle(move |val| WindowMessage::ToggleUseCustomExecutor(val))
-                    .into(),
-            );
-
-            if let Some(mut custom_executor) = script.custom_executor.clone() {
-                custom_executor.push("".to_string());
-                parameters.push(
-                    row(custom_executor.iter().enumerate().map(|(idx, line)| {
-                        text_input(
-                            if idx + 1 == custom_executor.len() {
-                                "+"
-                            } else {
-                                ""
-                            },
-                            &line,
-                        )
-                        .on_input(move |new_value| {
-                            WindowMessage::EditCustomExecutor(new_value, idx)
-                        })
-                        .padding(5)
-                        .into()
-                    }))
-                    .into(),
-                );
-            }
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            parameters.push(
-                checkbox("Ignore previous failures", script.ignore_previous_failures)
-                    .on_toggle(move |val| WindowMessage::ToggleIgnoreFailures(val))
-                    .into(),
-            );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            parameters.push(
-                checkbox("Autoclean on success", script.autoclean_on_success)
-                    .on_toggle(move |val| WindowMessage::ToggleAutocleanOnSuccess(val))
-                    .into(),
-            );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            parameters.push(
-                checkbox("Ignore output", script.ignore_output)
-                    .on_toggle(move |val| WindowMessage::ToggleIgnoreOutput(val))
-                    .into(),
-            );
             if let Some(window_edit) = &edit_data.window_edit_data {
                 parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                 parameters.push(
@@ -3066,7 +3039,7 @@ fn produce_script_config_edit_content<'a>(
             parameters.push(text("Preset name:").into());
             parameters.push(
                 text_input("name", &preset.name)
-                    .on_input(move |new_arg| WindowMessage::EditScriptName(new_arg))
+                    .on_input(move |new_arg| WindowMessage::EditScriptNameForConfig(new_arg))
                     .padding(5)
                     .into(),
             );
@@ -3078,7 +3051,7 @@ fn produce_script_config_edit_content<'a>(
                 &preset.icon,
                 &mut parameters,
                 |path| WindowMessage::EditScriptIconPath(path),
-                |val| WindowMessage::EditScriptIconPathRelativeToScripter(val),
+                |val| WindowMessage::EditScriptIconPathType(val),
             );
 
             if let Some(window_edit) = &edit_data.window_edit_data {
@@ -3136,7 +3109,6 @@ fn produce_script_config_edit_content<'a>(
 
 fn produce_script_to_execute_edit_content<'a>(
     visual_caches: &VisualCaches,
-    edit_data: &EditData,
     edited_script_idx: usize,
     script: &config::OriginalScriptDefinition,
 ) -> Column<'a, WindowMessage> {
@@ -3146,7 +3118,7 @@ fn produce_script_to_execute_edit_content<'a>(
     parameters.push(text("Name:").into());
     parameters.push(
         text_input("name", &script.name)
-            .on_input(move |new_arg| WindowMessage::EditScriptName(new_arg))
+            .on_input(move |new_arg| WindowMessage::EditScriptNameForExecutionList(new_arg))
             .padding(5)
             .into(),
     );
@@ -3156,7 +3128,9 @@ fn produce_script_to_execute_edit_content<'a>(
         parameters.push(text("Arguments line:").into());
         parameters.push(
             text_input(&script.arguments_hint, &script.arguments)
-                .on_input(move |new_value| WindowMessage::EditArguments(new_value))
+                .on_input(move |new_value| {
+                    WindowMessage::EditArgumentsForScriptExecution(new_value)
+                })
                 .style(if is_original_script_missing_arguments(&script) {
                     theme::TextInput::Custom(Box::new(style::InvalidInputStyleSheet))
                 } else {
@@ -3174,7 +3148,130 @@ fn produce_script_to_execute_edit_content<'a>(
     parameters.push(text("Retry count:").into());
     parameters.push(
         text_input("0", &visual_caches.autorerun_count)
-            .on_input(move |new_value| WindowMessage::EditAutorerunCount(new_value))
+            .on_input(move |new_value| WindowMessage::EditAutorerunCountForExecutionList(new_value))
+            .padding(5)
+            .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(
+        checkbox("Ignore previous failures", script.ignore_previous_failures)
+            .on_toggle(move |val| WindowMessage::ToggleIgnoreFailuresForExecutionList(val))
+            .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(
+        checkbox("Autoclean on success", script.autoclean_on_success)
+            .on_toggle(move |val| WindowMessage::ToggleAutocleanOnSuccessForExecutionList(val))
+            .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(
+        edit_button(
+            "Remove script",
+            WindowMessage::RemoveExecutionListScript(edited_script_idx),
+        )
+        .style(theme::Button::Destructive)
+        .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+
+    let content = column(parameters).spacing(10);
+
+    column![scrollable(content)]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .spacing(10)
+        .align_items(Alignment::Start)
+}
+
+fn populate_original_script_config_edit_content<'a>(
+    parameters: &mut Vec<Element<'_, WindowMessage, Theme, iced::Renderer>>,
+    script: &config::OriginalScriptDefinition,
+    visual_caches: &VisualCaches,
+) {
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(text("Name:").into());
+    parameters.push(
+        text_input("name", &script.name)
+            .on_input(move |new_arg| WindowMessage::EditScriptNameForConfig(new_arg))
+            .padding(5)
+            .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    populate_path_editing_content(
+        "Command:",
+        "command",
+        &script.command,
+        parameters,
+        |path| WindowMessage::EditScriptCommand(path),
+        |val| WindowMessage::EditScriptCommandPathType(val),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    populate_path_editing_content(
+        "Working directory override:",
+        "path/to/directory",
+        &script.working_directory,
+        parameters,
+        |path| WindowMessage::EditScriptWorkingDirectory(path),
+        |val| WindowMessage::EditScriptWorkingDirectoryPathType(val),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    populate_path_editing_content(
+        "Path to the icon:",
+        "path/to/icon.png",
+        &script.icon,
+        parameters,
+        |path| WindowMessage::EditScriptIconPath(path),
+        |val| WindowMessage::EditScriptIconPathType(val),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(text("Default arguments:").into());
+    parameters.push(
+        text_input(&script.arguments_hint, &script.arguments)
+            .on_input(move |new_value| WindowMessage::EditArgumentsForConfig(new_value))
+            .style(theme::TextInput::Default)
+            .padding(5)
+            .id(ARGUMENTS_INPUT_ID.clone())
+            .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(text("Argument hint:").into());
+    parameters.push(
+        text_input("", &script.arguments_hint)
+            .on_input(move |new_value| WindowMessage::EditArgumentsHint(new_value))
+            .padding(5)
+            .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(text("Argument placeholders:").into());
+    populate_argument_placeholders_config_content(parameters, &script.argument_placeholders);
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(text("Are arguments required:").into());
+    parameters.push(
+        pick_list(
+            ARGUMENT_REQUIREMENT_PICK_LIST,
+            Some(script.arguments_requirement.clone()),
+            move |val| WindowMessage::EditArgumentsRequirement(val),
+        )
+        .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(text("Retry count:").into());
+    parameters.push(
+        text_input("0", &visual_caches.autorerun_count)
+            .on_input(move |new_value| WindowMessage::EditAutorerunCountForConfig(new_value))
             .padding(5)
             .into(),
     );
@@ -3209,14 +3306,14 @@ fn produce_script_to_execute_edit_content<'a>(
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     parameters.push(
         checkbox("Ignore previous failures", script.ignore_previous_failures)
-            .on_toggle(move |val| WindowMessage::ToggleIgnoreFailures(val))
+            .on_toggle(move |val| WindowMessage::ToggleIgnoreFailuresForConfig(val))
             .into(),
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     parameters.push(
         checkbox("Autoclean on success", script.autoclean_on_success)
-            .on_toggle(move |val| WindowMessage::ToggleAutocleanOnSuccess(val))
+            .on_toggle(move |val| WindowMessage::ToggleAutocleanOnSuccessForConfig(val))
             .into(),
     );
 
@@ -3226,50 +3323,6 @@ fn produce_script_to_execute_edit_content<'a>(
             .on_toggle(move |val| WindowMessage::ToggleIgnoreOutput(val))
             .into(),
     );
-    if let Some(window_edit) = &edit_data.window_edit_data {
-        parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-        parameters.push(
-            checkbox("Is script hidden", script.is_hidden)
-                .on_toggle(move |val| WindowMessage::ToggleIsHidden(val))
-                .into(),
-        );
-
-        parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-        keybind_editing::populate_keybind_editing_content(
-            &mut parameters,
-            &window_edit,
-            visual_caches,
-            "Keybind to schedule:",
-            keybind_editing::KeybindAssociatedData::Script(script.uid.clone()),
-        );
-    }
-
-    populate_quick_launch_edit_button(
-        &mut parameters,
-        &visual_caches,
-        &script.uid,
-        &edit_data.window_edit_data,
-    );
-
-    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-    parameters.push(
-        edit_button(
-            "Remove script",
-            WindowMessage::RemoveExecutionListScript(edited_script_idx),
-        )
-        .style(theme::Button::Destructive)
-        .into(),
-    );
-
-    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-
-    let content = column(parameters).spacing(10);
-
-    column![scrollable(content)]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .spacing(10)
-        .align_items(Alignment::Start)
 }
 
 fn produce_config_edit_content<'a>(
@@ -3681,4 +3734,23 @@ fn view_controls<'a>(
     }
 
     row.into()
+}
+
+fn update_autorerun_count_text(
+    app: &mut MainWindow,
+    new_autorerun_count_str: String,
+) -> Option<usize> {
+    let parse_result = usize::from_str(&new_autorerun_count_str);
+    let mut new_autorerun_count = None;
+    if let Ok(parse_result) = parse_result {
+        app.visual_caches.autorerun_count = new_autorerun_count_str;
+        new_autorerun_count = Some(parse_result);
+    } else {
+        // if input is empty, then keep it empty and assume 0, otherwise keep the old value
+        if new_autorerun_count_str.is_empty() {
+            app.visual_caches.autorerun_count = new_autorerun_count_str;
+            new_autorerun_count = Some(0);
+        }
+    }
+    new_autorerun_count
 }
