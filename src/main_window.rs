@@ -1909,6 +1909,10 @@ fn produce_script_list_content<'a>(
         return get_config_error_content(error, theme);
     }
 
+    let is_editing = edit_data.window_edit_data.is_some();
+    let is_local_config = config.local_config_body.is_some()
+        && edit_data.window_edit_data.clone().map(|x| x.edit_mode) == Some(SettingsEditMode::Local);
+
     let data: Element<_> = column(
         displayed_configs_list_cache
             .iter()
@@ -1916,10 +1920,10 @@ fn produce_script_list_content<'a>(
             .map(|(i, script)| {
                 let mut name_text = script.name.clone();
 
-                if is_local_edited_script(i, &config, &edit_data.window_edit_data) {
+                if is_editing && is_local_config && is_local_config_script(i, &config) {
                     name_text += " [local]";
                 }
-                if script.is_hidden {
+                if is_editing && script.is_hidden {
                     name_text += " [hidden]";
                 }
 
@@ -1975,7 +1979,7 @@ fn produce_script_list_content<'a>(
                     row![
                         icon,
                         Space::with_width(6),
-                        text(&name_text).height(22),
+                        text(name_text).height(22),
                         horizontal_space(),
                         edit_buttons,
                     ]
@@ -2925,7 +2929,7 @@ fn produce_script_config_edit_content<'a>(
 
     let config_script_id = ConfigScriptId {
         idx: edited_script_idx,
-        edit_type: window_edit_data.edit_mode,
+        edit_mode: window_edit_data.edit_mode,
     };
 
     match script {
@@ -2965,7 +2969,9 @@ fn produce_script_config_edit_content<'a>(
                 .into(),
             );
 
-            if is_local_edited_script(edited_script_idx, &app_config, &edit_data.window_edit_data) {
+            if config_script_id.edit_mode == SettingsEditMode::Local
+                && is_local_config_script(edited_script_idx, &app_config)
+            {
                 parameters.push(
                     edit_button(
                         "Make shared",
@@ -3061,7 +3067,9 @@ fn produce_script_config_edit_content<'a>(
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
-            if is_local_edited_script(edited_script_idx, &app_config, &edit_data.window_edit_data) {
+            if config_script_id.edit_mode == SettingsEditMode::Local
+                && is_local_config_script(edited_script_idx, &app_config)
+            {
                 parameters.push(
                     edit_button(
                         "Make shared",

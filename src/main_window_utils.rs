@@ -23,30 +23,19 @@ const EDIT_BUTTONS_HEIGHT: f32 = 50.0;
 #[derive(Clone, Debug, Copy)]
 pub(crate) struct ConfigScriptId {
     pub idx: usize,
-    pub edit_type: SettingsEditMode,
+    pub edit_mode: SettingsEditMode,
 }
 
-pub fn is_local_edited_script(
-    script_idx: usize,
-    app_config: &config::AppConfig,
-    window_edit_data: &Option<WindowEditData>,
-) -> bool {
-    if let Some(window_edit_data) = &window_edit_data {
-        if window_edit_data.edit_mode == SettingsEditMode::Local {
-            if let Some(scripts) = &app_config.local_config_body {
-                match scripts.script_definitions.get(script_idx) {
-                    Some(config::ScriptDefinition::Original(_)) => {
-                        return true;
-                    }
-                    Some(config::ScriptDefinition::Preset(_)) => {
-                        return true;
-                    }
-                    _ => {}
-                }
-            }
+pub fn is_local_config_script(script_idx: usize, app_config: &config::AppConfig) -> bool {
+    if let Some(scripts) = &app_config.local_config_body {
+        match scripts.script_definitions.get(script_idx) {
+            Some(config::ScriptDefinition::Original(_)) => true,
+            Some(config::ScriptDefinition::Preset(_)) => true,
+            _ => false,
         }
+    } else {
+        false
     }
-    false
 }
 
 pub fn is_script_missing_arguments(script: &config::ScriptDefinition) -> bool {
@@ -1284,7 +1273,7 @@ pub fn apply_config_script_edit(
     config_script_id: ConfigScriptId,
     edit_fn: impl FnOnce(&mut config::OriginalScriptDefinition),
 ) {
-    match config_script_id.edit_type {
+    match config_script_id.edit_mode {
         SettingsEditMode::Local => {
             if let Some(config) = &mut app.app_config.local_config_body {
                 match &mut config.script_definitions.get_mut(config_script_id.idx) {
