@@ -604,7 +604,7 @@ pub fn populate_shared_scripts_from_config(app_config: &mut AppConfig) {
 pub fn get_original_script_definition_by_uid(
     app_config: &AppConfig,
     script_uid: Guid,
-) -> Option<ScriptDefinition> {
+) -> Option<(ScriptDefinition, usize)> {
     if let Some(local_config) = &app_config.local_config_body {
         if let Some(result) =
             find_original_script_definition_by_uid(&local_config.script_definitions, &script_uid)
@@ -619,10 +619,10 @@ pub fn get_original_script_definition_by_uid(
 fn find_original_script_definition_by_uid(
     script_definitions: &Vec<ScriptDefinition>,
     script_uid: &Guid,
-) -> Option<ScriptDefinition> {
-    for script_definition in script_definitions {
+) -> Option<(ScriptDefinition, usize)> {
+    for (idx, script_definition) in script_definitions.iter().enumerate() {
         if original_script_definition_search_predicate(script_definition, &script_uid) {
-            return Some(script_definition.clone());
+            return Some((script_definition.clone(), idx));
         }
     }
     None

@@ -411,6 +411,7 @@ pub fn format_keybind_hint(caches: &VisualCaches, hint: &str, action: config::Ap
 pub fn populate_argument_placeholders_config_content<'a>(
     content: &mut Vec<Element<'a, WindowMessage, Theme, iced::Renderer>>,
     argument_placeholders: &Vec<config::ArgumentPlaceholder>,
+    config_script_id: ConfigScriptId,
 ) {
     for i in 0..argument_placeholders.len() {
         let argument_placeholder = &argument_placeholders[i];
@@ -418,12 +419,16 @@ pub fn populate_argument_placeholders_config_content<'a>(
             row![
                 text_input("Name", &argument_placeholder.name,)
                     .on_input(move |new_value| {
-                        WindowMessage::EditArgumentPlaceholderName(i, new_value)
+                        WindowMessage::EditArgumentPlaceholderName(config_script_id, i, new_value)
                     })
                     .padding(5),
                 text_input("Placeholder", &argument_placeholder.placeholder,)
                     .on_input(move |new_value| {
-                        WindowMessage::EditArgumentPlaceholderPlaceholder(i, new_value)
+                        WindowMessage::EditArgumentPlaceholderPlaceholder(
+                            config_script_id,
+                            i,
+                            new_value,
+                        )
                     })
                     .padding(5),
             ]
@@ -432,14 +437,21 @@ pub fn populate_argument_placeholders_config_content<'a>(
         content.push(
             text_input("Default value", &argument_placeholder.value)
                 .on_input(move |new_value| {
-                    WindowMessage::EditArgumentPlaceholderValueForConfig(i, new_value)
+                    WindowMessage::EditArgumentPlaceholderValueForConfig(
+                        config_script_id,
+                        i,
+                        new_value,
+                    )
                 })
                 .padding(5)
                 .into(),
         );
         content.push(
             button("Remove Placeholder")
-                .on_press(WindowMessage::RemoveArgumentPlaceholder(i))
+                .on_press(WindowMessage::RemoveArgumentPlaceholder(
+                    config_script_id,
+                    i,
+                ))
                 .into(),
         );
         if i + 1 < argument_placeholders.len() {
@@ -449,7 +461,7 @@ pub fn populate_argument_placeholders_config_content<'a>(
 
     content.push(
         button("+")
-            .on_press(WindowMessage::AddArgumentPlaceholder)
+            .on_press(WindowMessage::AddArgumentPlaceholder(config_script_id))
             .into(),
     );
 }

@@ -20,6 +20,12 @@ const ONE_EXECUTION_NAME_HEIGHT: f32 = 32.0;
 const EMPTY_EXECUTION_LIST_HEIGHT: f32 = 100.0;
 const EDIT_BUTTONS_HEIGHT: f32 = 50.0;
 
+#[derive(Clone, Debug, Copy)]
+pub(crate) struct ConfigScriptId {
+    pub idx: usize,
+    pub edit_type: ConfigEditType,
+}
+
 pub fn is_local_edited_script(
     script_idx: usize,
     app_config: &config::AppConfig,
@@ -230,7 +236,7 @@ pub fn get_resulting_scripts_from_guid(
     let original_script =
         config::get_original_script_definition_by_uid(&app.app_config, script_uid);
 
-    let original_script = if let Some(original_script) = original_script {
+    let (original_script, _idx) = if let Some(original_script) = original_script {
         original_script
     } else {
         return Vec::new();
@@ -256,7 +262,7 @@ pub fn get_resulting_scripts_from_guid(
                 })
                 .filter(|(optional_definition, _preset_item)| optional_definition.is_some())
                 .map(|(optional_definition, preset_item)| {
-                    let mut new_script = optional_definition.unwrap();
+                    let (mut new_script, _idx) = optional_definition.unwrap();
 
                     match &mut new_script {
                         config::ScriptDefinition::Original(script) => {
@@ -675,7 +681,7 @@ pub fn update_config_cache(app: &mut MainWindow) {
     for script_uid in &rewritable_config.quick_launch_scripts {
         let original_script =
             config::get_original_script_definition_by_uid(&app.app_config, script_uid.clone());
-        let Some(script) = original_script else {
+        let Some((script, _idx)) = original_script else {
             continue;
         };
 
@@ -1275,13 +1281,13 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
 
 pub fn apply_config_script_edit(
     app: &mut MainWindow,
-    script_idx: usize,
+    config_script_id: ConfigScriptId,
     edit_fn: impl FnOnce(&mut config::OriginalScriptDefinition),
 ) {
-    match &app.edit_data.window_edit_data {
-        Some(window_edit_data) if window_edit_data.edit_type == ConfigEditType::Local => {
+    match config_script_id.edit_type {
+        ConfigEditType::Local => {
             if let Some(config) = &mut app.app_config.local_config_body {
-                match &mut config.script_definitions.get_mut(script_idx) {
+                match &mut config.script_definitions.get_mut(config_script_id.idx) {
                     Some(config::ScriptDefinition::Original(script)) => {
                         edit_fn(script);
                         app.edit_data.is_dirty = true;
@@ -1291,7 +1297,11 @@ pub fn apply_config_script_edit(
                 }
             }
         }
-        _ => match &mut app.app_config.script_definitions.get_mut(script_idx) {
+        ConfigEditType::Shared => match &mut app
+            .app_config
+            .script_definitions
+            .get_mut(config_script_id.idx)
+        {
             Some(config::ScriptDefinition::Original(script)) => {
                 edit_fn(script);
                 app.edit_data.is_dirty = true;
