@@ -594,14 +594,14 @@ pub fn update_config_cache(app: &mut MainWindow) {
                             };
                             let is_script_hidden =
                                 reference.is_hidden || is_script_filtered_out(&name);
-                            if is_full_list || !is_script_hidden {
-                                result_list.push(ScriptListCacheRecord {
-                                    name,
-                                    full_icon_path: config::get_full_optional_path(paths, &icon),
-                                    is_hidden: is_script_hidden,
-                                    original_script_uid: reference.uid.clone(),
-                                });
-                            }
+                            add_cache_record(
+                                result_list,
+                                is_full_list,
+                                is_script_hidden,
+                                name,
+                                reference.uid.clone(),
+                                config::get_full_optional_path(paths, &icon),
+                            );
                         }
                         None => {
                             eprintln!(
@@ -613,26 +613,26 @@ pub fn update_config_cache(app: &mut MainWindow) {
                 }
                 config::ScriptDefinition::Original(script) => {
                     let is_script_hidden = is_script_filtered_out(&script.name) || script.is_hidden;
-                    if is_full_list || !is_script_hidden {
-                        result_list.push(ScriptListCacheRecord {
-                            name: script.name.clone(),
-                            full_icon_path: config::get_full_optional_path(paths, &script.icon),
-                            is_hidden: is_script_hidden,
-                            original_script_uid: script.uid.clone(),
-                        });
-                    }
+                    add_cache_record(
+                        result_list,
+                        is_full_list,
+                        is_script_hidden,
+                        script.name.clone(),
+                        script.uid.clone(),
+                        config::get_full_optional_path(paths, &script.icon),
+                    );
                 }
                 config::ScriptDefinition::Preset(preset) => {
                     let is_script_hidden = is_script_filtered_out(&preset.name);
 
-                    if is_full_list || !is_script_hidden {
-                        result_list.push(ScriptListCacheRecord {
-                            name: preset.name.clone(),
-                            full_icon_path: config::get_full_optional_path(paths, &preset.icon),
-                            is_hidden: is_script_hidden,
-                            original_script_uid: preset.uid.clone(),
-                        });
-                    }
+                    add_cache_record(
+                        result_list,
+                        is_full_list,
+                        is_script_hidden,
+                        preset.name.clone(),
+                        preset.uid.clone(),
+                        config::get_full_optional_path(paths, &preset.icon),
+                    );
                 }
             }
         }
@@ -645,25 +645,25 @@ pub fn update_config_cache(app: &mut MainWindow) {
                 config::ScriptDefinition::ReferenceToShared(_) => {}
                 config::ScriptDefinition::Original(script) => {
                     let is_script_hidden = is_script_filtered_out(&script.name) || script.is_hidden;
-                    if is_full_list || !is_script_hidden {
-                        result_list.push(ScriptListCacheRecord {
-                            name: script.name.clone(),
-                            full_icon_path: config::get_full_optional_path(paths, &script.icon),
-                            is_hidden: is_script_hidden,
-                            original_script_uid: script.uid.clone(),
-                        });
-                    }
+                    add_cache_record(
+                        result_list,
+                        is_full_list,
+                        is_script_hidden,
+                        script.name.clone(),
+                        script.uid.clone(),
+                        config::get_full_optional_path(paths, &script.icon),
+                    );
                 }
                 config::ScriptDefinition::Preset(preset) => {
                     let is_script_hidden = is_script_filtered_out(&preset.name);
-                    if is_full_list || !is_script_hidden {
-                        result_list.push(ScriptListCacheRecord {
-                            name: preset.name.clone(),
-                            full_icon_path: config::get_full_optional_path(paths, &preset.icon),
-                            is_hidden: is_script_hidden,
-                            original_script_uid: preset.uid.clone(),
-                        });
-                    }
+                    add_cache_record(
+                        result_list,
+                        is_full_list,
+                        is_script_hidden,
+                        preset.name.clone(),
+                        preset.uid.clone(),
+                        config::get_full_optional_path(paths, &preset.icon),
+                    );
                 }
             }
         }
@@ -696,6 +696,24 @@ pub fn update_config_cache(app: &mut MainWindow) {
                 icon: Handle::from_path(icon_path.unwrap_or_default().as_path()),
                 script_uid: script_uid.clone(),
             });
+    }
+}
+
+pub fn add_cache_record(
+    result_list: &mut Vec<ScriptListCacheRecord>,
+    is_full_list: bool,
+    is_script_hidden: bool,
+    script_name: String,
+    script_uid: config::Guid,
+    script_icon_path: Option<std::path::PathBuf>,
+) {
+    if is_full_list || !is_script_hidden {
+        result_list.push(ScriptListCacheRecord {
+            name: script_name,
+            full_icon_path: script_icon_path,
+            is_hidden: is_script_hidden,
+            original_script_uid: script_uid,
+        });
     }
 }
 
