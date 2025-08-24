@@ -121,15 +121,15 @@ pub(crate) struct EditScriptId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum ConfigEditType {
+pub(crate) enum SettingsEditMode {
     Local,
     Shared,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct WindowEditData {
-    pub(crate) is_editing_config: bool,
-    pub(crate) edit_type: ConfigEditType,
+    pub(crate) settings_edit_mode: Option<SettingsEditMode>,
+    pub(crate) edit_mode: SettingsEditMode,
 
     pub(crate) keybind_editing: keybind_editing::KeybindEditData,
 
@@ -152,8 +152,8 @@ pub(crate) struct QuickLaunchButton {
 impl WindowEditData {
     pub(crate) fn from_config(
         config: &config::AppConfig,
-        is_editing_config: bool,
-        edit_type: ConfigEditType,
+        settings_edit_mode: Option<SettingsEditMode>,
+        edit_type: SettingsEditMode,
     ) -> Self {
         let theme = if let Some(theme) = &get_rewritable_config(&config, &edit_type).custom_theme {
             theme.clone()
@@ -162,8 +162,8 @@ impl WindowEditData {
         };
 
         Self {
-            is_editing_config,
-            edit_type,
+            settings_edit_mode,
+            edit_mode: edit_type,
             keybind_editing: keybind_editing::KeybindEditData::new(),
             theme_color_background: color_utils::rgb_to_hex(&theme.background),
             theme_color_text: color_utils::rgb_to_hex(&theme.text),
@@ -386,8 +386,8 @@ impl Application for MainWindow {
 
     fn title(&self) -> String {
         if let Some(window_edit_data) = &self.edit_data.window_edit_data {
-            match window_edit_data.edit_type {
-                ConfigEditType::Shared if self.app_config.local_config_body.is_some() => {
+            match window_edit_data.edit_mode {
+                SettingsEditMode::Shared if self.app_config.local_config_body.is_some() => {
                     "scripter [Editing shared config]".to_string()
                 }
                 _ => "scripter [Editing]".to_string(),
@@ -602,7 +602,7 @@ impl Application for MainWindow {
             WindowMessage::DuplicateConfigScript(script_idx) => {
                 match &self.edit_data.window_edit_data {
                     Some(WindowEditData {
-                        edit_type: ConfigEditType::Local,
+                        edit_mode: SettingsEditMode::Local,
                         ..
                     }) => {
                         if let Some(config) = self.app_config.local_config_body.as_mut() {
@@ -916,13 +916,13 @@ impl Application for MainWindow {
                 self.app_config = config::read_config();
                 self.edit_data.window_edit_data = Some(WindowEditData::from_config(
                     &self.app_config,
-                    false,
+                    None,
                     match self.edit_data.window_edit_data {
                         Some(WindowEditData {
-                            edit_type: ConfigEditType::Local,
+                            edit_mode: SettingsEditMode::Local,
                             ..
-                        }) => ConfigEditType::Local,
-                        _ => ConfigEditType::Shared,
+                        }) => SettingsEditMode::Local,
+                        _ => SettingsEditMode::Shared,
                     },
                 ));
                 config::populate_shared_scripts_from_config(&mut self.app_config);
@@ -943,22 +943,36 @@ impl Application for MainWindow {
                 move_config_script_down(self, index);
             }
             WindowMessage::ToggleConfigEditing => {
-                match &mut self.edit_data.window_edit_data {
-                    Some(window_edit_data) => {
-                        window_edit_data.is_editing_config = !window_edit_data.is_editing_config;
-                    }
-                    None => {
-                        self.edit_data.window_edit_data = Some(WindowEditData::from_config(
-                            &self.app_config,
-                            true,
+                if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
+                    if let Some(edit_type) = window_edit_data.settings_edit_mode {
+                        if edit_type == SettingsEditMode::Local {
+                            window_edit_data.settings_edit_mode = Some(SettingsEditMode::Shared)
+                        } else {
+                            window_edit_data.settings_edit_mode = Some(SettingsEditMode::Local);
+                        }
+                    } else {
+                        window_edit_data.settings_edit_mode =
                             if self.app_config.local_config_body.is_some() {
-                                ConfigEditType::Local
+                                Some(SettingsEditMode::Local)
                             } else {
-                                ConfigEditType::Shared
-                            },
-                        ));
+                                Some(SettingsEditMode::Shared)
+                            };
                     }
-                };
+                } else {
+                    self.edit_data.window_edit_data = Some(WindowEditData::from_config(
+                        &self.app_config,
+                        if self.app_config.local_config_body.is_some() {
+                            Some(SettingsEditMode::Local)
+                        } else {
+                            Some(SettingsEditMode::Shared)
+                        },
+                        if self.app_config.local_config_body.is_some() {
+                            SettingsEditMode::Local
+                        } else {
+                            SettingsEditMode::Shared
+                        },
+                    ));
+                }
                 clean_script_selection(&mut self.window_state.cursor_script);
             }
             WindowMessage::ConfigToggleWindowStatusReactions(is_checked) => {
@@ -1133,7 +1147,7 @@ impl Application for MainWindow {
             }
             WindowMessage::SwitchToLocalConfig => {
                 clean_script_selection(&mut self.window_state.cursor_script);
-                switch_config_edit_mode(self, ConfigEditType::Local);
+                switch_config_edit_mode(self, SettingsEditMode::Local);
                 apply_theme(self);
                 update_config_cache(self);
             }
@@ -1628,7 +1642,7 @@ impl Application for MainWindow {
                     return Command::none();
                 }
 
-                switch_config_edit_mode(self, ConfigEditType::Shared);
+                switch_config_edit_mode(self, SettingsEditMode::Shared);
                 select_edited_script(self, original_script_idx);
 
                 update_config_cache(self);
@@ -1988,7 +2002,7 @@ fn produce_script_list_content<'a>(
 
     let edit_controls = if let Some(window_edit_data) = &edit_data.window_edit_data {
         column![
-            if window_edit_data.edit_type == ConfigEditType::Local {
+            if window_edit_data.edit_mode == SettingsEditMode::Local {
                 text("Editing local config")
             } else if config.local_config_body.is_some() {
                 text("Editing shared config")
@@ -2016,12 +2030,12 @@ fn produce_script_list_content<'a>(
             },
             Space::with_height(4.0),
             if config.local_config_body.is_some() {
-                match window_edit_data.edit_type {
-                    ConfigEditType::Local => {
+                match window_edit_data.edit_mode {
+                    SettingsEditMode::Local => {
                         column![button(text("Switch to shared config").size(16))
                             .on_press(WindowMessage::SwitchToSharedConfig)]
                     }
-                    ConfigEditType::Shared => {
+                    SettingsEditMode::Shared => {
                         column![button(text("Switch to local config").size(16))
                             .on_press(WindowMessage::SwitchToLocalConfig)]
                     }
@@ -2911,7 +2925,7 @@ fn produce_script_config_edit_content<'a>(
 
     let config_script_id = ConfigScriptId {
         idx: edited_script_idx,
-        edit_type: window_edit_data.edit_type,
+        edit_type: window_edit_data.edit_mode,
     };
 
     match script {
@@ -2923,7 +2937,7 @@ fn produce_script_config_edit_content<'a>(
                 visual_caches,
             );
 
-            if window_edit_data.edit_type == ConfigEditType::Local {
+            if window_edit_data.edit_mode == SettingsEditMode::Local {
                 parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                 parameters.push(
                     checkbox("Is script hidden", script.is_hidden)
@@ -3031,7 +3045,7 @@ fn produce_script_config_edit_content<'a>(
             );
 
             if let Some(window_edit_data) = &edit_data.window_edit_data {
-                if window_edit_data.edit_type == ConfigEditType::Local {
+                if window_edit_data.edit_mode == SettingsEditMode::Local {
                     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                     keybind_editing::populate_keybind_editing_content(
                         &mut parameters,
@@ -3316,12 +3330,12 @@ fn populate_original_script_config_edit_content<'a>(
     );
 }
 
-fn produce_config_edit_content<'a>(
+fn produce_settings_edit_content<'a>(
     config: &config::AppConfig,
     window_edit: &WindowEditData,
     visual_caches: &VisualCaches,
 ) -> Column<'a, WindowMessage> {
-    let rewritable_config = get_rewritable_config(&config, &window_edit.edit_type);
+    let rewritable_config = get_rewritable_config(&config, &window_edit.edit_mode);
 
     let mut list_elements: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
 
@@ -3551,7 +3565,7 @@ fn produce_config_edit_content<'a>(
         keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::MoveScriptUp),
     );
 
-    if window_edit.edit_type == ConfigEditType::Shared {
+    if window_edit.edit_mode == SettingsEditMode::Shared {
         list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
         populate_path_editing_content(
             "Local config path:",
@@ -3609,8 +3623,8 @@ fn view_content<'a>(
             produce_log_output_content(execution_lists, theme, rewritable_config, &visual_caches)
         }
         PaneVariant::Parameters => match &edit_data.window_edit_data {
-            Some(window_edit_data) if window_edit_data.is_editing_config => {
-                produce_config_edit_content(config, window_edit_data, visual_caches)
+            Some(window_edit_data) if window_edit_data.settings_edit_mode.is_some() => {
+                produce_settings_edit_content(config, window_edit_data, visual_caches)
             }
             _ => produce_script_edit_content(
                 execution_lists,
