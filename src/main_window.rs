@@ -2939,14 +2939,14 @@ fn produce_script_config_edit_content<'a>(
             populate_original_script_config_edit_content(&mut parameters, script, visual_caches);
 
             if let Some(window_edit_data) = &edit_data.window_edit_data {
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-                parameters.push(
-                    checkbox("Is script hidden", script.is_hidden)
-                        .on_toggle(move |val| WindowMessage::ToggleIsHidden(val))
-                        .into(),
-                );
-
                 if window_edit_data.edit_type == ConfigEditType::Local {
+                    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+                    parameters.push(
+                        checkbox("Is script hidden", script.is_hidden)
+                            .on_toggle(move |val| WindowMessage::ToggleIsHidden(val))
+                            .into(),
+                    );
+
                     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                     keybind_editing::populate_keybind_editing_content(
                         &mut parameters,
