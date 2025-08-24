@@ -606,14 +606,21 @@ pub fn get_original_script_definition_by_uid(
     script_uid: Guid,
 ) -> Option<ScriptDefinition> {
     if let Some(local_config) = &app_config.local_config_body {
-        for script_definition in &local_config.script_definitions {
-            if original_script_definition_search_predicate(script_definition, &script_uid) {
-                return Some(script_definition.clone());
-            }
+        if let Some(result) =
+            find_original_script_definition_by_uid(&local_config.script_definitions, &script_uid)
+        {
+            return Some(result);
         }
     }
 
-    for script_definition in &app_config.script_definitions {
+    find_original_script_definition_by_uid(&app_config.script_definitions, &script_uid)
+}
+
+fn find_original_script_definition_by_uid(
+    script_definitions: &Vec<ScriptDefinition>,
+    script_uid: &Guid,
+) -> Option<ScriptDefinition> {
+    for script_definition in script_definitions {
         if original_script_definition_search_predicate(script_definition, &script_uid) {
             return Some(script_definition.clone());
         }
