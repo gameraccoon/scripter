@@ -471,7 +471,7 @@ impl Application for MainWindow {
             WindowMessage::AddScriptToExecutionOrRun(script_uid) => {
                 if self.window_state.is_command_key_down {
                     if self.window_state.is_alt_key_down {
-                        let scripts = get_resulting_scripts_from_guid(self, script_uid);
+                        let scripts = get_resulting_scripts_from_guid(&self.app_config, script_uid);
                         start_new_execution_from_provided_scripts(self, scripts);
                     } else {
                         try_add_script_to_execution_or_start_new(self, script_uid);
@@ -1488,7 +1488,7 @@ impl Application for MainWindow {
                             if self.window_state.is_command_key_down {
                                 if self.window_state.is_alt_key_down {
                                     let scripts = get_resulting_scripts_from_guid(
-                                        self,
+                                        &self.app_config,
                                         script.original_script_uid.clone(),
                                     );
                                     start_new_execution_from_provided_scripts(self, scripts);
@@ -1707,7 +1707,8 @@ impl Application for MainWindow {
             }
             WindowMessage::OnQuickLaunchButtonPressed(script_uid) => {
                 if !self.edit_data.window_edit_data.is_some() {
-                    let scripts_to_execute = get_resulting_scripts_from_guid(self, script_uid);
+                    let scripts_to_execute =
+                        get_resulting_scripts_from_guid(&self.app_config, script_uid);
                     start_new_execution_from_provided_scripts(self, scripts_to_execute);
                 }
             }

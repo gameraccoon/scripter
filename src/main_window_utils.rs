@@ -219,11 +219,10 @@ fn get_script_definition_mut<'a>(
 }
 
 pub fn get_resulting_scripts_from_guid(
-    app: &mut MainWindow,
+    app_config: &config::AppConfig,
     script_uid: config::Guid,
 ) -> Vec<config::ScriptDefinition> {
-    let original_script =
-        config::get_original_script_definition_by_uid(&app.app_config, script_uid);
+    let original_script = config::get_original_script_definition_by_uid(&app_config, script_uid);
 
     let (original_script, _idx) = if let Some(original_script) = original_script {
         original_script
@@ -243,7 +242,7 @@ pub fn get_resulting_scripts_from_guid(
                 .map(|preset_item| {
                     (
                         config::get_original_script_definition_by_uid(
-                            &app.app_config,
+                            &app_config,
                             preset_item.uid.clone(),
                         ),
                         preset_item,
@@ -500,7 +499,7 @@ pub fn try_add_script_to_execution_or_start_new(app: &mut MainWindow, script_uid
     // we can accept this hotkey only if we definitely know what execution we
     // supposed to add it to
     let executions_number = app.execution_manager.get_started_executions().size();
-    let scripts_to_add = get_resulting_scripts_from_guid(app, script_uid);
+    let scripts_to_add = get_resulting_scripts_from_guid(&app.app_config, script_uid);
 
     if executions_number == 1 {
         let execution_id = app
@@ -1021,7 +1020,7 @@ pub fn add_script_to_execution(
     script_uid: config::Guid,
     should_focus: bool,
 ) -> bool {
-    let scripts = get_resulting_scripts_from_guid(app, script_uid);
+    let scripts = get_resulting_scripts_from_guid(&app.app_config, script_uid);
 
     if scripts.is_empty() {
         return false;
@@ -1451,4 +1450,199 @@ pub fn should_autoclean_on_success(
     }
 
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const APP_CONFIG_WITH_DIFFERENT_SCRIPTS: fn() -> (config::AppConfig, Vec<config::Guid>) =
+        || {
+            let test_script_guid_1 = config::Guid::new();
+            let test_script_guid_2 = config::Guid::new();
+            let test_script_guid_3 = config::Guid::new();
+            let test_script_guid_4 = config::Guid::new();
+
+            (
+                config::AppConfig {
+                    version: "1.0.0".to_string(),
+                    rewritable: config::RewritableConfig {
+                        window_status_reactions: true,
+                        keep_window_size: false,
+                        enable_script_filtering: true,
+                        show_working_directory: true,
+                        enable_title_editing: true,
+                        config_version_update_behavior: config::ConfigUpdateBehavior::OnStartup,
+                        custom_theme: None,
+                        app_actions_keybinds: Vec::new(),
+                        script_keybinds: Vec::new(),
+                        show_current_git_branch: false,
+                        quick_launch_scripts: Vec::new(),
+                    },
+                    script_definitions: vec![
+                        config::ScriptDefinition::Original(config::OriginalScriptDefinition {
+                            uid: test_script_guid_1.clone(),
+                            name: "Shared script 1".to_string(),
+                            icon: config::PathConfig::default(),
+                            command: config::PathConfig::default(),
+                            working_directory: config::PathConfig::default(),
+                            arguments: "".to_string(),
+                            argument_placeholders: Vec::new(),
+                            autorerun_count: 0,
+                            ignore_previous_failures: false,
+                            arguments_requirement: config::ArgumentRequirement::Optional,
+                            arguments_hint: String::new(),
+                            custom_executor: None,
+                            is_hidden: false,
+                            autoclean_on_success: false,
+                            ignore_output: false,
+                        }),
+                        config::ScriptDefinition::Original(config::OriginalScriptDefinition {
+                            uid: test_script_guid_2.clone(),
+                            name: "Original script 2".to_string(),
+                            icon: config::PathConfig::default(),
+                            command: config::PathConfig::default(),
+                            working_directory: config::PathConfig::default(),
+                            arguments: "".to_string(),
+                            argument_placeholders: Vec::new(),
+                            autorerun_count: 0,
+                            ignore_previous_failures: false,
+                            arguments_requirement: config::ArgumentRequirement::Optional,
+                            arguments_hint: String::new(),
+                            custom_executor: None,
+                            is_hidden: false,
+                            autoclean_on_success: false,
+                            ignore_output: false,
+                        }),
+                        config::ScriptDefinition::Preset(config::ScriptPreset {
+                            uid: test_script_guid_3.clone(),
+                            name: "Original preset".to_string(),
+                            icon: config::PathConfig::default(),
+                            items: vec![
+                                config::PresetItem {
+                                    uid: test_script_guid_1.clone(),
+                                    name: None,
+                                    arguments: None,
+                                    autorerun_count: None,
+                                    ignore_previous_failures: None,
+                                },
+                                config::PresetItem {
+                                    uid: test_script_guid_2.clone(),
+                                    name: None,
+                                    arguments: None,
+                                    autorerun_count: None,
+                                    ignore_previous_failures: None,
+                                },
+                            ],
+                        }),
+                    ],
+                    is_read_only: false,
+                    paths: config::PathCaches {
+                        logs_path: std::path::PathBuf::new(),
+                        work_path: std::path::PathBuf::new(),
+                        exe_folder_path: std::path::PathBuf::new(),
+                        config_path: std::path::PathBuf::new(),
+                    },
+                    env_vars: Vec::new(),
+                    custom_title: None,
+                    config_read_error: None,
+                    local_config_path: config::PathConfig::default(),
+                    arguments_read_error: None,
+                    local_config_body: Some(Box::new(config::LocalConfig {
+                        version: "1.0.0".to_string(),
+                        rewritable: config::RewritableConfig {
+                            window_status_reactions: false,
+                            keep_window_size: false,
+                            enable_script_filtering: false,
+                            show_working_directory: false,
+                            enable_title_editing: false,
+                            config_version_update_behavior: config::ConfigUpdateBehavior::OnStartup,
+                            custom_theme: None,
+                            app_actions_keybinds: vec![],
+                            script_keybinds: vec![],
+                            show_current_git_branch: false,
+                            quick_launch_scripts: vec![],
+                        },
+                        script_definitions: vec![
+                            config::ScriptDefinition::ReferenceToShared(
+                                config::ReferenceToSharedScript {
+                                    uid: test_script_guid_1.clone(),
+                                    is_hidden: false,
+                                },
+                            ),
+                            config::ScriptDefinition::ReferenceToShared(
+                                config::ReferenceToSharedScript {
+                                    uid: test_script_guid_2.clone(),
+                                    is_hidden: false,
+                                },
+                            ),
+                            config::ScriptDefinition::ReferenceToShared(
+                                config::ReferenceToSharedScript {
+                                    uid: test_script_guid_3.clone(),
+                                    is_hidden: true,
+                                },
+                            ),
+                            config::ScriptDefinition::Original(config::OriginalScriptDefinition {
+                                uid: test_script_guid_4.clone(),
+                                name: "Original script".to_string(),
+                                icon: config::PathConfig::default(),
+                                command: config::PathConfig::default(),
+                                working_directory: config::PathConfig::default(),
+                                arguments: "".to_string(),
+                                argument_placeholders: Vec::new(),
+                                autorerun_count: 0,
+                                ignore_previous_failures: false,
+                                arguments_requirement: config::ArgumentRequirement::Optional,
+                                arguments_hint: "\"arg1\" \"arg2\"".to_string(),
+                                custom_executor: None,
+                                is_hidden: false,
+                                autoclean_on_success: false,
+                                ignore_output: false,
+                            }),
+                        ],
+                    })),
+                },
+                vec![
+                    test_script_guid_1,
+                    test_script_guid_2,
+                    test_script_guid_3,
+                    test_script_guid_4,
+                ],
+            )
+        };
+
+    #[test]
+    fn test_given_app_config_with_different_scripts_when_check_for_is_local_then_returns_true_only_for_local_configs(
+    ) {
+        let (app_config, _) = APP_CONFIG_WITH_DIFFERENT_SCRIPTS();
+
+        assert_eq!(is_local_config_script(0, &app_config), false);
+        assert_eq!(is_local_config_script(1, &app_config), false);
+        assert_eq!(is_local_config_script(2, &app_config), false);
+        assert_eq!(is_local_config_script(3, &app_config), true);
+        // non-existing script
+        assert_eq!(is_local_config_script(4, &app_config), false);
+    }
+
+    #[test]
+    fn test_given_script_id_when_get_resulting_scripts_from_guid_then_returns_correct_definition() {
+        let (mut app_config, all_guids) = APP_CONFIG_WITH_DIFFERENT_SCRIPTS();
+
+        assert_eq!(
+            get_resulting_scripts_from_guid(&mut app_config, all_guids[0].clone()).len(),
+            1
+        );
+        assert_eq!(
+            get_resulting_scripts_from_guid(&mut app_config, all_guids[1].clone()).len(),
+            1
+        );
+        assert_eq!(
+            get_resulting_scripts_from_guid(&mut app_config, all_guids[2].clone()).len(),
+            2
+        );
+        assert_eq!(
+            get_resulting_scripts_from_guid(&mut app_config, all_guids[3].clone()).len(),
+            1
+        );
+    }
 }
