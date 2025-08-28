@@ -84,6 +84,14 @@ pub fn get_theme(config: &config::AppConfig, window_edit_data: &Option<WindowEdi
     }
 }
 
+pub fn get_main_config(config: &config::AppConfig) -> &config::RewritableConfig {
+    if let Some(local_config) = &config.local_config_body {
+        &local_config.rewritable
+    } else {
+        &config.rewritable
+    }
+}
+
 pub fn get_rewritable_config<'a>(
     config: &config::AppConfig,
     edit_mode: SettingsEditMode,
@@ -105,7 +113,7 @@ pub fn get_rewritable_config_opt<'a>(
     edit_data: &Option<WindowEditData>,
 ) -> &'a config::RewritableConfig {
     match &edit_data {
-        Some(edit_data) => get_rewritable_config(config, edit_data.edit_mode),
+        Some(edit_data) => get_rewritable_config(config, edit_data.scripts_edit_mode),
         None => {
             if let Some(local_config) = &config.local_config_body {
                 &local_config.rewritable
@@ -130,7 +138,7 @@ fn get_rewritable_config_mut_non_opt<'a>(
     config: &'a mut config::AppConfig,
     window_edit: &WindowEditData,
 ) -> &'a mut config::RewritableConfig {
-    match window_edit.edit_mode {
+    match window_edit.scripts_edit_mode {
         SettingsEditMode::Shared => &mut config.rewritable,
         SettingsEditMode::Local => {
             if let Some(local_config) = &mut config.local_config_body {
@@ -147,7 +155,9 @@ fn get_script_definition_list_opt<'a>(
     window_edit_data: &Option<WindowEditData>,
 ) -> &'a Vec<config::ScriptDefinition> {
     match window_edit_data {
-        Some(window_edit_data) => get_script_definition_list(config, &window_edit_data.edit_mode),
+        Some(window_edit_data) => {
+            get_script_definition_list(config, &window_edit_data.scripts_edit_mode)
+        }
         None => {
             if let Some(local_config) = &config.local_config_body {
                 &local_config.script_definitions
@@ -180,7 +190,7 @@ pub fn get_script_definition<'a>(
     script_idx: usize,
 ) -> &'a config::ScriptDefinition {
     let is_looking_at_local_config = if let Some(window_edit_data) = &edit_data.window_edit_data {
-        window_edit_data.edit_mode == SettingsEditMode::Local
+        window_edit_data.scripts_edit_mode == SettingsEditMode::Local
     } else {
         app_config.local_config_body.is_some()
     };
@@ -202,7 +212,7 @@ fn get_script_definition_mut<'a>(
     script_idx: usize,
 ) -> &'a mut config::ScriptDefinition {
     let is_looking_at_local_config = if let Some(window_edit_data) = &edit_data.window_edit_data {
-        window_edit_data.edit_mode == SettingsEditMode::Local
+        window_edit_data.scripts_edit_mode == SettingsEditMode::Local
     } else {
         app_config.local_config_body.is_some()
     };
@@ -524,7 +534,7 @@ pub fn try_add_script_to_execution_or_start_new(app: &mut MainWindow, script_uid
 pub fn update_config_cache(app: &mut MainWindow) {
     let is_looking_at_local_config = if let Some(window_edit_data) = &app.edit_data.window_edit_data
     {
-        window_edit_data.edit_mode == SettingsEditMode::Local
+        window_edit_data.scripts_edit_mode == SettingsEditMode::Local
     } else {
         app.app_config.local_config_body.is_some()
     };
@@ -1041,7 +1051,7 @@ pub fn add_script_to_execution(
 
 pub fn add_script_to_config(app: &mut MainWindow, script: config::ScriptDefinition) {
     if let Some(window_edit_data) = &app.edit_data.window_edit_data {
-        let script_idx = match window_edit_data.edit_mode {
+        let script_idx = match window_edit_data.scripts_edit_mode {
             SettingsEditMode::Shared => {
                 Some(add_script_to_shared_config(&mut app.app_config, script))
             }
@@ -1085,7 +1095,7 @@ pub fn make_script_copy(script: config::ScriptDefinition) -> config::ScriptDefin
 
 pub fn remove_config_script(app: &mut MainWindow, script_idx: usize) {
     if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
-        match window_edit_data.edit_mode {
+        match window_edit_data.scripts_edit_mode {
             SettingsEditMode::Shared => {
                 app.app_config.script_definitions.remove(script_idx);
                 app.edit_data.is_dirty = true;
@@ -1211,7 +1221,7 @@ pub fn clean_script_selection(currently_edited_script: &mut Option<EditScriptId>
 
 pub fn move_config_script_up(app: &mut MainWindow, index: usize) {
     if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
-        match window_edit_data.edit_mode {
+        match window_edit_data.scripts_edit_mode {
             SettingsEditMode::Shared => {
                 if index >= 1 && index < app.app_config.script_definitions.len() {
                     app.app_config.script_definitions.swap(index, index - 1);
@@ -1240,7 +1250,7 @@ pub fn move_config_script_up(app: &mut MainWindow, index: usize) {
 
 pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
     if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
-        match window_edit_data.edit_mode {
+        match window_edit_data.scripts_edit_mode {
             SettingsEditMode::Shared => {
                 if index + 1 < app.app_config.script_definitions.len() {
                     app.app_config.script_definitions.swap(index, index + 1);
@@ -1353,11 +1363,7 @@ pub fn enter_window_edit_mode(app: &mut MainWindow) {
     app.edit_data.window_edit_data = Some(WindowEditData::from_config(
         &app.app_config,
         None,
-        if app.app_config.local_config_body.is_some() {
-            SettingsEditMode::Local
-        } else {
-            SettingsEditMode::Shared
-        },
+        get_main_edit_mode(&app.app_config),
     ));
     app.edit_data.script_filter = String::new();
     clean_script_selection(&mut app.window_state.cursor_script);
@@ -1450,6 +1456,14 @@ pub fn should_autoclean_on_success(
     }
 
     false
+}
+
+pub fn get_main_edit_mode(app_config: &config::AppConfig) -> SettingsEditMode {
+    if app_config.local_config_body.is_some() {
+        SettingsEditMode::Local
+    } else {
+        SettingsEditMode::Shared
+    }
 }
 
 #[cfg(test)]

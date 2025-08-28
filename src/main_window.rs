@@ -129,7 +129,7 @@ pub(crate) enum SettingsEditMode {
 #[derive(Debug, Clone)]
 pub(crate) struct WindowEditData {
     pub(crate) settings_edit_mode: Option<SettingsEditMode>,
-    pub(crate) edit_mode: SettingsEditMode,
+    pub(crate) scripts_edit_mode: SettingsEditMode,
 
     pub(crate) keybind_editing: keybind_editing::KeybindEditData,
 
@@ -153,17 +153,18 @@ impl WindowEditData {
     pub(crate) fn from_config(
         config: &config::AppConfig,
         settings_edit_mode: Option<SettingsEditMode>,
-        edit_type: SettingsEditMode,
+        scripts_edit_mode: SettingsEditMode,
     ) -> Self {
-        let theme = if let Some(theme) = &get_rewritable_config(&config, edit_type).custom_theme {
-            theme.clone()
-        } else {
-            config::CustomTheme::default()
-        };
+        let theme =
+            if let Some(theme) = &get_rewritable_config(&config, scripts_edit_mode).custom_theme {
+                theme.clone()
+            } else {
+                config::CustomTheme::default()
+            };
 
         Self {
             settings_edit_mode,
-            edit_mode: edit_type,
+            scripts_edit_mode: scripts_edit_mode,
             keybind_editing: keybind_editing::KeybindEditData::new(),
             theme_color_background: color_utils::rgb_to_hex(&theme.background),
             theme_color_text: color_utils::rgb_to_hex(&theme.text),
@@ -386,7 +387,7 @@ impl Application for MainWindow {
 
     fn title(&self) -> String {
         if let Some(window_edit_data) = &self.edit_data.window_edit_data {
-            match window_edit_data.edit_mode {
+            match window_edit_data.scripts_edit_mode {
                 SettingsEditMode::Shared if self.app_config.local_config_body.is_some() => {
                     "scripter [Editing shared config]".to_string()
                 }
@@ -602,7 +603,7 @@ impl Application for MainWindow {
             WindowMessage::DuplicateConfigScript(script_idx) => {
                 match &self.edit_data.window_edit_data {
                     Some(WindowEditData {
-                        edit_mode: SettingsEditMode::Local,
+                        scripts_edit_mode: SettingsEditMode::Local,
                         ..
                     }) => {
                         if let Some(config) = self.app_config.local_config_body.as_mut() {
@@ -919,7 +920,7 @@ impl Application for MainWindow {
                     None,
                     match self.edit_data.window_edit_data {
                         Some(WindowEditData {
-                            edit_mode: SettingsEditMode::Local,
+                            scripts_edit_mode: SettingsEditMode::Local,
                             ..
                         }) => SettingsEditMode::Local,
                         _ => SettingsEditMode::Shared,
@@ -952,25 +953,13 @@ impl Application for MainWindow {
                         }
                     } else {
                         window_edit_data.settings_edit_mode =
-                            if self.app_config.local_config_body.is_some() {
-                                Some(SettingsEditMode::Local)
-                            } else {
-                                Some(SettingsEditMode::Shared)
-                            };
+                            Some(get_main_edit_mode(&self.app_config));
                     }
                 } else {
                     self.edit_data.window_edit_data = Some(WindowEditData::from_config(
                         &self.app_config,
-                        if self.app_config.local_config_body.is_some() {
-                            Some(SettingsEditMode::Local)
-                        } else {
-                            Some(SettingsEditMode::Shared)
-                        },
-                        if self.app_config.local_config_body.is_some() {
-                            SettingsEditMode::Local
-                        } else {
-                            SettingsEditMode::Shared
-                        },
+                        Some(get_main_edit_mode(&self.app_config)),
+                        get_main_edit_mode(&self.app_config),
                     ));
                 }
                 clean_script_selection(&mut self.window_state.cursor_script);
@@ -1899,7 +1888,7 @@ impl AppPane {
 fn produce_script_list_content<'a>(
     execution_lists: &parallel_execution_manager::ParallelExecutionManager,
     config: &config::AppConfig,
-    rewritable_config: &config::RewritableConfig,
+    main_config: &config::RewritableConfig,
     displayed_configs_list_cache: &Vec<ScriptListCacheRecord>,
     edit_data: &EditData,
     visual_caches: &'a VisualCaches,
@@ -1912,7 +1901,11 @@ fn produce_script_list_content<'a>(
 
     let is_editing = edit_data.window_edit_data.is_some();
     let is_local_config = config.local_config_body.is_some()
-        && edit_data.window_edit_data.clone().map(|x| x.edit_mode) == Some(SettingsEditMode::Local);
+        && edit_data
+            .window_edit_data
+            .clone()
+            .map(|x| x.scripts_edit_mode)
+            == Some(SettingsEditMode::Local);
 
     let data: Element<_> = column(
         displayed_configs_list_cache
@@ -2007,7 +2000,7 @@ fn produce_script_list_content<'a>(
 
     let edit_controls = if let Some(window_edit_data) = &edit_data.window_edit_data {
         column![
-            if window_edit_data.edit_mode == SettingsEditMode::Local {
+            if window_edit_data.scripts_edit_mode == SettingsEditMode::Local {
                 text("Editing local config")
             } else if config.local_config_body.is_some() {
                 text("Editing shared config")
@@ -2035,7 +2028,7 @@ fn produce_script_list_content<'a>(
             },
             Space::with_height(4.0),
             if config.local_config_body.is_some() {
-                match window_edit_data.edit_mode {
+                match window_edit_data.scripts_edit_mode {
                     SettingsEditMode::Local => {
                         column![button(text("Switch to shared config").size(16))
                             .on_press(WindowMessage::SwitchToSharedConfig)]
@@ -2092,7 +2085,7 @@ fn produce_script_list_content<'a>(
     };
 
     let filter_field =
-        if rewritable_config.enable_script_filtering && edit_data.window_edit_data.is_none() {
+        if main_config.enable_script_filtering && edit_data.window_edit_data.is_none() {
             row![
                 Space::with_width(5),
                 if window_state.is_command_key_down {
@@ -2173,7 +2166,7 @@ fn produce_execution_list_content<'a>(
     config: &config::AppConfig,
     visual_caches: &VisualCaches,
     edit_data: &EditData,
-    rewritable_config: &config::RewritableConfig,
+    main_config: &config::RewritableConfig,
     window_state: &WindowState,
 ) -> Column<'a, WindowMessage> {
     let icons = &visual_caches.icons;
@@ -2187,7 +2180,7 @@ fn produce_execution_list_content<'a>(
         .on_submit(WindowMessage::SetExecutionListTitleEditing(false))
         .size(16)
         .width(Length::Fill),]
-    } else if rewritable_config.enable_title_editing && edit_data.window_edit_data.is_none() {
+    } else if main_config.enable_title_editing && edit_data.window_edit_data.is_none() {
         row![
             horizontal_space(),
             text(config.custom_title.as_ref().unwrap_or(&EMPTY_STRING))
@@ -2288,7 +2281,7 @@ fn produce_execution_list_content<'a>(
             let status_tooltip;
             let progress;
             let style = if script_status.has_script_failed() {
-                if let Some(custom_theme) = &rewritable_config.custom_theme {
+                if let Some(custom_theme) = &main_config.custom_theme {
                     iced::Color::from_rgb(
                         custom_theme.error_text[0],
                         custom_theme.error_text[1],
@@ -2784,7 +2777,7 @@ fn produce_execution_list_content<'a>(
 fn produce_log_output_content<'a>(
     execution_lists: &parallel_execution_manager::ParallelExecutionManager,
     theme: &Theme,
-    rewritable_config: &config::RewritableConfig,
+    main_config: &config::RewritableConfig,
     visual_caches: &VisualCaches,
 ) -> Column<'a, WindowMessage> {
     if !execution_lists.has_any_execution_started() {
@@ -2830,7 +2823,7 @@ fn produce_log_output_content<'a>(
         if let Ok(logs) = selected_execution.get_recent_logs().try_lock() {
             if !logs.is_empty() {
                 let (caption_color, error_color) =
-                    if let Some(custom_theme) = &rewritable_config.custom_theme {
+                    if let Some(custom_theme) = &main_config.custom_theme {
                         (
                             iced::Color::from_rgb(
                                 custom_theme.caption_text[0],
@@ -2930,7 +2923,7 @@ fn produce_script_config_edit_content<'a>(
 
     let config_script_id = ConfigScriptId {
         idx: edited_script_idx,
-        edit_mode: window_edit_data.edit_mode,
+        edit_mode: window_edit_data.scripts_edit_mode,
     };
 
     match script {
@@ -2942,7 +2935,7 @@ fn produce_script_config_edit_content<'a>(
                 visual_caches,
             );
 
-            if window_edit_data.edit_mode == SettingsEditMode::Local {
+            if window_edit_data.scripts_edit_mode == SettingsEditMode::Local {
                 parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                 parameters.push(
                     checkbox("Is script hidden", script.is_hidden)
@@ -3052,7 +3045,7 @@ fn produce_script_config_edit_content<'a>(
             );
 
             if let Some(window_edit_data) = &edit_data.window_edit_data {
-                if window_edit_data.edit_mode == SettingsEditMode::Local {
+                if window_edit_data.scripts_edit_mode == SettingsEditMode::Local {
                     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                     keybind_editing::populate_keybind_editing_content(
                         &mut parameters,
@@ -3342,11 +3335,9 @@ fn populate_original_script_config_edit_content<'a>(
 fn produce_settings_edit_content<'a>(
     config: &config::AppConfig,
     window_edit: &WindowEditData,
-    edit_mode: SettingsEditMode,
+    rewritable_config: &config::RewritableConfig,
     visual_caches: &VisualCaches,
 ) -> Column<'a, WindowMessage> {
-    let rewritable_config = get_rewritable_config(&config, edit_mode);
-
     let mut list_elements: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
 
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -3575,7 +3566,7 @@ fn produce_settings_edit_content<'a>(
         keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::MoveScriptUp),
     );
 
-    if window_edit.edit_mode == SettingsEditMode::Shared {
+    if window_edit.scripts_edit_mode == SettingsEditMode::Shared {
         list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
         populate_path_editing_content(
             "Local config path:",
@@ -3606,13 +3597,11 @@ fn view_content<'a>(
     edit_data: &EditData,
     window_state: &WindowState,
 ) -> Element<'a, WindowMessage> {
-    let rewritable_config = get_rewritable_config_opt(&config, &edit_data.window_edit_data);
-
     let content = match variant {
         PaneVariant::ScriptList => produce_script_list_content(
             execution_lists,
             config,
-            rewritable_config,
+            get_main_config(&config),
             displayed_configs_list_cache,
             edit_data,
             &visual_caches,
@@ -3626,16 +3615,24 @@ fn view_content<'a>(
             config,
             &visual_caches,
             edit_data,
-            rewritable_config,
+            get_main_config(&config),
             window_state,
         ),
-        PaneVariant::LogOutput => {
-            produce_log_output_content(execution_lists, theme, rewritable_config, &visual_caches)
-        }
+        PaneVariant::LogOutput => produce_log_output_content(
+            execution_lists,
+            theme,
+            get_main_config(&config),
+            &visual_caches,
+        ),
         PaneVariant::Parameters => match &edit_data.window_edit_data {
             Some(window_edit_data) if window_edit_data.settings_edit_mode.is_some() => {
                 let edit_mode = window_edit_data.settings_edit_mode.unwrap();
-                produce_settings_edit_content(config, window_edit_data, edit_mode, visual_caches)
+                produce_settings_edit_content(
+                    config,
+                    window_edit_data,
+                    get_rewritable_config(&config, edit_mode),
+                    visual_caches,
+                )
             }
             _ => produce_script_edit_content(
                 execution_lists,
