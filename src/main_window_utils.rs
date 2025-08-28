@@ -74,7 +74,7 @@ pub fn is_command_key(key: &keyboard::Key) -> bool {
 }
 
 pub fn get_theme(config: &config::AppConfig, window_edit_data: &Option<WindowEditData>) -> Theme {
-    if let Some(theme) = get_rewritable_config_opt(&config, window_edit_data)
+    if let Some(theme) = get_rewritable_script_config_opt(&config, window_edit_data)
         .custom_theme
         .clone()
     {
@@ -108,7 +108,7 @@ pub fn get_rewritable_config<'a>(
     }
 }
 
-pub fn get_rewritable_config_opt<'a>(
+pub fn get_rewritable_script_config_opt<'a>(
     config: &'a config::AppConfig,
     edit_data: &Option<WindowEditData>,
 ) -> &'a config::RewritableConfig {
@@ -124,21 +124,23 @@ pub fn get_rewritable_config_opt<'a>(
     }
 }
 
-pub fn get_rewritable_config_mut<'a>(
+pub fn get_rewritable_script_config_mut<'a>(
     config: &'a mut config::AppConfig,
     window_edit: &Option<WindowEditData>,
 ) -> &'a mut config::RewritableConfig {
     match window_edit {
-        Some(window_edit) => get_rewritable_config_mut_non_opt(config, window_edit),
+        Some(window_edit) => {
+            get_rewritable_config_mut_non_opt(config, window_edit.scripts_edit_mode)
+        }
         None => &mut config.rewritable,
     }
 }
 
-fn get_rewritable_config_mut_non_opt<'a>(
-    config: &'a mut config::AppConfig,
-    window_edit: &WindowEditData,
-) -> &'a mut config::RewritableConfig {
-    match window_edit.scripts_edit_mode {
+fn get_rewritable_config_mut_non_opt(
+    config: &mut config::AppConfig,
+    edit_mode: SettingsEditMode,
+) -> &mut config::RewritableConfig {
+    match edit_mode {
         SettingsEditMode::Shared => &mut config.rewritable,
         SettingsEditMode::Local => {
             if let Some(local_config) = &mut config.local_config_body {
@@ -675,7 +677,7 @@ pub fn update_config_cache(app: &mut MainWindow) {
 
     app.visual_caches.quick_launch_buttons.clear();
     let rewritable_config =
-        get_rewritable_config_opt(&app.app_config, &app.edit_data.window_edit_data);
+        get_rewritable_script_config_opt(&app.app_config, &app.edit_data.window_edit_data);
     for script_uid in &rewritable_config.quick_launch_scripts {
         let original_script =
             config::get_original_script_definition_by_uid(&app.app_config, script_uid.clone());
@@ -793,9 +795,13 @@ pub fn on_execution_removed(
     update_button_key_hint_caches(app);
 }
 
-pub fn switch_to_editing_shared_config(app: &mut MainWindow) {
+pub fn switch_to_editing_script_config(app: &mut MainWindow, edit_mode: SettingsEditMode) {
     clean_script_selection(&mut app.window_state.cursor_script);
-    switch_config_edit_mode(app, SettingsEditMode::Shared);
+    app.edit_data.window_edit_data = Some(WindowEditData::from_config(
+        &app.app_config,
+        None,
+        edit_mode,
+    ));
     apply_theme(app);
     update_config_cache(app);
 }
@@ -885,7 +891,8 @@ pub fn maximize_pane(
 pub fn restore_window(app: &mut MainWindow) -> Command<WindowMessage> {
     app.window_state.has_maximized_pane = false;
     app.panes.restore();
-    if !get_rewritable_config_opt(&app.app_config, &app.edit_data.window_edit_data).keep_window_size
+    if !get_rewritable_script_config_opt(&app.app_config, &app.edit_data.window_edit_data)
+        .keep_window_size
     {
         return resize(
             window::Id::MAIN,
@@ -1379,14 +1386,6 @@ pub fn exit_window_edit_mode(app: &mut MainWindow) {
     update_git_branch_visibility(app);
 }
 
-pub fn switch_config_edit_mode(app: &mut MainWindow, edit_type: SettingsEditMode) {
-    app.edit_data.window_edit_data = Some(WindowEditData::from_config(
-        &app.app_config,
-        Some(edit_type),
-        edit_type,
-    ));
-}
-
 pub fn apply_theme_color_from_string(
     app: &mut MainWindow,
     color: String,
@@ -1396,7 +1395,8 @@ pub fn apply_theme_color_from_string(
     if let Some(edit_data) = &mut app.edit_data.window_edit_data {
         let color_string = set_text_fn(edit_data, color);
         if let Some(custom_theme) =
-            &mut get_rewritable_config_mut_non_opt(&mut app.app_config, edit_data).custom_theme
+            &mut get_rewritable_config_mut_non_opt(&mut app.app_config, edit_data.scripts_edit_mode)
+                .custom_theme
         {
             if let Some(new_color) = color_utils::hex_to_rgb(&color_string) {
                 set_theme_fn(custom_theme, new_color);

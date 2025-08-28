@@ -97,7 +97,7 @@ pub fn process_key_press(
 }
 
 fn clear_app_action_keybind(app: &mut main_window::MainWindow, app_action: &config::AppAction) {
-    let rewritable_config = main_window_utils::get_rewritable_config_mut(
+    let rewritable_config = main_window_utils::get_rewritable_script_config_mut(
         &mut app.app_config,
         &app.edit_data.window_edit_data,
     );
@@ -114,7 +114,7 @@ fn set_app_action_keybind(
     app_action: &config::AppAction,
     keybind: config::CustomKeybind,
 ) {
-    let rewritable_config = main_window_utils::get_rewritable_config_mut(
+    let rewritable_config = main_window_utils::get_rewritable_script_config_mut(
         &mut app.app_config,
         &app.edit_data.window_edit_data,
     );
@@ -134,7 +134,7 @@ fn set_app_action_keybind(
 }
 
 fn clear_script_keybind(app: &mut main_window::MainWindow, guid: &config::Guid) {
-    let rewritable_config = main_window_utils::get_rewritable_config_mut(
+    let rewritable_config = main_window_utils::get_rewritable_script_config_mut(
         &mut app.app_config,
         &app.edit_data.window_edit_data,
     );
@@ -151,7 +151,7 @@ fn set_script_keybind(
     guid: &config::Guid,
     keybind: config::CustomKeybind,
 ) {
-    let rewritable_config = main_window_utils::get_rewritable_config_mut(
+    let rewritable_config = main_window_utils::get_rewritable_script_config_mut(
         &mut app.app_config,
         &app.edit_data.window_edit_data,
     );
@@ -256,7 +256,7 @@ pub fn prune_unused_keybinds(app: &mut main_window::MainWindow) {
     });
 
     // remove those that are not used
-    let rewritable_config = main_window_utils::get_rewritable_config_mut(
+    let rewritable_config = main_window_utils::get_rewritable_script_config_mut(
         &mut app.app_config,
         &app.edit_data.window_edit_data,
     );
