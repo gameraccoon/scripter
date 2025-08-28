@@ -85,10 +85,10 @@ pub fn get_theme(config: &config::AppConfig, window_edit_data: &Option<WindowEdi
 }
 
 pub fn get_rewritable_config<'a>(
-    config: &'a config::AppConfig,
-    edit_type: &SettingsEditMode,
-) -> &'a config::RewritableConfig {
-    match edit_type {
+    config: &config::AppConfig,
+    edit_mode: SettingsEditMode,
+) -> &config::RewritableConfig {
+    match edit_mode {
         SettingsEditMode::Shared => &config.rewritable,
         SettingsEditMode::Local => {
             if let Some(local_config) = &config.local_config_body {
@@ -105,7 +105,7 @@ pub fn get_rewritable_config_opt<'a>(
     edit_data: &Option<WindowEditData>,
 ) -> &'a config::RewritableConfig {
     match &edit_data {
-        Some(edit_data) => get_rewritable_config(config, &edit_data.edit_mode),
+        Some(edit_data) => get_rewritable_config(config, edit_data.edit_mode),
         None => {
             if let Some(local_config) = &config.local_config_body {
                 &local_config.rewritable

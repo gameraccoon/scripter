@@ -155,7 +155,7 @@ impl WindowEditData {
         settings_edit_mode: Option<SettingsEditMode>,
         edit_type: SettingsEditMode,
     ) -> Self {
-        let theme = if let Some(theme) = &get_rewritable_config(&config, &edit_type).custom_theme {
+        let theme = if let Some(theme) = &get_rewritable_config(&config, edit_type).custom_theme {
             theme.clone()
         } else {
             config::CustomTheme::default()
@@ -3342,9 +3342,10 @@ fn populate_original_script_config_edit_content<'a>(
 fn produce_settings_edit_content<'a>(
     config: &config::AppConfig,
     window_edit: &WindowEditData,
+    edit_mode: SettingsEditMode,
     visual_caches: &VisualCaches,
 ) -> Column<'a, WindowMessage> {
-    let rewritable_config = get_rewritable_config(&config, &window_edit.edit_mode);
+    let rewritable_config = get_rewritable_config(&config, edit_mode);
 
     let mut list_elements: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
 
@@ -3633,7 +3634,8 @@ fn view_content<'a>(
         }
         PaneVariant::Parameters => match &edit_data.window_edit_data {
             Some(window_edit_data) if window_edit_data.settings_edit_mode.is_some() => {
-                produce_settings_edit_content(config, window_edit_data, visual_caches)
+                let edit_mode = window_edit_data.settings_edit_mode.unwrap();
+                produce_settings_edit_content(config, window_edit_data, edit_mode, visual_caches)
             }
             _ => produce_script_edit_content(
                 execution_lists,
