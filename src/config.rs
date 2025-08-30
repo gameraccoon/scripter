@@ -601,10 +601,10 @@ pub fn populate_shared_scripts_from_config(app_config: &mut AppConfig) {
     }
 }
 
-pub fn get_original_script_definition_by_uid(
-    app_config: &AppConfig,
-    script_uid: Guid,
-) -> Option<(ScriptDefinition, usize)> {
+pub fn get_original_script_definition_by_uid<'a>(
+    app_config: &'a AppConfig,
+    script_uid: &Guid,
+) -> Option<(&'a ScriptDefinition, usize)> {
     if let Some(local_config) = &app_config.local_config_body {
         if let Some(result) =
             find_original_script_definition_by_uid(&local_config.script_definitions, &script_uid)
@@ -616,13 +616,13 @@ pub fn get_original_script_definition_by_uid(
     find_original_script_definition_by_uid(&app_config.script_definitions, &script_uid)
 }
 
-fn find_original_script_definition_by_uid(
-    script_definitions: &Vec<ScriptDefinition>,
+fn find_original_script_definition_by_uid<'a>(
+    script_definitions: &'a Vec<ScriptDefinition>,
     script_uid: &Guid,
-) -> Option<(ScriptDefinition, usize)> {
+) -> Option<(&'a ScriptDefinition, usize)> {
     for (idx, script_definition) in script_definitions.iter().enumerate() {
         if original_script_definition_search_predicate(script_definition, &script_uid) {
-            return Some((script_definition.clone(), idx));
+            return Some((&script_definition, idx));
         }
     }
     None
@@ -1037,20 +1037,20 @@ pub fn get_default_executor() -> Vec<String> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum SettingsEditMode {
+pub(crate) enum ConfigEditMode {
     Local,
     Shared,
 }
 
-pub fn get_main_edit_mode(app_config: &AppConfig) -> SettingsEditMode {
+pub fn get_main_edit_mode(app_config: &AppConfig) -> ConfigEditMode {
     if app_config.local_config_body.is_some() {
-        SettingsEditMode::Local
+        ConfigEditMode::Local
     } else {
-        SettingsEditMode::Shared
+        ConfigEditMode::Shared
     }
 }
 
-pub fn get_main_config(config: &AppConfig) -> &RewritableConfig {
+pub fn get_main_rewritable_config(config: &AppConfig) -> &RewritableConfig {
     if let Some(local_config) = &config.local_config_body {
         &local_config.rewritable
     } else {
@@ -1058,10 +1058,18 @@ pub fn get_main_config(config: &AppConfig) -> &RewritableConfig {
     }
 }
 
-pub fn get_rewritable_config(config: &AppConfig, edit_mode: SettingsEditMode) -> &RewritableConfig {
+pub fn get_main_rewritable_config_mut(config: &mut AppConfig) -> &mut RewritableConfig {
+    if let Some(local_config) = &mut config.local_config_body {
+        &mut local_config.rewritable
+    } else {
+        &mut config.rewritable
+    }
+}
+
+pub fn get_rewritable_config(config: &AppConfig, edit_mode: ConfigEditMode) -> &RewritableConfig {
     match edit_mode {
-        SettingsEditMode::Shared => &config.rewritable,
-        SettingsEditMode::Local => {
+        ConfigEditMode::Shared => &config.rewritable,
+        ConfigEditMode::Local => {
             if let Some(local_config) = &config.local_config_body {
                 &local_config.rewritable
             } else {
@@ -1073,15 +1081,47 @@ pub fn get_rewritable_config(config: &AppConfig, edit_mode: SettingsEditMode) ->
 
 pub fn get_rewritable_config_mut(
     config: &mut AppConfig,
-    edit_mode: SettingsEditMode,
+    edit_mode: ConfigEditMode,
 ) -> &mut RewritableConfig {
     match edit_mode {
-        SettingsEditMode::Shared => &mut config.rewritable,
-        SettingsEditMode::Local => {
+        ConfigEditMode::Shared => &mut config.rewritable,
+        ConfigEditMode::Local => {
             if let Some(local_config) = &mut config.local_config_body {
                 &mut local_config.rewritable
             } else {
                 &mut config.rewritable
+            }
+        }
+    }
+}
+
+pub fn get_script_definition_list(
+    config: &AppConfig,
+    edit_mode: ConfigEditMode,
+) -> &Vec<ScriptDefinition> {
+    match edit_mode {
+        ConfigEditMode::Shared => &config.script_definitions,
+        ConfigEditMode::Local => {
+            if let Some(local_config) = &config.local_config_body {
+                &local_config.script_definitions
+            } else {
+                &config.script_definitions
+            }
+        }
+    }
+}
+
+pub fn get_script_definition_list_mut(
+    config: &mut AppConfig,
+    edit_mode: ConfigEditMode,
+) -> &mut Vec<ScriptDefinition> {
+    match edit_mode {
+        ConfigEditMode::Shared => &mut config.script_definitions,
+        ConfigEditMode::Local => {
+            if let Some(local_config) = &mut config.local_config_body {
+                &mut local_config.script_definitions
+            } else {
+                &mut config.script_definitions
             }
         }
     }

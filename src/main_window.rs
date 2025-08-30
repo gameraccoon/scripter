@@ -122,8 +122,7 @@ pub(crate) struct EditScriptId {
 
 #[derive(Debug, Clone)]
 pub(crate) struct WindowEditData {
-    pub(crate) settings_edit_mode: Option<config::SettingsEditMode>,
-    pub(crate) scripts_edit_mode: config::SettingsEditMode,
+    pub(crate) settings_edit_mode: Option<config::ConfigEditMode>,
 
     pub(crate) keybind_editing: keybind_editing::KeybindEditData,
 
@@ -146,8 +145,7 @@ pub(crate) struct QuickLaunchButton {
 impl WindowEditData {
     pub(crate) fn from_config(
         config: &config::AppConfig,
-        settings_edit_mode: Option<config::SettingsEditMode>,
-        scripts_edit_mode: config::SettingsEditMode,
+        settings_edit_mode: Option<config::ConfigEditMode>,
     ) -> Self {
         let theme = if let Some(settings_edit_mode) = settings_edit_mode {
             if let Some(theme) =
@@ -163,7 +161,6 @@ impl WindowEditData {
 
         Self {
             settings_edit_mode,
-            scripts_edit_mode,
             keybind_editing: keybind_editing::KeybindEditData::new(),
             theme_color_background: color_utils::rgb_to_hex(&theme.background),
             theme_color_text: color_utils::rgb_to_hex(&theme.text),
@@ -211,7 +208,7 @@ pub(crate) enum WindowMessage {
     OpenScriptEditing(usize),
     CloseScriptEditing,
     DuplicateConfigScript(usize),
-    RemoveConfigScript(usize),
+    RemoveConfigScript(ConfigScriptId),
     RemoveExecutionListScript(usize),
     AddScriptToConfig,
     MoveExecutionScriptUp(usize),
@@ -253,25 +250,23 @@ pub(crate) enum WindowMessage {
     MoveConfigScriptUp(usize),
     MoveConfigScriptDown(usize),
     ToggleConfigEditing,
-    SettingsToggleWindowStatusReactions(config::SettingsEditMode, bool),
-    SettingsToggleKeepWindowSize(config::SettingsEditMode, bool),
-    SettingsToggleScriptFiltering(config::SettingsEditMode, bool),
-    SettingsToggleShowWorkingDirectory(config::SettingsEditMode, bool),
-    SettingsToggleTitleEditing(config::SettingsEditMode, bool),
-    SettingsUpdateBehaviorChanged(config::SettingsEditMode, config::ConfigUpdateBehavior),
-    SettingsToggleShowCurrentGitBranch(config::SettingsEditMode, bool),
-    SettingsToggleUseCustomTheme(config::SettingsEditMode, bool),
-    SettingsEditThemeBackground(config::SettingsEditMode, String),
-    SettingsEditThemeText(config::SettingsEditMode, String),
-    SettingsEditThemePrimary(config::SettingsEditMode, String),
-    SettingsEditThemeSuccess(config::SettingsEditMode, String),
-    SettingsEditThemeDanger(config::SettingsEditMode, String),
-    SettingsEditThemeCaptionText(config::SettingsEditMode, String),
-    SettingsEditThemeErrorText(config::SettingsEditMode, String),
+    SettingsToggleWindowStatusReactions(config::ConfigEditMode, bool),
+    SettingsToggleKeepWindowSize(config::ConfigEditMode, bool),
+    SettingsToggleScriptFiltering(config::ConfigEditMode, bool),
+    SettingsToggleShowWorkingDirectory(config::ConfigEditMode, bool),
+    SettingsToggleTitleEditing(config::ConfigEditMode, bool),
+    SettingsUpdateBehaviorChanged(config::ConfigEditMode, config::ConfigUpdateBehavior),
+    SettingsToggleShowCurrentGitBranch(config::ConfigEditMode, bool),
+    SettingsToggleUseCustomTheme(config::ConfigEditMode, bool),
+    SettingsEditThemeBackground(config::ConfigEditMode, String),
+    SettingsEditThemeText(config::ConfigEditMode, String),
+    SettingsEditThemePrimary(config::ConfigEditMode, String),
+    SettingsEditThemeSuccess(config::ConfigEditMode, String),
+    SettingsEditThemeDanger(config::ConfigEditMode, String),
+    SettingsEditThemeCaptionText(config::ConfigEditMode, String),
+    SettingsEditThemeErrorText(config::ConfigEditMode, String),
     SettingsSharedEditLocalConfigPath(String),
     SettingsSharedEditLocalConfigPathRelativeToScripter(config::PathType),
-    SwitchToSharedScriptConfig,
-    SwitchToLocalScriptConfig,
     SwitchToSharedSettingsConfig,
     SwitchToLocalSettingsConfig,
     ToggleScriptHidden(bool),
@@ -295,7 +290,6 @@ pub(crate) enum WindowMessage {
     OpenWithDefaultApplication(PathBuf),
     OpenUrl(String),
     OpenLogFileOrFolder(parallel_execution_manager::ExecutionId, usize),
-    SwitchToOriginalSharedScript(usize),
     ProcessKeyPress(keyboard::Key, keyboard::Modifiers),
     StartRecordingKeybind(keybind_editing::KeybindAssociatedData),
     StopRecordingKeybind,
@@ -345,7 +339,7 @@ impl Application for MainWindow {
             panes,
             pane_by_pane_type,
             execution_manager: parallel_execution_manager::ParallelExecutionManager::new(),
-            theme: get_theme(&app_config, &None),
+            theme: get_theme(&app_config, config::get_main_edit_mode(&app_config)),
             app_config,
             visual_caches: VisualCaches {
                 autorerun_count: String::new(),
@@ -389,13 +383,8 @@ impl Application for MainWindow {
     }
 
     fn title(&self) -> String {
-        if let Some(window_edit_data) = &self.edit_data.window_edit_data {
-            match window_edit_data.scripts_edit_mode {
-                config::SettingsEditMode::Shared if self.app_config.local_config_body.is_some() => {
-                    "scripter [Editing shared config]".to_string()
-                }
-                _ => "scripter [Editing]".to_string(),
-            }
+        if self.edit_data.window_edit_data.is_some() {
+            "scripter [Editing]".to_string()
         } else if self.execution_manager.has_any_execution_started() {
             if self.execution_manager.has_all_executions_finished() {
                 if self.execution_manager.has_any_execution_failed() {
@@ -583,11 +572,7 @@ impl Application for MainWindow {
 
                     update_button_key_hint_caches(self);
 
-                    if get_rewritable_script_config_opt(
-                        &self.app_config,
-                        &self.edit_data.window_edit_data,
-                    )
-                    .window_status_reactions
+                    if config::get_main_rewritable_config(&self.app_config).window_status_reactions
                     {
                         return request_user_attention(
                             window::Id::MAIN,
@@ -608,10 +593,7 @@ impl Application for MainWindow {
             }
             WindowMessage::DuplicateConfigScript(script_idx) => {
                 match &self.edit_data.window_edit_data {
-                    Some(WindowEditData {
-                        scripts_edit_mode: config::SettingsEditMode::Local,
-                        ..
-                    }) => {
+                    Some(_) => {
                         if let Some(config) = self.app_config.local_config_body.as_mut() {
                             config.script_definitions.insert(
                                 script_idx + 1,
@@ -634,7 +616,9 @@ impl Application for MainWindow {
                 }
                 update_config_cache(self);
             }
-            WindowMessage::RemoveConfigScript(script_idx) => remove_config_script(self, script_idx),
+            WindowMessage::RemoveConfigScript(config_script_id) => {
+                remove_config_script(self, config_script_id)
+            }
             WindowMessage::RemoveExecutionListScript(script_idx) => {
                 remove_execution_list_script(self, script_idx)
             }
@@ -659,7 +643,11 @@ impl Application for MainWindow {
                     autoclean_on_success: false,
                     ignore_output: false,
                 };
-                add_script_to_config(self, config::ScriptDefinition::Original(script));
+                add_script_to_config(
+                    self,
+                    config::get_main_edit_mode(&self.app_config),
+                    config::ScriptDefinition::Original(script),
+                );
 
                 update_config_cache(self);
             }
@@ -676,8 +664,9 @@ impl Application for MainWindow {
                 select_execution_script(self, script_idx + 1);
             }
             WindowMessage::EditScriptNameForConfig(config_script_id, new_name) => {
+                let edit_mode = config::get_main_edit_mode(&self.app_config);
                 if let Some(preset) =
-                    get_editing_preset(&mut self.app_config, &self.edit_data, &self.window_state)
+                    get_editing_preset(&mut self.app_config, edit_mode, &self.window_state)
                 {
                     preset.name = new_name;
                     self.edit_data.is_dirty = true;
@@ -716,9 +705,11 @@ impl Application for MainWindow {
                 });
             }
             WindowMessage::EditScriptIconPath(config_script_id, new_icon_path) => {
-                if let Some(preset) =
-                    get_editing_preset(&mut self.app_config, &self.edit_data, &self.window_state)
-                {
+                if let Some(preset) = get_editing_preset(
+                    &mut self.app_config,
+                    config_script_id.edit_mode,
+                    &self.window_state,
+                ) {
                     preset.icon.path = new_icon_path;
                     self.edit_data.is_dirty = true;
                     update_config_cache(self);
@@ -729,9 +720,11 @@ impl Application for MainWindow {
                 }
             }
             WindowMessage::EditScriptIconPathType(config_script_id, new_path_type) => {
-                if let Some(preset) =
-                    get_editing_preset(&mut self.app_config, &self.edit_data, &self.window_state)
-                {
+                if let Some(preset) = get_editing_preset(
+                    &mut self.app_config,
+                    config_script_id.edit_mode,
+                    &self.window_state,
+                ) {
                     preset.icon.path_type = new_path_type;
                     self.edit_data.is_dirty = true;
                     update_config_cache(self);
@@ -923,17 +916,8 @@ impl Application for MainWindow {
             }
             WindowMessage::RevertConfigAndExitEditing => {
                 self.app_config = config::read_config();
-                self.edit_data.window_edit_data = Some(WindowEditData::from_config(
-                    &self.app_config,
-                    None,
-                    match self.edit_data.window_edit_data {
-                        Some(WindowEditData {
-                            scripts_edit_mode: config::SettingsEditMode::Local,
-                            ..
-                        }) => config::SettingsEditMode::Local,
-                        _ => config::SettingsEditMode::Shared,
-                    },
-                ));
+                self.edit_data.window_edit_data =
+                    Some(WindowEditData::from_config(&self.app_config, None));
                 config::populate_shared_scripts_from_config(&mut self.app_config);
                 apply_theme(self);
                 self.edit_data.is_dirty = false;
@@ -945,7 +929,13 @@ impl Application for MainWindow {
                 exit_window_edit_mode(self);
             }
             WindowMessage::OpenScriptConfigEditing(script_idx) => {
-                select_edited_script(self, script_idx);
+                select_edited_script(
+                    self,
+                    ConfigScriptId {
+                        idx: script_idx,
+                        edit_mode: config::get_main_edit_mode(&self.app_config),
+                    },
+                );
             }
             WindowMessage::MoveConfigScriptUp(index) => {
                 move_config_script_up(self, index);
@@ -1136,17 +1126,11 @@ impl Application for MainWindow {
                 self.app_config.local_config_path.path_type = new_path_type;
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::SwitchToSharedScriptConfig => {
-                switch_to_editing_script_config(self, config::SettingsEditMode::Shared);
-            }
-            WindowMessage::SwitchToLocalScriptConfig => {
-                switch_to_editing_script_config(self, config::SettingsEditMode::Local);
-            }
             WindowMessage::SwitchToSharedSettingsConfig => {
-                switch_to_editing_settings_config(self, config::SettingsEditMode::Shared);
+                switch_to_editing_settings_config(self, config::ConfigEditMode::Shared);
             }
             WindowMessage::SwitchToLocalSettingsConfig => {
-                switch_to_editing_settings_config(self, config::SettingsEditMode::Local);
+                switch_to_editing_settings_config(self, config::ConfigEditMode::Local);
             }
             WindowMessage::ToggleScriptHidden(is_hidden) => {
                 let Some(script_id) = &mut self.window_state.cursor_script else {
@@ -1181,12 +1165,11 @@ impl Application for MainWindow {
 
                 let new_script = match script {
                     config::ScriptDefinition::ReferenceToShared(reference) => {
-                        if let Some((mut script, _idx)) =
-                            config::get_original_script_definition_by_uid(
-                                &self.app_config,
-                                reference.uid.clone(),
-                            )
-                        {
+                        if let Some((script, _idx)) = config::get_original_script_definition_by_uid(
+                            &self.app_config,
+                            &reference.uid,
+                        ) {
+                            let mut script = script.clone();
                             match &mut script {
                                 config::ScriptDefinition::Original(original_script) => {
                                     original_script.uid = config::Guid::new();
@@ -1214,7 +1197,13 @@ impl Application for MainWindow {
 
                 if let Some(config) = &mut self.app_config.local_config_body {
                     config.script_definitions.insert(script_idx + 1, new_script);
-                    select_edited_script(self, script_idx + 1);
+                    select_edited_script(
+                        self,
+                        ConfigScriptId {
+                            idx: script_idx + 1,
+                            edit_mode: config::ConfigEditMode::Local,
+                        },
+                    );
                     self.edit_data.is_dirty = true;
                 }
                 update_config_cache(self);
@@ -1259,8 +1248,13 @@ impl Application for MainWindow {
                             .script_definitions
                             .insert(insert_position, replacement_script);
                         self.edit_data.is_dirty = true;
-                        switch_to_editing_script_config(self, config::SettingsEditMode::Shared);
-                        select_edited_script(self, insert_position);
+                        select_edited_script(
+                            self,
+                            ConfigScriptId {
+                                idx: insert_position,
+                                edit_mode: config::ConfigEditMode::Local,
+                            },
+                        );
                     }
                 }
             }
@@ -1277,7 +1271,7 @@ impl Application for MainWindow {
                         config::ScriptDefinition::Original(script) => {
                             let original_script = config::get_original_script_definition_by_uid(
                                 &self.app_config,
-                                script.uid.clone(),
+                                &script.uid,
                             );
 
                             let original_script =
@@ -1286,7 +1280,7 @@ impl Application for MainWindow {
                                         config::ScriptDefinition::ReferenceToShared(reference) => {
                                             config::get_original_script_definition_by_uid(
                                                 &self.app_config,
-                                                reference.uid,
+                                                &reference.uid,
                                             )
                                         }
                                         _ => Some(original_script_tuple),
@@ -1360,7 +1354,11 @@ impl Application for MainWindow {
                     }
                 }
 
-                add_script_to_config(self, config::ScriptDefinition::Preset(preset));
+                add_script_to_config(
+                    self,
+                    config::get_main_edit_mode(&self.app_config),
+                    config::ScriptDefinition::Preset(preset),
+                );
             }
             WindowMessage::ScriptFilterChanged(new_filter_value) => {
                 self.edit_data.script_filter = new_filter_value;
@@ -1602,48 +1600,6 @@ impl Application for MainWindow {
                     }
                 }
             }
-            WindowMessage::SwitchToOriginalSharedScript(local_script_idx) => {
-                let original_script_uid = {
-                    let script =
-                        get_script_definition(&self.app_config, &self.edit_data, local_script_idx);
-                    match script {
-                        config::ScriptDefinition::ReferenceToShared(reference) => {
-                            reference.uid.clone()
-                        }
-                        _ => return Command::none(),
-                    }
-                };
-
-                let mut original_script_idx = self.app_config.script_definitions.len();
-                for (idx, script_definition) in
-                    self.app_config.script_definitions.iter().enumerate()
-                {
-                    match script_definition {
-                        config::ScriptDefinition::Original(script) => {
-                            if script.uid == original_script_uid {
-                                original_script_idx = idx;
-                                break;
-                            }
-                        }
-                        config::ScriptDefinition::Preset(preset) => {
-                            if preset.uid == original_script_uid {
-                                original_script_idx = idx;
-                                break;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-
-                if original_script_idx == self.app_config.script_definitions.len() {
-                    return Command::none();
-                }
-
-                switch_to_editing_script_config(self, config::SettingsEditMode::Shared);
-                select_edited_script(self, original_script_idx);
-
-                update_config_cache(self);
-            }
             WindowMessage::ProcessKeyPress(iced_key, iced_modifiers) => {
                 self.window_state.is_command_key_down = iced_modifiers.command();
                 self.window_state.is_alt_key_down = iced_modifiers.alt();
@@ -1711,28 +1667,22 @@ impl Application for MainWindow {
             }
             WindowMessage::AddToQuickLaunchPanel(script_uid) => {
                 let original_script =
-                    config::get_original_script_definition_by_uid(&self.app_config, script_uid);
+                    config::get_original_script_definition_by_uid(&self.app_config, &script_uid);
                 if let Some((original_script, _idx)) = original_script {
                     let original_script_id = match original_script {
                         config::ScriptDefinition::Original(script) => script.uid.clone(),
                         config::ScriptDefinition::Preset(preset) => preset.uid.clone(),
                         _ => return Command::none(),
                     };
-                    get_rewritable_script_config_mut(
-                        &mut self.app_config,
-                        &self.edit_data.window_edit_data,
-                    )
-                    .quick_launch_scripts
-                    .push(original_script_id);
+                    config::get_main_rewritable_config_mut(&mut self.app_config)
+                        .quick_launch_scripts
+                        .push(original_script_id);
                     self.edit_data.is_dirty = true;
                     update_config_cache(self);
                 }
             }
             WindowMessage::RemoveFromQuickLaunchPanel(script_uid) => {
-                let config = get_rewritable_script_config_mut(
-                    &mut self.app_config,
-                    &self.edit_data.window_edit_data,
-                );
+                let config = config::get_main_rewritable_config_mut(&mut self.app_config);
                 let index = config
                     .quick_launch_scripts
                     .iter()
@@ -1908,12 +1858,6 @@ fn produce_script_list_content<'a>(
     }
 
     let is_editing = edit_data.window_edit_data.is_some();
-    let is_local_config = config.local_config_body.is_some()
-        && edit_data
-            .window_edit_data
-            .clone()
-            .map(|x| x.scripts_edit_mode)
-            == Some(config::SettingsEditMode::Local);
 
     let data: Element<_> = column(
         displayed_configs_list_cache
@@ -1922,7 +1866,7 @@ fn produce_script_list_content<'a>(
             .map(|(i, script)| {
                 let mut name_text = script.name.clone();
 
-                if is_editing && is_local_config && is_local_config_script(i, &config) {
+                if is_editing && is_local_config_script(i, &config) {
                     name_text += " [local]";
                 }
                 if is_editing && script.is_hidden {
@@ -2006,18 +1950,12 @@ fn produce_script_list_content<'a>(
     .width(Length::Fill)
     .into();
 
-    let edit_controls = if let Some(window_edit_data) = &edit_data.window_edit_data {
+    let edit_controls = if edit_data.window_edit_data.is_some() {
         column![
-            if window_edit_data.scripts_edit_mode == config::SettingsEditMode::Local {
-                text("Editing local config")
-            } else if config.local_config_body.is_some() {
-                text("Editing shared config")
-            } else {
-                text("Editing config")
-            }
-            .horizontal_alignment(alignment::Horizontal::Center)
-            .width(Length::Fill)
-            .size(16),
+            text("Editing config")
+                .horizontal_alignment(alignment::Horizontal::Center)
+                .width(Length::Fill)
+                .size(16),
             Space::with_height(4.0),
             if edit_data.is_dirty {
                 column![row![
@@ -2032,22 +1970,7 @@ fn produce_script_list_content<'a>(
                     button(text("Preview").size(16)).on_press(WindowMessage::ExitWindowEditMode),
                 ]]
             } else {
-                column![button(text("Back").size(16)).on_press(WindowMessage::ExitWindowEditMode),]
-            },
-            Space::with_height(4.0),
-            if config.local_config_body.is_some() {
-                match window_edit_data.scripts_edit_mode {
-                    config::SettingsEditMode::Local => {
-                        column![button(text("Switch to shared config").size(16))
-                            .on_press(WindowMessage::SwitchToSharedScriptConfig)]
-                    }
-                    config::SettingsEditMode::Shared => {
-                        column![button(text("Switch to local config").size(16))
-                            .on_press(WindowMessage::SwitchToLocalScriptConfig)]
-                    }
-                }
-            } else {
-                column![]
+                column![button(text("Back").size(16)).on_press(WindowMessage::ExitWindowEditMode)]
             },
             Space::with_height(4.0),
             row![
@@ -2901,7 +2824,11 @@ fn produce_script_edit_content<'a>(
             edit_data,
             app_config,
             edited_script.idx,
-            get_script_definition(&app_config, edit_data, edited_script.idx),
+            get_script_definition(
+                &app_config,
+                config::get_main_edit_mode(app_config),
+                edited_script.idx,
+            ),
         )
     } else {
         match execution_lists.get_edited_scripts().get(edited_script.idx) {
@@ -2931,7 +2858,7 @@ fn produce_script_config_edit_content<'a>(
 
     let config_script_id = ConfigScriptId {
         idx: edited_script_idx,
-        edit_mode: window_edit_data.scripts_edit_mode,
+        edit_mode: config::get_main_edit_mode(&app_config),
     };
 
     match script {
@@ -2943,24 +2870,22 @@ fn produce_script_config_edit_content<'a>(
                 visual_caches,
             );
 
-            if window_edit_data.scripts_edit_mode == config::SettingsEditMode::Local {
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-                parameters.push(
-                    checkbox("Is script hidden", script.is_hidden)
-                        .on_toggle(move |val| WindowMessage::ToggleIsHidden(config_script_id, val))
-                        .into(),
-                );
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            parameters.push(
+                checkbox("Is script hidden", script.is_hidden)
+                    .on_toggle(move |val| WindowMessage::ToggleIsHidden(config_script_id, val))
+                    .into(),
+            );
 
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-                keybind_editing::populate_keybind_editing_content(
-                    &mut parameters,
-                    &window_edit_data,
-                    visual_caches,
-                    "Keybind to schedule:",
-                    keybind_editing::KeybindAssociatedData::Script(script.uid.clone()),
-                );
-                populate_quick_launch_edit_button(&mut parameters, &visual_caches, &script.uid);
-            }
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            keybind_editing::populate_keybind_editing_content(
+                &mut parameters,
+                &window_edit_data,
+                visual_caches,
+                "Keybind to schedule:",
+                keybind_editing::KeybindAssociatedData::Script(script.uid.clone()),
+            );
+            populate_quick_launch_edit_button(&mut parameters, &visual_caches, &script.uid);
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
@@ -2971,7 +2896,7 @@ fn produce_script_config_edit_content<'a>(
                 .into(),
             );
 
-            if config_script_id.edit_mode == config::SettingsEditMode::Local
+            if config_script_id.edit_mode == config::ConfigEditMode::Local
                 && is_local_config_script(edited_script_idx, &app_config)
             {
                 parameters.push(
@@ -2986,7 +2911,7 @@ fn produce_script_config_edit_content<'a>(
             parameters.push(
                 edit_button(
                     "Remove script",
-                    WindowMessage::RemoveConfigScript(edited_script_idx),
+                    WindowMessage::RemoveConfigScript(config_script_id),
                 )
                 .style(theme::Button::Destructive)
                 .into(),
@@ -3001,6 +2926,25 @@ fn produce_script_config_edit_content<'a>(
             );
 
             if let Some(window_edit) = &edit_data.window_edit_data {
+                if let Some((original_script, original_idx)) =
+                    config::get_original_script_definition_by_uid(&app_config, &reference.uid)
+                {
+                    match original_script {
+                        config::ScriptDefinition::Original(original_script) => {
+                            populate_original_script_config_edit_content(
+                                &mut parameters,
+                                ConfigScriptId {
+                                    idx: original_idx,
+                                    edit_mode: config::ConfigEditMode::Shared,
+                                },
+                                original_script,
+                                visual_caches,
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+
                 parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
                 keybind_editing::populate_keybind_editing_content(
@@ -3019,14 +2963,6 @@ fn produce_script_config_edit_content<'a>(
                 edit_button(
                     "Edit as a copy",
                     WindowMessage::CreateCopyOfSharedScript(edited_script_idx),
-                )
-                .into(),
-            );
-
-            parameters.push(
-                edit_button(
-                    "Edit original",
-                    WindowMessage::SwitchToOriginalSharedScript(edited_script_idx),
                 )
                 .into(),
             );
@@ -3053,23 +2989,21 @@ fn produce_script_config_edit_content<'a>(
             );
 
             if let Some(window_edit_data) = &edit_data.window_edit_data {
-                if window_edit_data.scripts_edit_mode == config::SettingsEditMode::Local {
-                    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-                    keybind_editing::populate_keybind_editing_content(
-                        &mut parameters,
-                        &window_edit_data,
-                        visual_caches,
-                        "Keybind to schedule:",
-                        keybind_editing::KeybindAssociatedData::Script(preset.uid.clone()),
-                    );
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+                keybind_editing::populate_keybind_editing_content(
+                    &mut parameters,
+                    &window_edit_data,
+                    visual_caches,
+                    "Keybind to schedule:",
+                    keybind_editing::KeybindAssociatedData::Script(preset.uid.clone()),
+                );
 
-                    populate_quick_launch_edit_button(&mut parameters, &visual_caches, &preset.uid);
-                }
+                populate_quick_launch_edit_button(&mut parameters, &visual_caches, &preset.uid);
             }
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
-            if config_script_id.edit_mode == config::SettingsEditMode::Local
+            if config_script_id.edit_mode == config::ConfigEditMode::Local
                 && is_local_config_script(edited_script_idx, &app_config)
             {
                 parameters.push(
@@ -3084,7 +3018,7 @@ fn produce_script_config_edit_content<'a>(
             parameters.push(
                 edit_button(
                     "Remove preset",
-                    WindowMessage::RemoveConfigScript(edited_script_idx),
+                    WindowMessage::RemoveConfigScript(config_script_id),
                 )
                 .style(theme::Button::Destructive)
                 .into(),
@@ -3344,7 +3278,7 @@ fn produce_settings_edit_content<'a>(
     config: &config::AppConfig,
     window_edit: &WindowEditData,
     visual_caches: &VisualCaches,
-    edit_mode: config::SettingsEditMode,
+    edit_mode: config::ConfigEditMode,
 ) -> Column<'a, WindowMessage> {
     let mut header_elements: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
     let mut list_elements: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
@@ -3353,7 +3287,7 @@ fn produce_settings_edit_content<'a>(
 
     if config.local_config_body.is_some() {
         match edit_mode {
-            config::SettingsEditMode::Local => {
+            config::ConfigEditMode::Local => {
                 header_elements.push(
                     button(text("Switch to shared settings").size(16))
                         .on_press(WindowMessage::SwitchToSharedSettingsConfig)
@@ -3362,7 +3296,7 @@ fn produce_settings_edit_content<'a>(
                 header_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                 list_elements.push(text("Editing local settings").into());
             }
-            config::SettingsEditMode::Shared => {
+            config::ConfigEditMode::Shared => {
                 header_elements.push(
                     button(text("Switch to local settings").size(16))
                         .on_press(WindowMessage::SwitchToLocalSettingsConfig)
@@ -3613,7 +3547,7 @@ fn produce_settings_edit_content<'a>(
         keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::MoveScriptUp),
     );
 
-    if edit_mode == config::SettingsEditMode::Shared {
+    if edit_mode == config::ConfigEditMode::Shared {
         list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
         populate_path_editing_content(
             "Local config path:",
@@ -3651,7 +3585,7 @@ fn view_content<'a>(
         PaneVariant::ScriptList => produce_script_list_content(
             execution_lists,
             config,
-            config::get_main_config(&config),
+            config::get_main_rewritable_config(&config),
             displayed_configs_list_cache,
             edit_data,
             &visual_caches,
@@ -3665,13 +3599,13 @@ fn view_content<'a>(
             config,
             &visual_caches,
             edit_data,
-            config::get_main_config(&config),
+            config::get_main_rewritable_config(&config),
             window_state,
         ),
         PaneVariant::LogOutput => produce_log_output_content(
             execution_lists,
             theme,
-            config::get_main_config(&config),
+            config::get_main_rewritable_config(&config),
             &visual_caches,
         ),
         PaneVariant::Parameters => match &edit_data.window_edit_data {
