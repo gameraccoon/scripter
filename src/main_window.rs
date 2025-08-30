@@ -2918,6 +2918,33 @@ fn produce_script_config_edit_content<'a>(
             );
         }
         config::ScriptDefinition::ReferenceToShared(reference) => {
+            let Some(window_edit) = &edit_data.window_edit_data else {
+                return Column::new();
+            };
+
+            let Some((original_script, original_idx)) =
+                config::get_original_script_definition_by_uid(&app_config, &reference.uid)
+            else {
+                return Column::new();
+            };
+
+            let original_script_id = ConfigScriptId {
+                idx: original_idx,
+                edit_mode: config::ConfigEditMode::Shared,
+            };
+
+            match original_script {
+                config::ScriptDefinition::Original(original_script) => {
+                    populate_original_script_config_edit_content(
+                        &mut parameters,
+                        original_script_id,
+                        original_script,
+                        visual_caches,
+                    );
+                }
+                _ => {}
+            }
+
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
                 checkbox("Is script hidden", reference.is_hidden)
@@ -2925,36 +2952,14 @@ fn produce_script_config_edit_content<'a>(
                     .into(),
             );
 
-            if let Some(window_edit) = &edit_data.window_edit_data {
-                if let Some((original_script, original_idx)) =
-                    config::get_original_script_definition_by_uid(&app_config, &reference.uid)
-                {
-                    match original_script {
-                        config::ScriptDefinition::Original(original_script) => {
-                            populate_original_script_config_edit_content(
-                                &mut parameters,
-                                ConfigScriptId {
-                                    idx: original_idx,
-                                    edit_mode: config::ConfigEditMode::Shared,
-                                },
-                                original_script,
-                                visual_caches,
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-
-                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-
-                keybind_editing::populate_keybind_editing_content(
-                    &mut parameters,
-                    &window_edit,
-                    visual_caches,
-                    "Keybind to schedule:",
-                    keybind_editing::KeybindAssociatedData::Script(reference.uid.clone()),
-                );
-            }
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            keybind_editing::populate_keybind_editing_content(
+                &mut parameters,
+                &window_edit,
+                visual_caches,
+                "Keybind to schedule:",
+                keybind_editing::KeybindAssociatedData::Script(reference.uid.clone()),
+            );
 
             populate_quick_launch_edit_button(&mut parameters, &visual_caches, &reference.uid);
 
@@ -2964,6 +2969,16 @@ fn produce_script_config_edit_content<'a>(
                     "Edit as a copy",
                     WindowMessage::CreateCopyOfSharedScript(edited_script_idx),
                 )
+                .into(),
+            );
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            parameters.push(
+                edit_button(
+                    "Remove original script",
+                    WindowMessage::RemoveConfigScript(original_script_id),
+                )
+                .style(theme::Button::Destructive)
                 .into(),
             );
         }
