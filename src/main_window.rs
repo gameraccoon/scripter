@@ -120,16 +120,10 @@ pub(crate) struct EditScriptId {
     pub(crate) script_type: EditScriptType,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum SettingsEditMode {
-    Local,
-    Shared,
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct WindowEditData {
-    pub(crate) settings_edit_mode: Option<SettingsEditMode>,
-    pub(crate) scripts_edit_mode: SettingsEditMode,
+    pub(crate) settings_edit_mode: Option<config::SettingsEditMode>,
+    pub(crate) scripts_edit_mode: config::SettingsEditMode,
 
     pub(crate) keybind_editing: keybind_editing::KeybindEditData,
 
@@ -152,15 +146,20 @@ pub(crate) struct QuickLaunchButton {
 impl WindowEditData {
     pub(crate) fn from_config(
         config: &config::AppConfig,
-        settings_edit_mode: Option<SettingsEditMode>,
-        scripts_edit_mode: SettingsEditMode,
+        settings_edit_mode: Option<config::SettingsEditMode>,
+        scripts_edit_mode: config::SettingsEditMode,
     ) -> Self {
-        let theme =
-            if let Some(theme) = &get_rewritable_config(&config, scripts_edit_mode).custom_theme {
+        let theme = if let Some(settings_edit_mode) = settings_edit_mode {
+            if let Some(theme) =
+                &config::get_rewritable_config(&config, settings_edit_mode).custom_theme
+            {
                 theme.clone()
             } else {
                 config::CustomTheme::default()
-            };
+            }
+        } else {
+            config::CustomTheme::default()
+        };
 
         Self {
             settings_edit_mode,
@@ -254,25 +253,27 @@ pub(crate) enum WindowMessage {
     MoveConfigScriptUp(usize),
     MoveConfigScriptDown(usize),
     ToggleConfigEditing,
-    ConfigToggleWindowStatusReactions(bool),
-    ConfigToggleKeepWindowSize(bool),
-    ConfigToggleScriptFiltering(bool),
-    ConfigToggleShowWorkingDirectory(bool),
-    ConfigToggleTitleEditing(bool),
-    ConfigUpdateBehaviorChanged(config::ConfigUpdateBehavior),
-    ConfigToggleShowCurrentGitBranch(bool),
-    ConfigToggleUseCustomTheme(bool),
-    ConfigEditThemeBackground(String),
-    ConfigEditThemeText(String),
-    ConfigEditThemePrimary(String),
-    ConfigEditThemeSuccess(String),
-    ConfigEditThemeDanger(String),
-    ConfigEditThemeCaptionText(String),
-    ConfigEditThemeErrorText(String),
-    ConfigEditLocalConfigPath(String),
-    ConfigEditLocalConfigPathRelativeToScripter(config::PathType),
+    SettingsToggleWindowStatusReactions(config::SettingsEditMode, bool),
+    SettingsToggleKeepWindowSize(config::SettingsEditMode, bool),
+    SettingsToggleScriptFiltering(config::SettingsEditMode, bool),
+    SettingsToggleShowWorkingDirectory(config::SettingsEditMode, bool),
+    SettingsToggleTitleEditing(config::SettingsEditMode, bool),
+    SettingsUpdateBehaviorChanged(config::SettingsEditMode, config::ConfigUpdateBehavior),
+    SettingsToggleShowCurrentGitBranch(config::SettingsEditMode, bool),
+    SettingsToggleUseCustomTheme(config::SettingsEditMode, bool),
+    SettingsEditThemeBackground(config::SettingsEditMode, String),
+    SettingsEditThemeText(config::SettingsEditMode, String),
+    SettingsEditThemePrimary(config::SettingsEditMode, String),
+    SettingsEditThemeSuccess(config::SettingsEditMode, String),
+    SettingsEditThemeDanger(config::SettingsEditMode, String),
+    SettingsEditThemeCaptionText(config::SettingsEditMode, String),
+    SettingsEditThemeErrorText(config::SettingsEditMode, String),
+    SettingsSharedEditLocalConfigPath(String),
+    SettingsSharedEditLocalConfigPathRelativeToScripter(config::PathType),
     SwitchToSharedScriptConfig,
     SwitchToLocalScriptConfig,
+    SwitchToSharedSettingsConfig,
+    SwitchToLocalSettingsConfig,
     ToggleScriptHidden(bool),
     CreateCopyOfSharedScript(usize),
     MoveToShared(usize),
@@ -381,6 +382,8 @@ impl Application for MainWindow {
         update_theme_icons(&mut main_window);
         update_config_cache(&mut main_window);
         keybind_editing::update_keybinds(&mut main_window);
+        let edit_mode = config::get_main_edit_mode(&main_window.app_config);
+        keybind_editing::update_keybind_visual_caches(&mut main_window, edit_mode);
 
         (main_window, Command::none())
     }
@@ -388,7 +391,7 @@ impl Application for MainWindow {
     fn title(&self) -> String {
         if let Some(window_edit_data) = &self.edit_data.window_edit_data {
             match window_edit_data.scripts_edit_mode {
-                SettingsEditMode::Shared if self.app_config.local_config_body.is_some() => {
+                config::SettingsEditMode::Shared if self.app_config.local_config_body.is_some() => {
                     "scripter [Editing shared config]".to_string()
                 }
                 _ => "scripter [Editing]".to_string(),
@@ -606,7 +609,7 @@ impl Application for MainWindow {
             WindowMessage::DuplicateConfigScript(script_idx) => {
                 match &self.edit_data.window_edit_data {
                     Some(WindowEditData {
-                        scripts_edit_mode: SettingsEditMode::Local,
+                        scripts_edit_mode: config::SettingsEditMode::Local,
                         ..
                     }) => {
                         if let Some(config) = self.app_config.local_config_body.as_mut() {
@@ -913,6 +916,8 @@ impl Application for MainWindow {
                     self.edit_data.is_dirty = false;
                     update_config_cache(self);
                     keybind_editing::update_keybinds(self);
+                    let edit_mode = config::get_main_edit_mode(&self.app_config);
+                    keybind_editing::update_keybind_visual_caches(self, edit_mode);
                     exit_window_edit_mode(self);
                 }
             }
@@ -923,10 +928,10 @@ impl Application for MainWindow {
                     None,
                     match self.edit_data.window_edit_data {
                         Some(WindowEditData {
-                            scripts_edit_mode: SettingsEditMode::Local,
+                            scripts_edit_mode: config::SettingsEditMode::Local,
                             ..
-                        }) => SettingsEditMode::Local,
-                        _ => SettingsEditMode::Shared,
+                        }) => config::SettingsEditMode::Local,
+                        _ => config::SettingsEditMode::Shared,
                     },
                 ));
                 config::populate_shared_scripts_from_config(&mut self.app_config);
@@ -935,6 +940,8 @@ impl Application for MainWindow {
                 clean_script_selection(&mut self.window_state.cursor_script);
                 update_config_cache(self);
                 keybind_editing::update_keybinds(self);
+                let edit_mode = config::get_main_edit_mode(&self.app_config);
+                keybind_editing::update_keybind_visual_caches(self, edit_mode);
                 exit_window_edit_mode(self);
             }
             WindowMessage::OpenScriptConfigEditing(script_idx) => {
@@ -948,131 +955,96 @@ impl Application for MainWindow {
             }
             WindowMessage::ToggleConfigEditing => {
                 if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
-                    if let Some(edit_type) = window_edit_data.settings_edit_mode {
-                        if edit_type == SettingsEditMode::Local {
-                            window_edit_data.settings_edit_mode = Some(SettingsEditMode::Shared)
-                        } else {
-                            window_edit_data.settings_edit_mode = Some(SettingsEditMode::Local);
-                        }
-                    } else {
-                        window_edit_data.settings_edit_mode =
-                            Some(get_main_edit_mode(&self.app_config));
-                    }
-                } else {
-                    self.edit_data.window_edit_data = Some(WindowEditData::from_config(
-                        &self.app_config,
-                        Some(get_main_edit_mode(&self.app_config)),
-                        get_main_edit_mode(&self.app_config),
-                    ));
+                    window_edit_data.settings_edit_mode =
+                        Some(config::get_main_edit_mode(&self.app_config));
+                    clean_script_selection(&mut self.window_state.cursor_script);
                 }
-                clean_script_selection(&mut self.window_state.cursor_script);
             }
-            WindowMessage::ConfigToggleWindowStatusReactions(is_checked) => {
-                get_rewritable_script_config_mut(
-                    &mut self.app_config,
-                    &self.edit_data.window_edit_data,
-                )
-                .window_status_reactions = is_checked;
+            WindowMessage::SettingsToggleWindowStatusReactions(edit_mode, is_checked) => {
+                config::get_rewritable_config_mut(&mut self.app_config, edit_mode)
+                    .window_status_reactions = is_checked;
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigToggleKeepWindowSize(is_checked) => {
-                get_rewritable_script_config_mut(
-                    &mut self.app_config,
-                    &self.edit_data.window_edit_data,
-                )
-                .keep_window_size = is_checked;
+            WindowMessage::SettingsToggleKeepWindowSize(edit_mode, is_checked) => {
+                config::get_rewritable_config_mut(&mut self.app_config, edit_mode)
+                    .keep_window_size = is_checked;
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigToggleScriptFiltering(is_checked) => {
-                get_rewritable_script_config_mut(
-                    &mut self.app_config,
-                    &self.edit_data.window_edit_data,
-                )
-                .enable_script_filtering = is_checked;
+            WindowMessage::SettingsToggleScriptFiltering(edit_mode, is_checked) => {
+                config::get_rewritable_config_mut(&mut self.app_config, edit_mode)
+                    .enable_script_filtering = is_checked;
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigToggleShowWorkingDirectory(is_checked) => {
-                get_rewritable_script_config_mut(
-                    &mut self.app_config,
-                    &self.edit_data.window_edit_data,
-                )
-                .show_working_directory = is_checked;
+            WindowMessage::SettingsToggleShowWorkingDirectory(edit_mode, is_checked) => {
+                config::get_rewritable_config_mut(&mut self.app_config, edit_mode)
+                    .show_working_directory = is_checked;
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigToggleTitleEditing(is_checked) => {
-                get_rewritable_script_config_mut(
-                    &mut self.app_config,
-                    &self.edit_data.window_edit_data,
-                )
-                .enable_title_editing = is_checked;
+            WindowMessage::SettingsToggleTitleEditing(edit_mode, is_checked) => {
+                config::get_rewritable_config_mut(&mut self.app_config, edit_mode)
+                    .enable_title_editing = is_checked;
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigUpdateBehaviorChanged(value) => {
-                get_rewritable_script_config_mut(
-                    &mut self.app_config,
-                    &self.edit_data.window_edit_data,
-                )
-                .config_version_update_behavior = value;
+            WindowMessage::SettingsUpdateBehaviorChanged(edit_mode, value) => {
+                config::get_rewritable_config_mut(&mut self.app_config, edit_mode)
+                    .config_version_update_behavior = value;
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigToggleShowCurrentGitBranch(is_checked) => {
-                get_rewritable_script_config_mut(
-                    &mut self.app_config,
-                    &self.edit_data.window_edit_data,
-                )
-                .show_current_git_branch = is_checked;
+            WindowMessage::SettingsToggleShowCurrentGitBranch(edit_mode, is_checked) => {
+                config::get_rewritable_config_mut(&mut self.app_config, edit_mode)
+                    .show_current_git_branch = is_checked;
                 self.edit_data.is_dirty = true;
                 update_git_branch_visibility(self);
             }
-            WindowMessage::ConfigToggleUseCustomTheme(is_checked) => {
-                get_rewritable_script_config_mut(
-                    &mut self.app_config,
-                    &self.edit_data.window_edit_data,
-                )
-                .custom_theme = if is_checked {
-                    Some(
-                        if let Some(window_edit_data) = &self.edit_data.window_edit_data {
-                            config::CustomTheme {
-                                background: color_utils::hex_to_rgb(
-                                    &window_edit_data.theme_color_background,
-                                )
-                                .unwrap_or_default(),
-                                text: color_utils::hex_to_rgb(&window_edit_data.theme_color_text)
+            WindowMessage::SettingsToggleUseCustomTheme(edit_mode, is_checked) => {
+                config::get_rewritable_config_mut(&mut self.app_config, edit_mode).custom_theme =
+                    if is_checked {
+                        Some(
+                            if let Some(window_edit_data) = &self.edit_data.window_edit_data {
+                                config::CustomTheme {
+                                    background: color_utils::hex_to_rgb(
+                                        &window_edit_data.theme_color_background,
+                                    )
                                     .unwrap_or_default(),
-                                primary: color_utils::hex_to_rgb(
-                                    &window_edit_data.theme_color_primary,
-                                )
-                                .unwrap_or_default(),
-                                success: color_utils::hex_to_rgb(
-                                    &window_edit_data.theme_color_success,
-                                )
-                                .unwrap_or_default(),
-                                danger: color_utils::hex_to_rgb(
-                                    &window_edit_data.theme_color_danger,
-                                )
-                                .unwrap_or_default(),
-                                caption_text: color_utils::hex_to_rgb(
-                                    &window_edit_data.theme_color_caption_text,
-                                )
-                                .unwrap_or_default(),
-                                error_text: color_utils::hex_to_rgb(
-                                    &window_edit_data.theme_color_error_text,
-                                )
-                                .unwrap_or_default(),
-                            }
-                        } else {
-                            config::CustomTheme::default()
-                        },
-                    )
-                } else {
-                    None
-                };
+                                    text: color_utils::hex_to_rgb(
+                                        &window_edit_data.theme_color_text,
+                                    )
+                                    .unwrap_or_default(),
+                                    primary: color_utils::hex_to_rgb(
+                                        &window_edit_data.theme_color_primary,
+                                    )
+                                    .unwrap_or_default(),
+                                    success: color_utils::hex_to_rgb(
+                                        &window_edit_data.theme_color_success,
+                                    )
+                                    .unwrap_or_default(),
+                                    danger: color_utils::hex_to_rgb(
+                                        &window_edit_data.theme_color_danger,
+                                    )
+                                    .unwrap_or_default(),
+                                    caption_text: color_utils::hex_to_rgb(
+                                        &window_edit_data.theme_color_caption_text,
+                                    )
+                                    .unwrap_or_default(),
+                                    error_text: color_utils::hex_to_rgb(
+                                        &window_edit_data.theme_color_error_text,
+                                    )
+                                    .unwrap_or_default(),
+                                }
+                            } else {
+                                config::CustomTheme::default()
+                            },
+                        )
+                    } else {
+                        None
+                    };
                 apply_theme(self);
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigEditThemeBackground(new_value) => {
+            WindowMessage::SettingsEditThemeBackground(edit_mode, new_value) => {
                 apply_theme_color_from_string(
                     self,
+                    edit_mode,
                     new_value,
                     |theme, value| theme.background = value,
                     |edit_data, value| {
@@ -1081,9 +1053,10 @@ impl Application for MainWindow {
                     },
                 );
             }
-            WindowMessage::ConfigEditThemeText(new_value) => {
+            WindowMessage::SettingsEditThemeText(edit_mode, new_value) => {
                 apply_theme_color_from_string(
                     self,
+                    edit_mode,
                     new_value,
                     |theme, value| theme.text = value,
                     |edit_data, value| {
@@ -1092,9 +1065,10 @@ impl Application for MainWindow {
                     },
                 );
             }
-            WindowMessage::ConfigEditThemePrimary(new_value) => {
+            WindowMessage::SettingsEditThemePrimary(edit_mode, new_value) => {
                 apply_theme_color_from_string(
                     self,
+                    edit_mode,
                     new_value,
                     |theme, value| theme.primary = value,
                     |edit_data, value| {
@@ -1103,9 +1077,10 @@ impl Application for MainWindow {
                     },
                 );
             }
-            WindowMessage::ConfigEditThemeSuccess(new_value) => {
+            WindowMessage::SettingsEditThemeSuccess(edit_mode, new_value) => {
                 apply_theme_color_from_string(
                     self,
+                    edit_mode,
                     new_value,
                     |theme, value| theme.success = value,
                     |edit_data, value| {
@@ -1114,9 +1089,10 @@ impl Application for MainWindow {
                     },
                 );
             }
-            WindowMessage::ConfigEditThemeDanger(new_value) => {
+            WindowMessage::SettingsEditThemeDanger(edit_mode, new_value) => {
                 apply_theme_color_from_string(
                     self,
+                    edit_mode,
                     new_value,
                     |theme, value| theme.danger = value,
                     |edit_data, value| {
@@ -1126,9 +1102,10 @@ impl Application for MainWindow {
                 );
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigEditThemeCaptionText(new_value) => {
+            WindowMessage::SettingsEditThemeCaptionText(edit_mode, new_value) => {
                 apply_theme_color_from_string(
                     self,
+                    edit_mode,
                     new_value,
                     |theme, value| theme.caption_text = value,
                     |edit_data, value| {
@@ -1138,9 +1115,10 @@ impl Application for MainWindow {
                 );
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigEditThemeErrorText(new_value) => {
+            WindowMessage::SettingsEditThemeErrorText(edit_mode, new_value) => {
                 apply_theme_color_from_string(
                     self,
+                    edit_mode,
                     new_value,
                     |theme, value| theme.error_text = value,
                     |edit_data, value| {
@@ -1150,19 +1128,25 @@ impl Application for MainWindow {
                 );
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigEditLocalConfigPath(new_value) => {
+            WindowMessage::SettingsSharedEditLocalConfigPath(new_value) => {
                 self.app_config.local_config_path.path = new_value;
                 self.edit_data.is_dirty = true;
             }
-            WindowMessage::ConfigEditLocalConfigPathRelativeToScripter(new_path_type) => {
+            WindowMessage::SettingsSharedEditLocalConfigPathRelativeToScripter(new_path_type) => {
                 self.app_config.local_config_path.path_type = new_path_type;
                 self.edit_data.is_dirty = true;
             }
             WindowMessage::SwitchToSharedScriptConfig => {
-                switch_to_editing_script_config(self, SettingsEditMode::Shared);
+                switch_to_editing_script_config(self, config::SettingsEditMode::Shared);
             }
             WindowMessage::SwitchToLocalScriptConfig => {
-                switch_to_editing_script_config(self, SettingsEditMode::Local);
+                switch_to_editing_script_config(self, config::SettingsEditMode::Local);
+            }
+            WindowMessage::SwitchToSharedSettingsConfig => {
+                switch_to_editing_settings_config(self, config::SettingsEditMode::Shared);
+            }
+            WindowMessage::SwitchToLocalSettingsConfig => {
+                switch_to_editing_settings_config(self, config::SettingsEditMode::Local);
             }
             WindowMessage::ToggleScriptHidden(is_hidden) => {
                 let Some(script_id) = &mut self.window_state.cursor_script else {
@@ -1275,7 +1259,7 @@ impl Application for MainWindow {
                             .script_definitions
                             .insert(insert_position, replacement_script);
                         self.edit_data.is_dirty = true;
-                        switch_to_editing_script_config(self, SettingsEditMode::Shared);
+                        switch_to_editing_script_config(self, config::SettingsEditMode::Shared);
                         select_edited_script(self, insert_position);
                     }
                 }
@@ -1655,7 +1639,7 @@ impl Application for MainWindow {
                     return Command::none();
                 }
 
-                switch_to_editing_script_config(self, SettingsEditMode::Shared);
+                switch_to_editing_script_config(self, config::SettingsEditMode::Shared);
                 select_edited_script(self, original_script_idx);
 
                 update_config_cache(self);
@@ -1929,7 +1913,7 @@ fn produce_script_list_content<'a>(
             .window_edit_data
             .clone()
             .map(|x| x.scripts_edit_mode)
-            == Some(SettingsEditMode::Local);
+            == Some(config::SettingsEditMode::Local);
 
     let data: Element<_> = column(
         displayed_configs_list_cache
@@ -2024,7 +2008,7 @@ fn produce_script_list_content<'a>(
 
     let edit_controls = if let Some(window_edit_data) = &edit_data.window_edit_data {
         column![
-            if window_edit_data.scripts_edit_mode == SettingsEditMode::Local {
+            if window_edit_data.scripts_edit_mode == config::SettingsEditMode::Local {
                 text("Editing local config")
             } else if config.local_config_body.is_some() {
                 text("Editing shared config")
@@ -2053,11 +2037,11 @@ fn produce_script_list_content<'a>(
             Space::with_height(4.0),
             if config.local_config_body.is_some() {
                 match window_edit_data.scripts_edit_mode {
-                    SettingsEditMode::Local => {
+                    config::SettingsEditMode::Local => {
                         column![button(text("Switch to shared config").size(16))
                             .on_press(WindowMessage::SwitchToSharedScriptConfig)]
                     }
-                    SettingsEditMode::Shared => {
+                    config::SettingsEditMode::Shared => {
                         column![button(text("Switch to local config").size(16))
                             .on_press(WindowMessage::SwitchToLocalScriptConfig)]
                     }
@@ -2959,7 +2943,7 @@ fn produce_script_config_edit_content<'a>(
                 visual_caches,
             );
 
-            if window_edit_data.scripts_edit_mode == SettingsEditMode::Local {
+            if window_edit_data.scripts_edit_mode == config::SettingsEditMode::Local {
                 parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                 parameters.push(
                     checkbox("Is script hidden", script.is_hidden)
@@ -2987,7 +2971,7 @@ fn produce_script_config_edit_content<'a>(
                 .into(),
             );
 
-            if config_script_id.edit_mode == SettingsEditMode::Local
+            if config_script_id.edit_mode == config::SettingsEditMode::Local
                 && is_local_config_script(edited_script_idx, &app_config)
             {
                 parameters.push(
@@ -3069,7 +3053,7 @@ fn produce_script_config_edit_content<'a>(
             );
 
             if let Some(window_edit_data) = &edit_data.window_edit_data {
-                if window_edit_data.scripts_edit_mode == SettingsEditMode::Local {
+                if window_edit_data.scripts_edit_mode == config::SettingsEditMode::Local {
                     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
                     keybind_editing::populate_keybind_editing_content(
                         &mut parameters,
@@ -3085,7 +3069,7 @@ fn produce_script_config_edit_content<'a>(
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
-            if config_script_id.edit_mode == SettingsEditMode::Local
+            if config_script_id.edit_mode == config::SettingsEditMode::Local
                 && is_local_config_script(edited_script_idx, &app_config)
             {
                 parameters.push(
@@ -3359,25 +3343,50 @@ fn populate_original_script_config_edit_content<'a>(
 fn produce_settings_edit_content<'a>(
     config: &config::AppConfig,
     window_edit: &WindowEditData,
-    rewritable_config: &config::RewritableConfig,
     visual_caches: &VisualCaches,
+    edit_mode: config::SettingsEditMode,
 ) -> Column<'a, WindowMessage> {
+    let mut header_elements: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
     let mut list_elements: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
 
-    list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    let rewritable_config = config::get_rewritable_config(&config, edit_mode);
+
+    if config.local_config_body.is_some() {
+        match edit_mode {
+            config::SettingsEditMode::Local => {
+                header_elements.push(
+                    button(text("Switch to shared settings").size(16))
+                        .on_press(WindowMessage::SwitchToSharedSettingsConfig)
+                        .into(),
+                );
+                header_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+                list_elements.push(text("Editing local settings").into());
+            }
+            config::SettingsEditMode::Shared => {
+                header_elements.push(
+                    button(text("Switch to local settings").size(16))
+                        .on_press(WindowMessage::SwitchToLocalSettingsConfig)
+                        .into(),
+                );
+                header_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+                list_elements.push(text("Editing shared settings").into());
+            }
+        }
+    }
+
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
         checkbox(
             "Window status reactions",
             rewritable_config.window_status_reactions,
         )
-        .on_toggle(move |val| WindowMessage::ConfigToggleWindowStatusReactions(val))
+        .on_toggle(move |val| WindowMessage::SettingsToggleWindowStatusReactions(edit_mode, val))
         .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
         checkbox("Keep window size", rewritable_config.keep_window_size)
-            .on_toggle(move |val| WindowMessage::ConfigToggleKeepWindowSize(val))
+            .on_toggle(move |val| WindowMessage::SettingsToggleKeepWindowSize(edit_mode, val))
             .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -3386,7 +3395,7 @@ fn produce_settings_edit_content<'a>(
             "Show script filter",
             rewritable_config.enable_script_filtering,
         )
-        .on_toggle(move |val| WindowMessage::ConfigToggleScriptFiltering(val))
+        .on_toggle(move |val| WindowMessage::SettingsToggleScriptFiltering(edit_mode, val))
         .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -3395,7 +3404,7 @@ fn produce_settings_edit_content<'a>(
             "Show working directory",
             rewritable_config.show_working_directory,
         )
-        .on_toggle(move |val| WindowMessage::ConfigToggleShowWorkingDirectory(val))
+        .on_toggle(move |val| WindowMessage::SettingsToggleShowWorkingDirectory(edit_mode, val))
         .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -3404,7 +3413,7 @@ fn produce_settings_edit_content<'a>(
             "Allow edit custom title",
             rewritable_config.enable_title_editing,
         )
-        .on_toggle(move |val| WindowMessage::ConfigToggleTitleEditing(val))
+        .on_toggle(move |val| WindowMessage::SettingsToggleTitleEditing(edit_mode, val))
         .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -3413,7 +3422,7 @@ fn produce_settings_edit_content<'a>(
         pick_list(
             CONFIG_UPDATE_BEHAVIOR_PICK_LIST,
             Some(rewritable_config.config_version_update_behavior),
-            WindowMessage::ConfigUpdateBehaviorChanged,
+            move |selected| WindowMessage::SettingsUpdateBehaviorChanged(edit_mode, selected),
         )
         .into(),
     );
@@ -3423,13 +3432,13 @@ fn produce_settings_edit_content<'a>(
             "Show current git branch",
             rewritable_config.show_current_git_branch,
         )
-        .on_toggle(move |val| WindowMessage::ConfigToggleShowCurrentGitBranch(val))
+        .on_toggle(move |val| WindowMessage::SettingsToggleShowCurrentGitBranch(edit_mode, val))
         .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
         checkbox("Use custom theme", rewritable_config.custom_theme.is_some())
-            .on_toggle(move |val| WindowMessage::ConfigToggleUseCustomTheme(val))
+            .on_toggle(move |val| WindowMessage::SettingsToggleUseCustomTheme(edit_mode, val))
             .into(),
     );
 
@@ -3438,49 +3447,63 @@ fn produce_settings_edit_content<'a>(
         list_elements.push(text("Background:").into());
         list_elements.push(
             text_input("#000000", &window_edit.theme_color_background)
-                .on_input(move |new_value| WindowMessage::ConfigEditThemeBackground(new_value))
+                .on_input(move |new_value| {
+                    WindowMessage::SettingsEditThemeBackground(edit_mode, new_value)
+                })
                 .padding(5)
                 .into(),
         );
         list_elements.push(text("Accent:").into());
         list_elements.push(
             text_input("#000000", &window_edit.theme_color_text)
-                .on_input(move |new_value| WindowMessage::ConfigEditThemeText(new_value))
+                .on_input(move |new_value| {
+                    WindowMessage::SettingsEditThemeText(edit_mode, new_value)
+                })
                 .padding(5)
                 .into(),
         );
         list_elements.push(text("Primary:").into());
         list_elements.push(
             text_input("#000000", &window_edit.theme_color_primary)
-                .on_input(move |new_value| WindowMessage::ConfigEditThemePrimary(new_value))
+                .on_input(move |new_value| {
+                    WindowMessage::SettingsEditThemePrimary(edit_mode, new_value)
+                })
                 .padding(5)
                 .into(),
         );
         list_elements.push(text("Success:").into());
         list_elements.push(
             text_input("#000000", &window_edit.theme_color_success)
-                .on_input(move |new_value| WindowMessage::ConfigEditThemeSuccess(new_value))
+                .on_input(move |new_value| {
+                    WindowMessage::SettingsEditThemeSuccess(edit_mode, new_value)
+                })
                 .padding(5)
                 .into(),
         );
         list_elements.push(text("Danger:").into());
         list_elements.push(
             text_input("#000000", &window_edit.theme_color_danger)
-                .on_input(move |new_value| WindowMessage::ConfigEditThemeDanger(new_value))
+                .on_input(move |new_value| {
+                    WindowMessage::SettingsEditThemeDanger(edit_mode, new_value)
+                })
                 .padding(5)
                 .into(),
         );
         list_elements.push(text("Caption text:").into());
         list_elements.push(
             text_input("#000000", &window_edit.theme_color_caption_text)
-                .on_input(move |new_value| WindowMessage::ConfigEditThemeCaptionText(new_value))
+                .on_input(move |new_value| {
+                    WindowMessage::SettingsEditThemeCaptionText(edit_mode, new_value)
+                })
                 .padding(5)
                 .into(),
         );
         list_elements.push(text("Error text:").into());
         list_elements.push(
             text_input("#000000", &window_edit.theme_color_error_text)
-                .on_input(move |new_value| WindowMessage::ConfigEditThemeErrorText(new_value))
+                .on_input(move |new_value| {
+                    WindowMessage::SettingsEditThemeErrorText(edit_mode, new_value)
+                })
                 .padding(5)
                 .into(),
         );
@@ -3590,24 +3613,27 @@ fn produce_settings_edit_content<'a>(
         keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::MoveScriptUp),
     );
 
-    if window_edit.scripts_edit_mode == SettingsEditMode::Shared {
+    if edit_mode == config::SettingsEditMode::Shared {
         list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
         populate_path_editing_content(
             "Local config path:",
             "path/to/config.json",
             &config.local_config_path,
             &mut list_elements,
-            |path| WindowMessage::ConfigEditLocalConfigPath(path),
-            |val| WindowMessage::ConfigEditLocalConfigPathRelativeToScripter(val),
+            |path| WindowMessage::SettingsSharedEditLocalConfigPath(path),
+            |val| WindowMessage::SettingsSharedEditLocalConfigPathRelativeToScripter(val),
         );
     }
 
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
 
-    column![scrollable(column(list_elements).spacing(10))]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_items(Alignment::Start)
+    column![
+        column(header_elements),
+        scrollable(column(list_elements).spacing(10))
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .align_items(Alignment::Start)
 }
 
 fn view_content<'a>(
@@ -3625,7 +3651,7 @@ fn view_content<'a>(
         PaneVariant::ScriptList => produce_script_list_content(
             execution_lists,
             config,
-            get_main_config(&config),
+            config::get_main_config(&config),
             displayed_configs_list_cache,
             edit_data,
             &visual_caches,
@@ -3639,24 +3665,19 @@ fn view_content<'a>(
             config,
             &visual_caches,
             edit_data,
-            get_main_config(&config),
+            config::get_main_config(&config),
             window_state,
         ),
         PaneVariant::LogOutput => produce_log_output_content(
             execution_lists,
             theme,
-            get_main_config(&config),
+            config::get_main_config(&config),
             &visual_caches,
         ),
         PaneVariant::Parameters => match &edit_data.window_edit_data {
             Some(window_edit_data) if window_edit_data.settings_edit_mode.is_some() => {
                 let edit_mode = window_edit_data.settings_edit_mode.unwrap();
-                produce_settings_edit_content(
-                    config,
-                    window_edit_data,
-                    get_rewritable_config(&config, edit_mode),
-                    visual_caches,
-                )
+                produce_settings_edit_content(config, window_edit_data, visual_caches, edit_mode)
             }
             _ => produce_script_edit_content(
                 execution_lists,

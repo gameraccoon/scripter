@@ -1035,3 +1035,54 @@ pub fn get_default_executor() -> Vec<String> {
 
     executor
 }
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum SettingsEditMode {
+    Local,
+    Shared,
+}
+
+pub fn get_main_edit_mode(app_config: &AppConfig) -> SettingsEditMode {
+    if app_config.local_config_body.is_some() {
+        SettingsEditMode::Local
+    } else {
+        SettingsEditMode::Shared
+    }
+}
+
+pub fn get_main_config(config: &AppConfig) -> &RewritableConfig {
+    if let Some(local_config) = &config.local_config_body {
+        &local_config.rewritable
+    } else {
+        &config.rewritable
+    }
+}
+
+pub fn get_rewritable_config(config: &AppConfig, edit_mode: SettingsEditMode) -> &RewritableConfig {
+    match edit_mode {
+        SettingsEditMode::Shared => &config.rewritable,
+        SettingsEditMode::Local => {
+            if let Some(local_config) = &config.local_config_body {
+                &local_config.rewritable
+            } else {
+                &config.rewritable
+            }
+        }
+    }
+}
+
+pub fn get_rewritable_config_mut(
+    config: &mut AppConfig,
+    edit_mode: SettingsEditMode,
+) -> &mut RewritableConfig {
+    match edit_mode {
+        SettingsEditMode::Shared => &mut config.rewritable,
+        SettingsEditMode::Local => {
+            if let Some(local_config) = &mut config.local_config_body {
+                &mut local_config.rewritable
+            } else {
+                &mut config.rewritable
+            }
+        }
+    }
+}

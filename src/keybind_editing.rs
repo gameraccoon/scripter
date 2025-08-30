@@ -89,7 +89,6 @@ pub fn process_key_press(
 
             app.edit_data.is_dirty = true;
         }
-        update_keybinds(app);
         return true;
     }
 
@@ -97,16 +96,24 @@ pub fn process_key_press(
 }
 
 fn clear_app_action_keybind(app: &mut main_window::MainWindow, app_action: &config::AppAction) {
-    let rewritable_config = main_window_utils::get_rewritable_script_config_mut(
-        &mut app.app_config,
-        &app.edit_data.window_edit_data,
-    );
+    let edit_mode = if let Some(window_edit_data) = &app.edit_data.window_edit_data {
+        if let Some(edit_mode) = window_edit_data.settings_edit_mode {
+            edit_mode
+        } else {
+            return;
+        }
+    } else {
+        return;
+    };
+
+    let rewritable_config = config::get_rewritable_config_mut(&mut app.app_config, edit_mode);
     // remove all keybinds with the same action
     rewritable_config
         .app_actions_keybinds
         .retain(|x| x.action != *app_action);
 
     update_keybinds(app);
+    update_keybind_visual_caches(app, edit_mode);
 }
 
 fn set_app_action_keybind(
@@ -114,10 +121,17 @@ fn set_app_action_keybind(
     app_action: &config::AppAction,
     keybind: config::CustomKeybind,
 ) {
-    let rewritable_config = main_window_utils::get_rewritable_script_config_mut(
-        &mut app.app_config,
-        &app.edit_data.window_edit_data,
-    );
+    let edit_mode = if let Some(window_edit_data) = &app.edit_data.window_edit_data {
+        if let Some(edit_mode) = window_edit_data.settings_edit_mode {
+            edit_mode
+        } else {
+            return;
+        }
+    } else {
+        return;
+    };
+
+    let rewritable_config = config::get_rewritable_config_mut(&mut app.app_config, edit_mode);
     // remove all keybinds with the same action
     rewritable_config
         .app_actions_keybinds
@@ -131,6 +145,7 @@ fn set_app_action_keybind(
         });
 
     update_keybinds(app);
+    update_keybind_visual_caches(app, edit_mode);
 }
 
 fn clear_script_keybind(app: &mut main_window::MainWindow, guid: &config::Guid) {
@@ -144,6 +159,7 @@ fn clear_script_keybind(app: &mut main_window::MainWindow, guid: &config::Guid) 
         .retain(|x| x.script_uid != *guid);
 
     update_keybinds(app);
+    update_keybind_visual_caches(app, config::get_main_edit_mode(&app.app_config));
 }
 
 fn set_script_keybind(
@@ -168,12 +184,12 @@ fn set_script_keybind(
         });
 
     update_keybinds(app);
+    update_keybind_visual_caches(app, config::get_main_edit_mode(&app.app_config));
 }
 
 pub fn update_keybinds(app: &mut main_window::MainWindow) {
     app.keybinds = custom_keybinds::CustomKeybinds::new();
-    app.visual_caches.keybind_hints.clear();
-    let rewritable_config = config::get_current_rewritable_config(&app.app_config);
+    let rewritable_config = config::get_main_config(&app.app_config);
     for app_action_bind in &rewritable_config.app_actions_keybinds {
         let key = key_mapping::get_iced_key_code_from_custom_key_code(app_action_bind.keybind.key);
         let modifiers = key_mapping::get_iced_modifiers_from_custom_modifiers(
@@ -194,17 +210,6 @@ pub fn update_keybinds(app: &mut main_window::MainWindow) {
             key,
             modifiers,
             KeybindAssociatedData::AppAction(app_action_bind.action),
-        );
-
-        app.visual_caches.keybind_hints.insert(
-            KeybindAssociatedData::AppAction(app_action_bind.action),
-            format!(
-                "{}",
-                key_mapping::get_readable_keybind_name(
-                    app_action_bind.keybind.key,
-                    app_action_bind.keybind.modifiers
-                ),
-            ),
         );
     }
 
@@ -228,7 +233,29 @@ pub fn update_keybinds(app: &mut main_window::MainWindow) {
             modifiers,
             KeybindAssociatedData::Script(script_bind.script_uid.clone()),
         );
+    }
+}
 
+pub fn update_keybind_visual_caches(
+    app: &mut main_window::MainWindow,
+    edit_mode: config::SettingsEditMode,
+) {
+    app.visual_caches.keybind_hints.clear();
+    let rewritable_config = config::get_rewritable_config(&app.app_config, edit_mode);
+    for app_action_bind in &rewritable_config.app_actions_keybinds {
+        app.visual_caches.keybind_hints.insert(
+            KeybindAssociatedData::AppAction(app_action_bind.action),
+            format!(
+                "{}",
+                key_mapping::get_readable_keybind_name(
+                    app_action_bind.keybind.key,
+                    app_action_bind.keybind.modifiers
+                ),
+            ),
+        );
+    }
+
+    for script_bind in &rewritable_config.script_keybinds {
         app.visual_caches.keybind_hints.insert(
             KeybindAssociatedData::Script(script_bind.script_uid.clone()),
             format!(
