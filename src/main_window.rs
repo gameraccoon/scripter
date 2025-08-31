@@ -597,7 +597,7 @@ impl Application for MainWindow {
                     config_script_id.edit_mode,
                 );
 
-                let (new_script, new_script_uuid) =
+                let (new_script, new_script_uid) =
                     make_script_copy(script_definition_list[config_script_id.idx].clone());
                 script_definition_list.insert(config_script_id.idx + 1, new_script);
 
@@ -609,7 +609,7 @@ impl Application for MainWindow {
                 }
 
                 let idx =
-                    get_top_level_edited_script_idx_by_uuid(&mut self.app_config, &new_script_uuid);
+                    get_top_level_edited_script_idx_by_uid(&mut self.app_config, &new_script_uid);
 
                 if let Some(idx) = idx {
                     self.window_state.cursor_script = Some(EditScriptId {

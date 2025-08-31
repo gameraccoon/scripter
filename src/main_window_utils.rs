@@ -5,7 +5,6 @@ use iced::advanced::image::Handle;
 use iced::widget::{pane_grid, text_input};
 use iced::window::resize;
 use iced::{keyboard, window, Command, Size, Theme};
-use std::mem::swap;
 
 use crate::color_utils;
 use crate::config;
@@ -1003,7 +1002,7 @@ pub fn make_script_copy(
     }
 }
 
-pub fn get_top_level_edited_script_idx_by_uuid(
+pub fn get_top_level_edited_script_idx_by_uid(
     app_config: &mut config::AppConfig,
     script_uid: &config::Guid,
 ) -> Option<usize> {
@@ -1177,7 +1176,7 @@ pub fn move_config_script_up(app: &mut MainWindow, index: usize) {
                 if let Some(local_config_body) = &mut app.app_config.local_config_body {
                     if index >= 1 && index < local_config_body.script_definitions.len() {
                         local_config_body.script_definitions.swap(index, index - 1);
-                        update_shared_config_script_positions_from_local_config(
+                        config::update_shared_config_script_positions_from_local_config(
                             &mut app.app_config,
                         );
                         app.edit_data.is_dirty = true;
@@ -1215,7 +1214,7 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
                 if let Some(local_config_body) = &mut app.app_config.local_config_body {
                     if index + 1 < local_config_body.script_definitions.len() {
                         local_config_body.script_definitions.swap(index, index + 1);
-                        update_shared_config_script_positions_from_local_config(
+                        config::update_shared_config_script_positions_from_local_config(
                             &mut app.app_config,
                         );
                         app.edit_data.is_dirty = true;
@@ -1238,50 +1237,6 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
     }
 
     update_config_cache(app);
-}
-
-pub fn update_shared_config_script_positions_from_local_config(app_config: &mut config::AppConfig) {
-    let Some(local_config) = &app_config.local_config_body else {
-        return;
-    };
-
-    let mut positions = std::collections::HashMap::new();
-    let mut index = 0usize;
-    for script in &local_config.script_definitions {
-        match script {
-            config::ScriptDefinition::ReferenceToShared(script) => {
-                positions.insert(script.uid.clone(), index);
-                index += 1;
-            }
-            _ => {}
-        }
-    }
-
-    let mut script_definitions_copy = Vec::with_capacity(app_config.script_definitions.len());
-    script_definitions_copy.resize(
-        app_config.script_definitions.len(),
-        config::ScriptDefinition::ReferenceToShared(config::ReferenceToSharedScript {
-            uid: config::Guid { data: 0 },
-            is_hidden: false,
-        }),
-    );
-    swap(
-        &mut script_definitions_copy,
-        &mut app_config.script_definitions,
-    );
-
-    for script in script_definitions_copy {
-        let script_id = match &script {
-            config::ScriptDefinition::Original(script) => &script.uid,
-            config::ScriptDefinition::Preset(preset) => &preset.uid,
-            config::ScriptDefinition::ReferenceToShared(script) => &script.uid,
-        }
-        .clone();
-
-        if let Some(index) = positions.get(&script_id) {
-            app_config.script_definitions[*index] = script;
-        }
-    }
 }
 
 pub fn apply_config_script_edit(

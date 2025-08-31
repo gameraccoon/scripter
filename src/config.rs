@@ -11,6 +11,7 @@ use crate::key_mapping::{CustomKeyCode, CustomModifiers};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
+use std::mem::swap;
 use std::path::{Path, PathBuf};
 
 const DEFAULT_CONFIG_NAME: &str = "scripter_config.json";
@@ -752,6 +753,7 @@ fn read_local_config(
     }
 
     populate_shared_scripts(&mut config, shared_config);
+    update_local_config_script_positions_from_shared_config(&mut config, shared_config);
 
     Ok(config)
 }
@@ -1135,6 +1137,127 @@ pub fn get_script_definition_list_mut(
                 eprintln!("We are requested to get local config when no local config is present");
                 &mut config.script_definitions
             }
+        }
+    }
+}
+
+pub fn get_script_uid(script: &ScriptDefinition) -> &Guid {
+    match script {
+        ScriptDefinition::Original(script) => &script.uid,
+        ScriptDefinition::Preset(preset) => &preset.uid,
+        ScriptDefinition::ReferenceToShared(script) => &script.uid,
+    }
+}
+
+pub fn update_shared_config_script_positions_from_local_config(app_config: &mut AppConfig) {
+    let Some(local_config) = &app_config.local_config_body else {
+        return;
+    };
+
+    let mut positions = std::collections::HashMap::new();
+    let mut index = 0usize;
+    for script in &local_config.script_definitions {
+        match script {
+            ScriptDefinition::ReferenceToShared(script) => {
+                positions.insert(script.uid.clone(), index);
+                index += 1;
+            }
+            _ => {}
+        }
+    }
+
+    let mut script_definitions_copy = Vec::with_capacity(app_config.script_definitions.len());
+    script_definitions_copy.resize(
+        app_config.script_definitions.len(),
+        ScriptDefinition::ReferenceToShared(ReferenceToSharedScript {
+            uid: Guid { data: 0 },
+            is_hidden: false,
+        }),
+    );
+    swap(
+        &mut script_definitions_copy,
+        &mut app_config.script_definitions,
+    );
+
+    for script in script_definitions_copy {
+        let script_uid = get_script_uid(&script).clone();
+        if let Some(index) = positions.get(&script_uid) {
+            app_config.script_definitions[*index] = script;
+        }
+    }
+}
+
+pub fn update_local_config_script_positions_from_shared_config(
+    local_config: &mut LocalConfig,
+    shared_config: &mut AppConfig,
+) {
+    let mut positions = Vec::with_capacity(local_config.script_definitions.len());
+    for script in &shared_config.script_definitions {
+        positions.push(get_script_uid(script).clone());
+    }
+
+    let mut original_index = 0;
+    let mut rearrangement_needed = false;
+    // find out if we need to do a rearrangement
+    for script in &local_config.script_definitions {
+        match script {
+            ScriptDefinition::ReferenceToShared(script) => {
+                if Some(&script.uid) == positions.get(original_index) {
+                    original_index += 1;
+                } else {
+                    rearrangement_needed = true;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if !rearrangement_needed {
+        return;
+    }
+
+    let mut position_to_insert = 0usize;
+    for script in &local_config.script_definitions {
+        match script {
+            ScriptDefinition::ReferenceToShared(script) => {
+                let Some(new_idx) = positions.iter().position(|uid| *uid == script.uid) else {
+                    eprintln!("Failed to find shared script with uid {}", script.uid.data);
+                    return;
+                };
+                position_to_insert = new_idx + 1;
+            }
+            _ => {
+                let uid = get_script_uid(script).clone();
+                positions.insert(position_to_insert, uid);
+                position_to_insert += 1;
+            }
+        }
+    }
+
+    let mut positions_map = std::collections::HashMap::new();
+    for (idx, position) in positions.iter().enumerate() {
+        positions_map.insert(position.clone(), idx);
+    }
+    let positions = positions_map;
+
+    let mut script_definitions_copy = Vec::with_capacity(local_config.script_definitions.len());
+    script_definitions_copy.resize(
+        local_config.script_definitions.len(),
+        ScriptDefinition::ReferenceToShared(ReferenceToSharedScript {
+            uid: Guid { data: 0 },
+            is_hidden: false,
+        }),
+    );
+    swap(
+        &mut script_definitions_copy,
+        &mut local_config.script_definitions,
+    );
+
+    for script in script_definitions_copy {
+        let script_uid = get_script_uid(&script).clone();
+        if let Some(index) = positions.get(&script_uid) {
+            local_config.script_definitions[*index] = script;
         }
     }
 }
