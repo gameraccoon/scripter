@@ -670,10 +670,7 @@ impl Application for MainWindow {
                 select_execution_script(self, script_idx + 1);
             }
             WindowMessage::EditScriptNameForConfig(config_script_id, new_name) => {
-                let edit_mode = config::get_main_edit_mode(&self.app_config);
-                if let Some(preset) =
-                    get_editing_preset(&mut self.app_config, edit_mode, &self.window_state)
-                {
+                if let Some(preset) = get_editing_preset(&mut self.app_config, config_script_id) {
                     preset.name = new_name;
                     self.edit_data.is_dirty = true;
                     update_config_cache(self);
@@ -711,11 +708,7 @@ impl Application for MainWindow {
                 });
             }
             WindowMessage::EditScriptIconPath(config_script_id, new_icon_path) => {
-                if let Some(preset) = get_editing_preset(
-                    &mut self.app_config,
-                    config_script_id.edit_mode,
-                    &self.window_state,
-                ) {
+                if let Some(preset) = get_editing_preset(&mut self.app_config, config_script_id) {
                     preset.icon.path = new_icon_path;
                     self.edit_data.is_dirty = true;
                     update_config_cache(self);
@@ -726,11 +719,7 @@ impl Application for MainWindow {
                 }
             }
             WindowMessage::EditScriptIconPathType(config_script_id, new_path_type) => {
-                if let Some(preset) = get_editing_preset(
-                    &mut self.app_config,
-                    config_script_id.edit_mode,
-                    &self.window_state,
-                ) {
+                if let Some(preset) = get_editing_preset(&mut self.app_config, config_script_id) {
                     preset.icon.path_type = new_path_type;
                     self.edit_data.is_dirty = true;
                     update_config_cache(self);
@@ -2985,7 +2974,19 @@ fn produce_script_config_edit_content<'a>(
                         visual_caches,
                     );
                 }
-                _ => {}
+                config::ScriptDefinition::Preset(preset) => {
+                    populate_original_preset_edit_content(
+                        &mut parameters,
+                        original_script_id,
+                        preset,
+                    );
+                }
+                _ => {
+                    eprintln!(
+                        "Reference to shared {:X} was pointing to a reference to shared",
+                        reference.uid.data
+                    );
+                }
             }
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -3016,7 +3017,7 @@ fn produce_script_config_edit_content<'a>(
             );
             parameters.push(
                 edit_button(
-                    "Duplicate shared script",
+                    "Duplicate shared",
                     WindowMessage::DuplicateConfigScript(original_script_id),
                 )
                 .into(),
@@ -3025,7 +3026,7 @@ fn produce_script_config_edit_content<'a>(
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
                 edit_button(
-                    "Remove shared script",
+                    "Remove shared",
                     WindowMessage::RemoveConfigScript(original_script_id),
                 )
                 .style(theme::Button::Destructive)
@@ -3033,25 +3034,7 @@ fn produce_script_config_edit_content<'a>(
             );
         }
         config::ScriptDefinition::Preset(preset) => {
-            parameters.push(text("Preset name:").into());
-            parameters.push(
-                text_input("name", &preset.name)
-                    .on_input(move |new_arg| {
-                        WindowMessage::EditScriptNameForConfig(config_script_id, new_arg)
-                    })
-                    .padding(5)
-                    .into(),
-            );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            populate_path_editing_content(
-                "Path to the icon:",
-                "path/to/icon.png",
-                &preset.icon,
-                &mut parameters,
-                move |path| WindowMessage::EditScriptIconPath(config_script_id, path),
-                move |val| WindowMessage::EditScriptIconPathType(config_script_id, val),
-            );
+            populate_original_preset_edit_content(&mut parameters, config_script_id, preset);
 
             if let Some(window_edit_data) = &edit_data.window_edit_data {
                 parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -3347,6 +3330,32 @@ fn populate_original_script_config_edit_content<'a>(
         checkbox("Is script hidden", script.is_hidden)
             .on_toggle(move |val| WindowMessage::ToggleIsHidden(config_script_id, val))
             .into(),
+    );
+}
+
+fn populate_original_preset_edit_content<'a>(
+    parameters: &mut Vec<Element<'_, WindowMessage, Theme, iced::Renderer>>,
+    config_script_id: ConfigScriptId,
+    preset: &config::ScriptPreset,
+) {
+    parameters.push(text("Preset name:").into());
+    parameters.push(
+        text_input("name", &preset.name)
+            .on_input(move |new_arg| {
+                WindowMessage::EditScriptNameForConfig(config_script_id, new_arg)
+            })
+            .padding(5)
+            .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    populate_path_editing_content(
+        "Path to the icon:",
+        "path/to/icon.png",
+        &preset.icon,
+        parameters,
+        move |path| WindowMessage::EditScriptIconPath(config_script_id, path),
+        move |val| WindowMessage::EditScriptIconPathType(config_script_id, val),
     );
 }
 

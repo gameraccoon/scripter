@@ -115,12 +115,11 @@ pub fn get_script_definition(
 
 fn get_script_definition_mut(
     app_config: &mut config::AppConfig,
-    edit_mode: config::ConfigEditMode,
-    script_idx: usize,
+    config_script_id: ConfigScriptId,
 ) -> &mut config::ScriptDefinition {
-    let script_definitions = config::get_script_definition_list_mut(app_config, edit_mode);
-
-    &mut script_definitions[script_idx]
+    let script_definitions =
+        config::get_script_definition_list_mut(app_config, config_script_id.edit_mode);
+    &mut script_definitions[config_script_id.idx]
 }
 
 pub fn get_resulting_scripts_from_guid(
@@ -223,18 +222,13 @@ fn find_script_idx_by_id(
     None
 }
 
-pub fn get_editing_preset<'a>(
-    app_config: &'a mut config::AppConfig,
-    edit_mode: config::ConfigEditMode,
-    window_state: &WindowState,
-) -> Option<&'a mut config::ScriptPreset> {
-    if let Some(script_id) = &window_state.cursor_script {
-        if script_id.script_type == EditScriptType::ScriptConfig {
-            let script_definition = get_script_definition_mut(app_config, edit_mode, script_id.idx);
-            if let config::ScriptDefinition::Preset(preset) = script_definition {
-                return Some(preset);
-            }
-        }
+pub fn get_editing_preset(
+    app_config: &mut config::AppConfig,
+    config_script_id: ConfigScriptId,
+) -> Option<&mut config::ScriptPreset> {
+    let script_definition = get_script_definition_mut(app_config, config_script_id);
+    if let config::ScriptDefinition::Preset(preset) = script_definition {
+        return Some(preset);
     }
     None
 }
