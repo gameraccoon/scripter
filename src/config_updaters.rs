@@ -606,7 +606,7 @@ fn v0_18_1_added_placeholder_hints_and_is_required(config_json: &mut JsonValue) 
         let argument_placeholders = &mut script["argument_placeholders"].as_array_mut();
         if let Some(argument_placeholders) = argument_placeholders {
             for placeholder in argument_placeholders.iter_mut() {
-                placeholder["hint"] = json!("\"\"");
+                placeholder["hint"] = json!("");
                 placeholder["is_required"] = json!(false);
             }
         }
