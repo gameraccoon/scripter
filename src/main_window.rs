@@ -2879,13 +2879,6 @@ fn produce_script_config_edit_content<'a>(
             );
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-            parameters.push(
-                checkbox("Is script hidden", script.is_hidden)
-                    .on_toggle(move |val| WindowMessage::ToggleIsHidden(config_script_id, val))
-                    .into(),
-            );
-
-            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             keybind_editing::populate_keybind_editing_content(
                 &mut parameters,
                 &window_edit_data,
@@ -2956,7 +2949,7 @@ fn produce_script_config_edit_content<'a>(
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
-                checkbox("Is script hidden", reference.is_hidden)
+                checkbox("Is hidden locally", reference.is_hidden)
                     .on_toggle(move |val| WindowMessage::ToggleScriptHidden(val))
                     .into(),
             );
@@ -3301,6 +3294,13 @@ fn populate_original_script_config_edit_content<'a>(
     parameters.push(
         checkbox("Ignore output", script.ignore_output)
             .on_toggle(move |val| WindowMessage::ToggleIgnoreOutput(config_script_id, val))
+            .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(
+        checkbox("Is script hidden", script.is_hidden)
+            .on_toggle(move |val| WindowMessage::ToggleIsHidden(config_script_id, val))
             .into(),
     );
 }
