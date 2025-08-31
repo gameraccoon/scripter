@@ -605,11 +605,7 @@ impl Application for MainWindow {
                 if config_script_id.edit_mode == config::ConfigEditMode::Shared
                     && self.app_config.local_config_body.is_some()
                 {
-                    populate_local_config_script_reference(
-                        &mut self.app_config,
-                        &new_script_uuid,
-                        config_script_id.idx + 1,
-                    );
+                    config::populate_shared_scripts_from_config(&mut self.app_config);
                 }
 
                 let idx =
