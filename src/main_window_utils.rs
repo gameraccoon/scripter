@@ -156,6 +156,14 @@ pub fn get_resulting_scripts_from_guid(
                                 script.arguments = arguments.clone();
                             }
 
+                            for (placeholder, value) in &preset_item.overridden_placeholder_values {
+                                for script in &mut script.argument_placeholders {
+                                    if script.placeholder == *placeholder {
+                                        script.value = value.clone();
+                                    }
+                                }
+                            }
+
                             if let Some(autorerun_count) = preset_item.autorerun_count {
                                 script.autorerun_count = autorerun_count;
                             }
@@ -1481,6 +1489,7 @@ mod tests {
                                     uid: test_script_guid_1.clone(),
                                     name: None,
                                     arguments: None,
+                                    overridden_placeholder_values: std::collections::HashMap::new(),
                                     autorerun_count: None,
                                     ignore_previous_failures: None,
                                 },
@@ -1488,6 +1497,7 @@ mod tests {
                                     uid: test_script_guid_2.clone(),
                                     name: None,
                                     arguments: None,
+                                    overridden_placeholder_values: std::collections::HashMap::new(),
                                     autorerun_count: None,
                                     ignore_previous_failures: None,
                                 },

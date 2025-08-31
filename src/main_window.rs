@@ -1323,6 +1323,30 @@ impl Application for MainWindow {
                                 Some(script.arguments.clone())
                             };
 
+                            let mut overridden_placeholder_values = HashMap::new();
+                            for placeholder in &script.argument_placeholders {
+                                let original_placeholder_value =
+                                    original_script.as_ref().and_then(|original_script| {
+                                        original_script
+                                            .argument_placeholders
+                                            .iter()
+                                            .find(|placeholder| {
+                                                placeholder.placeholder == placeholder.placeholder
+                                            })
+                                            .map(|placeholder| placeholder.value.clone())
+                                    });
+
+                                if let Some(original_placeholder_value) = original_placeholder_value
+                                {
+                                    if original_placeholder_value != placeholder.value {
+                                        overridden_placeholder_values.insert(
+                                            placeholder.placeholder.clone(),
+                                            placeholder.value.clone(),
+                                        );
+                                    }
+                                }
+                            }
+
                             let autorerun_count = if let Some(original_script) = &original_script {
                                 if original_script.autorerun_count == script.autorerun_count {
                                     None
@@ -1350,6 +1374,7 @@ impl Application for MainWindow {
                                 uid: script.uid.clone(),
                                 name,
                                 arguments,
+                                overridden_placeholder_values,
                                 autorerun_count,
                                 ignore_previous_failures,
                             });

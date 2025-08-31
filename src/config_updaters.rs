@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.17.2";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.17.2";
+pub static LATEST_CONFIG_VERSION: &str = "0.18.0";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.18.0";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -137,6 +137,7 @@ fn register_config_updaters() -> JsonFileUpdater {
         "0.17.2",
         v0_17_2_add_argument_placeholders_field_and_arg_requirement,
     );
+    json_config_updater.add_update_function("0.18.0", v0_18_0_add_placeholders_to_presets);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -216,6 +217,7 @@ fn register_local_config_updaters() -> JsonFileUpdater {
         "0.17.2",
         v0_17_2_add_argument_placeholders_field_and_arg_requirement,
     );
+    json_config_updater.add_update_function("0.18.0", v0_18_0_add_placeholders_to_presets);
 
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
@@ -266,6 +268,21 @@ where
         for script in script_definitions {
             if let Some(obj) = script.as_object_mut() {
                 if let Some(value) = obj.get_mut("Original") {
+                    f(value);
+                }
+            }
+        }
+    }
+}
+
+fn for_each_script_preset<F>(config_json: &mut JsonValue, mut f: F)
+where
+    F: FnMut(&mut JsonValue),
+{
+    if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
+        for script in script_definitions {
+            if let Some(obj) = script.as_object_mut() {
+                if let Some(value) = obj.get_mut("Preset") {
                     f(value);
                 }
             }
@@ -567,5 +584,15 @@ fn v0_17_2_add_argument_placeholders_field_and_arg_requirement(config_json: &mut
         } else {
             json!("Optional")
         };
+    });
+}
+
+fn v0_18_0_add_placeholders_to_presets(config_json: &mut JsonValue) {
+    for_each_script_preset(config_json, |preset| {
+        if let Some(items) = preset["items"].as_array_mut() {
+            for item in items {
+                item["overridden_placeholder_values"] = json!({});
+            }
+        }
     });
 }

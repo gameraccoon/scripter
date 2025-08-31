@@ -163,6 +163,7 @@ pub struct PresetItem {
     // possible overrides
     pub name: Option<String>,
     pub arguments: Option<String>,
+    pub overridden_placeholder_values: std::collections::HashMap<String, String>,
     pub autorerun_count: Option<usize>,
     pub ignore_previous_failures: Option<bool>,
 }
