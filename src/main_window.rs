@@ -1645,9 +1645,7 @@ impl Application for MainWindow {
                             execution.get_log_path().clone()
                         };
 
-                        if let Err(e) = open::that(output_path) {
-                            eprintln!("Failed to open file/folder with default application: {}", e);
-                        }
+                        open::that_in_background(output_path);
                     }
                 }
             }
