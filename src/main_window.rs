@@ -3050,6 +3050,13 @@ fn produce_script_config_edit_content<'a>(
             }
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            parameters.push(
+                edit_button(
+                    "Duplicate preset",
+                    WindowMessage::DuplicateConfigScript(config_script_id),
+                )
+                .into(),
+            );
 
             if config_script_id.edit_mode == config::ConfigEditMode::Local
                 && is_local_config_script(edited_script_idx, &app_config)
@@ -3063,6 +3070,7 @@ fn produce_script_config_edit_content<'a>(
                 );
             }
 
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
                 edit_button(
                     "Remove preset",
