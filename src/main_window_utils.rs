@@ -388,6 +388,68 @@ pub fn try_add_edited_scripts_to_execution_or_start_new(app: &mut MainWindow) {
     }
 }
 
+pub fn populate_local_config_script_reference(
+    app_config: &mut config::AppConfig,
+    script_uid: &config::Guid,
+    original_script_idx: usize,
+) {
+    let Some(local_config) = &mut app_config.local_config_body else {
+        return;
+    };
+
+    // check that the script is not already referenced
+    if local_config
+        .script_definitions
+        .iter()
+        .any(|script| match script {
+            config::ScriptDefinition::ReferenceToShared(reference) => reference.uid == *script_uid,
+            _ => false,
+        })
+    {
+        return;
+    }
+
+    // if the original script was first in the list, add it to the beginning
+    if original_script_idx == 0 {
+        local_config.script_definitions.insert(
+            0,
+            config::ScriptDefinition::ReferenceToShared(config::ReferenceToSharedScript {
+                uid: script_uid.clone(),
+                is_hidden: false,
+            }),
+        );
+        return;
+    }
+
+    // find the script before the original script
+    let previous_script_uid = match &app_config.script_definitions[original_script_idx - 1] {
+        config::ScriptDefinition::Original(script) => script.uid.clone(),
+        config::ScriptDefinition::Preset(preset) => preset.uid.clone(),
+        _ => return,
+    };
+
+    // find insert position right after the reference to the previous script
+    let insert_position = local_config
+        .script_definitions
+        .iter()
+        .position(|script| match script {
+            config::ScriptDefinition::ReferenceToShared(reference) => {
+                reference.uid == previous_script_uid
+            }
+            _ => false,
+        })
+        .unwrap_or(local_config.script_definitions.len() - 1)
+        + 1;
+
+    local_config.script_definitions.insert(
+        insert_position,
+        config::ScriptDefinition::ReferenceToShared(config::ReferenceToSharedScript {
+            uid: script_uid.clone(),
+            is_hidden: false,
+        }),
+    );
+}
+
 pub fn try_add_script_to_execution_or_start_new(app: &mut MainWindow, script_uid: config::Guid) {
     // we can accept this hotkey only if we definitely know what execution we
     // supposed to add it to
@@ -1010,7 +1072,11 @@ pub fn get_top_level_edited_script_idx_by_uuid(
 
     for (idx, script) in script_definitions.iter().enumerate() {
         match script {
-            config::ScriptDefinition::ReferenceToShared(_) => {}
+            config::ScriptDefinition::ReferenceToShared(script) => {
+                if script.uid == *script_uid {
+                    return Some(idx);
+                }
+            }
             config::ScriptDefinition::Original(script) => {
                 if script.uid == *script_uid {
                     return Some(idx);

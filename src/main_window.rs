@@ -601,6 +601,17 @@ impl Application for MainWindow {
                     make_script_copy(script_definition_list[config_script_id.idx].clone());
                 script_definition_list.insert(config_script_id.idx + 1, new_script);
 
+                // if we duplicated a shared script, make a reference to it in the local config
+                if config_script_id.edit_mode == config::ConfigEditMode::Shared
+                    && self.app_config.local_config_body.is_some()
+                {
+                    populate_local_config_script_reference(
+                        &mut self.app_config,
+                        &new_script_uuid,
+                        config_script_id.idx + 1,
+                    );
+                }
+
                 let idx =
                     get_top_level_edited_script_idx_by_uuid(&mut self.app_config, &new_script_uuid);
 
@@ -2905,6 +2916,7 @@ fn produce_script_config_edit_content<'a>(
                 );
             }
 
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
                 edit_button(
                     "Remove script",
@@ -2963,8 +2975,15 @@ fn produce_script_config_edit_content<'a>(
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
                 edit_button(
-                    "Edit as a copy",
+                    "Make local copy",
                     WindowMessage::CreateCopyOfSharedScript(edited_script_idx),
+                )
+                .into(),
+            );
+            parameters.push(
+                edit_button(
+                    "Duplicate shared script",
+                    WindowMessage::DuplicateConfigScript(original_script_id),
                 )
                 .into(),
             );
@@ -2972,7 +2991,7 @@ fn produce_script_config_edit_content<'a>(
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
             parameters.push(
                 edit_button(
-                    "Remove original script",
+                    "Remove shared script",
                     WindowMessage::RemoveConfigScript(original_script_id),
                 )
                 .style(theme::Button::Destructive)
