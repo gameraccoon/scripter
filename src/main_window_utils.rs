@@ -972,24 +972,59 @@ pub fn add_script_to_config(
     }
 }
 
-pub fn make_script_copy(script: config::ScriptDefinition) -> config::ScriptDefinition {
+pub fn make_script_copy(
+    script: config::ScriptDefinition,
+) -> (config::ScriptDefinition, config::Guid) {
     match script {
-        config::ScriptDefinition::ReferenceToShared(_) => script,
+        config::ScriptDefinition::ReferenceToShared(_) => (script, config::GUID_NULL),
         config::ScriptDefinition::Preset(preset) => {
-            config::ScriptDefinition::Preset(config::ScriptPreset {
-                uid: config::Guid::new(),
-                name: format!("{} (copy)", preset.name),
-                ..preset
-            })
+            let new_uid = config::Guid::new();
+            (
+                config::ScriptDefinition::Preset(config::ScriptPreset {
+                    uid: new_uid.clone(),
+                    name: format!("{} (copy)", preset.name),
+                    ..preset
+                }),
+                new_uid,
+            )
         }
         config::ScriptDefinition::Original(script) => {
-            config::ScriptDefinition::Original(config::OriginalScriptDefinition {
-                uid: config::Guid::new(),
-                name: format!("{} (copy)", script.name),
-                ..script
-            })
+            let new_uid = config::Guid::new();
+            (
+                config::ScriptDefinition::Original(config::OriginalScriptDefinition {
+                    uid: new_uid.clone(),
+                    name: format!("{} (copy)", script.name),
+                    ..script
+                }),
+                new_uid,
+            )
         }
     }
+}
+
+pub fn get_top_level_edited_script_idx_by_uuid(
+    app_config: &mut config::AppConfig,
+    script_uid: &config::Guid,
+) -> Option<usize> {
+    let script_definitions = config::get_main_script_definition_list(app_config);
+
+    for (idx, script) in script_definitions.iter().enumerate() {
+        match script {
+            config::ScriptDefinition::ReferenceToShared(_) => {}
+            config::ScriptDefinition::Original(script) => {
+                if script.uid == *script_uid {
+                    return Some(idx);
+                }
+            }
+            config::ScriptDefinition::Preset(preset) => {
+                if preset.uid == *script_uid {
+                    return Some(idx);
+                }
+            }
+        };
+    }
+
+    None
 }
 
 pub fn remove_config_script(app: &mut MainWindow, config_script_id: ConfigScriptId) {

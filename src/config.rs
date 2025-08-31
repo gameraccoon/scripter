@@ -1073,6 +1073,7 @@ pub fn get_rewritable_config(config: &AppConfig, edit_mode: ConfigEditMode) -> &
             if let Some(local_config) = &config.local_config_body {
                 &local_config.rewritable
             } else {
+                eprintln!("We are requested to get local config when no local config is present");
                 &config.rewritable
             }
         }
@@ -1089,9 +1090,18 @@ pub fn get_rewritable_config_mut(
             if let Some(local_config) = &mut config.local_config_body {
                 &mut local_config.rewritable
             } else {
+                eprintln!("We are requested to get local config when no local config is present");
                 &mut config.rewritable
             }
         }
+    }
+}
+
+pub fn get_main_script_definition_list(config: &AppConfig) -> &Vec<ScriptDefinition> {
+    if let Some(local_config) = &config.local_config_body {
+        &local_config.script_definitions
+    } else {
+        &config.script_definitions
     }
 }
 
@@ -1105,6 +1115,7 @@ pub fn get_script_definition_list(
             if let Some(local_config) = &config.local_config_body {
                 &local_config.script_definitions
             } else {
+                eprintln!("We are requested to get local config when no local config is present");
                 &config.script_definitions
             }
         }
@@ -1121,6 +1132,7 @@ pub fn get_script_definition_list_mut(
             if let Some(local_config) = &mut config.local_config_body {
                 &mut local_config.script_definitions
             } else {
+                eprintln!("We are requested to get local config when no local config is present");
                 &mut config.script_definitions
             }
         }

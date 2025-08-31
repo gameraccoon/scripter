@@ -207,7 +207,7 @@ pub(crate) enum WindowMessage {
     Tick(Instant),
     OpenScriptEditing(usize),
     CloseScriptEditing,
-    DuplicateConfigScript(usize),
+    DuplicateConfigScript(ConfigScriptId),
     RemoveConfigScript(ConfigScriptId),
     RemoveExecutionListScript(usize),
     AddScriptToConfig,
@@ -591,30 +591,27 @@ impl Application for MainWindow {
             WindowMessage::CloseScriptEditing => {
                 clean_script_selection(&mut self.window_state.cursor_script);
             }
-            WindowMessage::DuplicateConfigScript(script_idx) => {
-                match &self.edit_data.window_edit_data {
-                    Some(_) => {
-                        if let Some(config) = self.app_config.local_config_body.as_mut() {
-                            config.script_definitions.insert(
-                                script_idx + 1,
-                                make_script_copy(config.script_definitions[script_idx].clone()),
-                            );
-                        }
-                    }
-                    _ => {
-                        self.app_config.script_definitions.insert(
-                            script_idx + 1,
-                            make_script_copy(
-                                self.app_config.script_definitions[script_idx].clone(),
-                            ),
-                        );
-                    }
-                }
-                if let Some(script) = &mut self.window_state.cursor_script {
-                    script.idx = script_idx + 1;
-                    script.script_type = EditScriptType::ScriptConfig;
+            WindowMessage::DuplicateConfigScript(config_script_id) => {
+                let script_definition_list = config::get_script_definition_list_mut(
+                    &mut self.app_config,
+                    config_script_id.edit_mode,
+                );
+
+                let (new_script, new_script_uuid) =
+                    make_script_copy(script_definition_list[config_script_id.idx].clone());
+                script_definition_list.insert(config_script_id.idx + 1, new_script);
+
+                let idx =
+                    get_top_level_edited_script_idx_by_uuid(&mut self.app_config, &new_script_uuid);
+
+                if let Some(idx) = idx {
+                    self.window_state.cursor_script = Some(EditScriptId {
+                        idx,
+                        script_type: EditScriptType::ScriptConfig,
+                    });
                 }
                 update_config_cache(self);
+                self.edit_data.is_dirty = true;
             }
             WindowMessage::RemoveConfigScript(config_script_id) => {
                 remove_config_script(self, config_script_id)
@@ -2891,7 +2888,7 @@ fn produce_script_config_edit_content<'a>(
             parameters.push(
                 edit_button(
                     "Duplicate script",
-                    WindowMessage::DuplicateConfigScript(edited_script_idx),
+                    WindowMessage::DuplicateConfigScript(config_script_id),
                 )
                 .into(),
             );
