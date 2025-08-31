@@ -1323,7 +1323,10 @@ pub fn clear_execution_scripts(app: &mut MainWindow) {
             app.execution_manager
                 .get_started_executions()
                 .get(execution_id)
-                .filter(|execution| execution.has_finished_execution())
+                .filter(|execution| {
+                    execution.has_finished_execution()
+                        && !execution.is_waiting_execution_to_finish()
+                })
                 .map(|_| execution_id)
         });
 
