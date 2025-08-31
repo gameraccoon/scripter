@@ -229,6 +229,8 @@ pub(crate) enum WindowMessage {
     RemoveArgumentPlaceholder(ConfigScriptId, usize),
     EditArgumentPlaceholderName(ConfigScriptId, usize, String),
     EditArgumentPlaceholderPlaceholder(ConfigScriptId, usize, String),
+    EditArgumentPlaceholderHint(ConfigScriptId, usize, String),
+    ToggleArgumentPlaceholderIsRequired(ConfigScriptId, usize, bool),
     EditArgumentPlaceholderValueForConfig(ConfigScriptId, usize, String),
     EditArgumentPlaceholderValueForScriptExecution(usize, String),
     EditAutorerunCountForConfig(ConfigScriptId, String),
@@ -768,6 +770,8 @@ impl Application for MainWindow {
                             name: String::new(),
                             placeholder: String::new(),
                             value: String::new(),
+                            hint: String::new(),
+                            is_required: false,
                         });
                 });
             }
@@ -793,6 +797,24 @@ impl Application for MainWindow {
                 apply_config_script_edit(self, config_script_id, move |script| {
                     if let Some(placeholder) = script.argument_placeholders.get_mut(index) {
                         placeholder.placeholder = new_placeholder;
+                    }
+                });
+            }
+            WindowMessage::ToggleArgumentPlaceholderIsRequired(
+                config_script_id,
+                index,
+                is_required,
+            ) => {
+                apply_config_script_edit(self, config_script_id, move |script| {
+                    if let Some(placeholder) = script.argument_placeholders.get_mut(index) {
+                        placeholder.is_required = is_required;
+                    }
+                });
+            }
+            WindowMessage::EditArgumentPlaceholderHint(config_script_id, index, new_hint) => {
+                apply_config_script_edit(self, config_script_id, move |script| {
+                    if let Some(placeholder) = script.argument_placeholders.get_mut(index) {
+                        placeholder.hint = new_hint;
                     }
                 });
             }
@@ -3106,11 +3128,15 @@ fn produce_script_to_execute_edit_content<'a>(
                 .on_input(move |new_value| {
                     WindowMessage::EditArgumentsForScriptExecution(new_value)
                 })
-                .style(if is_original_script_missing_arguments(&script) {
-                    theme::TextInput::Custom(Box::new(style::InvalidInputStyleSheet))
-                } else {
-                    theme::TextInput::Default
-                })
+                .style(
+                    if script.arguments_requirement == config::ArgumentRequirement::Required
+                        && script.arguments.is_empty()
+                    {
+                        theme::TextInput::Custom(Box::new(style::InvalidInputStyleSheet))
+                    } else {
+                        theme::TextInput::Default
+                    },
+                )
                 .padding(5)
                 .id(ARGUMENTS_INPUT_ID.clone())
                 .into(),

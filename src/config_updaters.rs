@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.18.0";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.18.0";
+pub static LATEST_CONFIG_VERSION: &str = "0.18.1";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.18.1";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -138,6 +138,8 @@ fn register_config_updaters() -> JsonFileUpdater {
         v0_17_2_add_argument_placeholders_field_and_arg_requirement,
     );
     json_config_updater.add_update_function("0.18.0", v0_18_0_add_placeholders_to_presets);
+    json_config_updater
+        .add_update_function("0.18.1", v0_18_1_added_placeholder_hints_and_is_required);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -218,6 +220,8 @@ fn register_local_config_updaters() -> JsonFileUpdater {
         v0_17_2_add_argument_placeholders_field_and_arg_requirement,
     );
     json_config_updater.add_update_function("0.18.0", v0_18_0_add_placeholders_to_presets);
+    json_config_updater
+        .add_update_function("0.18.1", v0_18_1_added_placeholder_hints_and_is_required);
 
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
@@ -592,6 +596,18 @@ fn v0_18_0_add_placeholders_to_presets(config_json: &mut JsonValue) {
         if let Some(items) = preset["items"].as_array_mut() {
             for item in items {
                 item["overridden_placeholder_values"] = json!({});
+            }
+        }
+    });
+}
+
+fn v0_18_1_added_placeholder_hints_and_is_required(config_json: &mut JsonValue) {
+    for_each_script_original_definition_post_0_10_0(config_json, |script| {
+        let argument_placeholders = &mut script["argument_placeholders"].as_array_mut();
+        if let Some(argument_placeholders) = argument_placeholders {
+            for placeholder in argument_placeholders.iter_mut() {
+                placeholder["hint"] = json!("\"\"");
+                placeholder["is_required"] = json!(false);
             }
         }
     });

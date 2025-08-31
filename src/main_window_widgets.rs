@@ -3,12 +3,12 @@
 
 use crate::main_window::*;
 use crate::main_window_utils::*;
-use crate::{config, keybind_editing};
+use crate::{config, keybind_editing, style};
 use iced::advanced::image::Handle;
 use iced::widget::text::LineHeight;
 use iced::widget::{
-    button, horizontal_rule, image, pick_list, row, text, text_input, tooltip, Button, Column,
-    Space,
+    button, checkbox, horizontal_rule, image, pick_list, row, text, text_input, tooltip, Button,
+    Column, Space,
 };
 use iced::{alignment, theme, Alignment, Element, Length, Theme};
 
@@ -447,6 +447,21 @@ pub fn populate_argument_placeholders_config_content<'a>(
                 .into(),
         );
         content.push(
+            text_input("Hint", &argument_placeholder.hint)
+                .on_input(move |new_value| {
+                    WindowMessage::EditArgumentPlaceholderHint(config_script_id, i, new_value)
+                })
+                .padding(5)
+                .into(),
+        );
+        content.push(
+            checkbox("Is required", argument_placeholder.is_required)
+                .on_toggle(move |val| {
+                    WindowMessage::ToggleArgumentPlaceholderIsRequired(config_script_id, i, val)
+                })
+                .into(),
+        );
+        content.push(
             button("Remove Placeholder")
                 .on_press(WindowMessage::RemoveArgumentPlaceholder(
                     config_script_id,
@@ -483,11 +498,18 @@ pub fn populate_argument_placeholders_content<'a>(
                 .into(),
         );
         content.push(
-            text_input("Value", &argument_placeholder.value)
+            text_input(&argument_placeholder.hint, &argument_placeholder.value)
                 .on_input(move |new_value| {
                     WindowMessage::EditArgumentPlaceholderValueForScriptExecution(i, new_value)
                 })
                 .padding(5)
+                .style(
+                    if argument_placeholder.is_required && argument_placeholder.value.is_empty() {
+                        theme::TextInput::Custom(Box::new(style::InvalidInputStyleSheet))
+                    } else {
+                        theme::TextInput::Default
+                    },
+                )
                 .into(),
         );
     }

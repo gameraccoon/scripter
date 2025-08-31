@@ -129,6 +129,8 @@ pub struct ArgumentPlaceholder {
     pub placeholder: String,
     pub name: String,
     pub value: String,
+    pub hint: String,
+    pub is_required: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
