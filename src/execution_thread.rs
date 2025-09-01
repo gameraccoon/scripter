@@ -170,24 +170,6 @@ pub fn run_scripts(
 
                 let command_line = get_script_with_arguments(&script, &path_caches);
 
-                {
-                    let mut recent_logs = recent_logs.lock().unwrap(); // it is fine to panic on a poisoned mutex
-                    recent_logs.push(OutputLine {
-                        text: format!(
-                            "Running \"{}\"{}\n[{}]",
-                            script.name,
-                            if script_state.retry_count > 0 {
-                                format!(" retry #{}", script_state.retry_count)
-                            } else {
-                                "".to_string()
-                            },
-                            command_line,
-                        ),
-                        output_type: OutputType::Event,
-                        timestamp: chrono::Local::now(),
-                    });
-                }
-
                 let _ = std::fs::create_dir_all(&log_directory);
 
                 let output_file = std::fs::File::create(file_utils::get_script_output_path(
@@ -208,22 +190,57 @@ pub fn run_scripts(
                     .clone()
                     .unwrap_or(config::get_default_executor());
 
-                if executor.is_empty() {
+                {
                     let mut recent_logs = recent_logs.lock().unwrap(); // it is fine to panic on a poisoned mutex
+
+                    if executor.is_empty() {
+                        recent_logs.push(OutputLine {
+                            text: "Empty executor is not supported".to_string(),
+                            output_type: OutputType::Error,
+                            timestamp: chrono::Local::now(),
+                        });
+                        script_state.result = ScriptResultStatus::Failed;
+                        script_state.finish_time = Some(Instant::now());
+                        send_script_execution_status(
+                            &progress_sender,
+                            script_idx,
+                            script_state.clone(),
+                        );
+                        has_previous_script_failed = true;
+                        break 'retry_loop;
+                    }
+
                     recent_logs.push(OutputLine {
-                        text: "Empty executor is not supported".to_string(),
-                        output_type: OutputType::Error,
+                        text: format!(
+                            "Running \"{}\"{}\n[{}][{}]{}",
+                            script.name,
+                            if script_state.retry_count > 0 {
+                                format!(" retry #{}", script_state.retry_count)
+                            } else {
+                                "".to_string()
+                            },
+                            executor.join("]["),
+                            command_line,
+                            if env_vars.is_empty() {
+                                "".to_string()
+                            } else {
+                                format!(
+                                    " env: {}",
+                                    env_vars
+                                        .iter()
+                                        .map(|(k, v)| format!(
+                                            "{}={}",
+                                            k.to_string_lossy(),
+                                            v.to_string_lossy()
+                                        ))
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                )
+                            }
+                        ),
+                        output_type: OutputType::Event,
                         timestamp: chrono::Local::now(),
                     });
-                    script_state.result = ScriptResultStatus::Failed;
-                    script_state.finish_time = Some(Instant::now());
-                    send_script_execution_status(
-                        &progress_sender,
-                        script_idx,
-                        script_state.clone(),
-                    );
-                    has_previous_script_failed = true;
-                    break 'retry_loop;
                 }
 
                 let mut command = std::process::Command::new(&executor[0]);
