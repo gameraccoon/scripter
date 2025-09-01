@@ -1282,116 +1282,107 @@ impl Application for MainWindow {
                 };
 
                 for script in self.execution_manager.get_edited_scripts() {
-                    match script {
-                        config::ScriptDefinition::Original(script) => {
-                            let original_script = config::get_original_script_definition_by_uid(
-                                &self.app_config,
-                                &script.uid,
-                            );
+                    let original_script = config::get_original_script_definition_by_uid(
+                        &self.app_config,
+                        &script.uid,
+                    );
 
-                            let original_script =
-                                if let Some(original_script_tuple) = original_script {
-                                    match original_script_tuple.0 {
-                                        config::ScriptDefinition::ReferenceToShared(reference) => {
-                                            config::get_original_script_definition_by_uid(
-                                                &self.app_config,
-                                                &reference.uid,
-                                            )
-                                        }
-                                        _ => Some(original_script_tuple),
-                                    }
-                                } else {
-                                    None
-                                };
-
-                            let original_script =
-                                if let Some((original_script, _idx)) = original_script {
-                                    match original_script {
-                                        config::ScriptDefinition::Original(script) => Some(script),
-                                        _ => None,
-                                    }
-                                } else {
-                                    None
-                                };
-
-                            let name = if let Some(original_script) = &original_script {
-                                if original_script.name == script.name {
-                                    None
-                                } else {
-                                    Some(script.name.clone())
-                                }
-                            } else {
-                                Some(script.name.clone())
-                            };
-
-                            let arguments = if let Some(original_script) = &original_script {
-                                if original_script.arguments == script.arguments {
-                                    None
-                                } else {
-                                    Some(script.arguments.clone())
-                                }
-                            } else {
-                                Some(script.arguments.clone())
-                            };
-
-                            let mut overridden_placeholder_values = HashMap::new();
-                            for placeholder in &script.argument_placeholders {
-                                let original_placeholder_value =
-                                    original_script.as_ref().and_then(|original_script| {
-                                        original_script
-                                            .argument_placeholders
-                                            .iter()
-                                            .find(|placeholder| {
-                                                placeholder.placeholder == placeholder.placeholder
-                                            })
-                                            .map(|placeholder| placeholder.value.clone())
-                                    });
-
-                                if let Some(original_placeholder_value) = original_placeholder_value
-                                {
-                                    if original_placeholder_value != placeholder.value {
-                                        overridden_placeholder_values.insert(
-                                            placeholder.placeholder.clone(),
-                                            placeholder.value.clone(),
-                                        );
-                                    }
-                                }
+                    let original_script = if let Some(original_script_tuple) = original_script {
+                        match original_script_tuple.0 {
+                            config::ScriptDefinition::ReferenceToShared(reference) => {
+                                config::get_original_script_definition_by_uid(
+                                    &self.app_config,
+                                    &reference.uid,
+                                )
                             }
-
-                            let autorerun_count = if let Some(original_script) = &original_script {
-                                if original_script.autorerun_count == script.autorerun_count {
-                                    None
-                                } else {
-                                    Some(script.autorerun_count)
-                                }
-                            } else {
-                                Some(script.autorerun_count)
-                            };
-
-                            let ignore_previous_failures =
-                                if let Some(original_script) = original_script {
-                                    if original_script.ignore_previous_failures
-                                        == script.ignore_previous_failures
-                                    {
-                                        None
-                                    } else {
-                                        Some(script.ignore_previous_failures)
-                                    }
-                                } else {
-                                    Some(script.ignore_previous_failures)
-                                };
-
-                            preset.items.push(config::PresetItem {
-                                uid: script.uid.clone(),
-                                name,
-                                arguments,
-                                overridden_placeholder_values,
-                                autorerun_count,
-                                ignore_previous_failures,
-                            });
+                            _ => Some(original_script_tuple),
                         }
-                        _ => {}
+                    } else {
+                        None
+                    };
+
+                    let original_script = if let Some((original_script, _idx)) = original_script {
+                        match original_script {
+                            config::ScriptDefinition::Original(script) => Some(script),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+
+                    let name = if let Some(original_script) = &original_script {
+                        if original_script.name == script.name {
+                            None
+                        } else {
+                            Some(script.name.clone())
+                        }
+                    } else {
+                        Some(script.name.clone())
+                    };
+
+                    let arguments = if let Some(original_script) = &original_script {
+                        if original_script.arguments == script.arguments {
+                            None
+                        } else {
+                            Some(script.arguments.clone())
+                        }
+                    } else {
+                        Some(script.arguments.clone())
+                    };
+
+                    let mut overridden_placeholder_values = HashMap::new();
+                    for placeholder in &script.argument_placeholders {
+                        let original_placeholder_value =
+                            original_script.as_ref().and_then(|original_script| {
+                                original_script
+                                    .argument_placeholders
+                                    .iter()
+                                    .find(|placeholder| {
+                                        placeholder.placeholder == placeholder.placeholder
+                                    })
+                                    .map(|placeholder| placeholder.value.clone())
+                            });
+
+                        if let Some(original_placeholder_value) = original_placeholder_value {
+                            if original_placeholder_value != placeholder.value {
+                                overridden_placeholder_values.insert(
+                                    placeholder.placeholder.clone(),
+                                    placeholder.value.clone(),
+                                );
+                            }
+                        }
                     }
+
+                    let autorerun_count = if let Some(original_script) = &original_script {
+                        if original_script.autorerun_count == script.autorerun_count {
+                            None
+                        } else {
+                            Some(script.autorerun_count)
+                        }
+                    } else {
+                        Some(script.autorerun_count)
+                    };
+
+                    let ignore_previous_failures = if let Some(original_script) = original_script {
+                        if original_script.ignore_previous_failures
+                            == script.ignore_previous_failures
+                        {
+                            None
+                        } else {
+                            Some(script.ignore_previous_failures)
+                        }
+                    } else {
+                        Some(script.ignore_previous_failures)
+                    };
+
+                    preset.items.push(config::PresetItem {
+                        uid: script.uid.clone(),
+                        name,
+                        arguments,
+                        overridden_placeholder_values,
+                        autorerun_count,
+                        ignore_previous_failures,
+                    });
                 }
 
                 add_script_to_config(
@@ -1620,13 +1611,9 @@ impl Application for MainWindow {
                     {
                         let should_open_folder = record.status.retry_count > 0;
                         let output_path = if should_open_folder {
-                            let script_name = match &record.script {
-                                config::ScriptDefinition::Original(script) => script.name.clone(),
-                                _ => "(error)".to_string(),
-                            };
                             file_utils::get_script_output_path(
                                 execution.get_log_path().clone(),
-                                &script_name,
+                                &record.script.name.clone(),
                                 script_index as isize,
                                 record.status.retry_count,
                             )
@@ -2231,16 +2218,13 @@ fn produce_execution_list_content<'a>(
         let scripts = execution.get_scheduled_scripts_cache();
         for i in 0..scripts.len() {
             let record = &scripts[i];
-            let config::ScriptDefinition::Original(script) = &record.script else {
-                panic!("execution list definition is not Original");
-            };
             let script_status = &record.status;
-            let script_name = &script.name;
+            let script_name = &record.script.name;
 
             let repeat_text = if script_status.retry_count > 0 {
                 format!(
                     " [{}/{}]",
-                    script_status.retry_count, script.autorerun_count
+                    script_status.retry_count, record.script.autorerun_count
                 )
             } else {
                 String::new()
@@ -2325,9 +2309,9 @@ fn produce_execution_list_content<'a>(
                 .into(),
             );
             row_data.push(Space::with_width(4).into());
-            if !script.icon.path.is_empty() {
+            if !record.script.icon.path.is_empty() {
                 row_data.push(
-                    image(config::get_full_path(path_caches, &script.icon))
+                    image(config::get_full_path(path_caches, &record.script.icon))
                         .width(22)
                         .height(22)
                         .into(),
@@ -2481,9 +2465,6 @@ fn produce_execution_list_content<'a>(
             .iter()
             .enumerate()
             .map(|(i, script)| {
-                let config::ScriptDefinition::Original(script) = script else {
-                    panic!("execution list definition is not Original");
-                };
                 let script_name = &script.name;
 
                 let is_selected = match &window_state.cursor_script {
@@ -2596,7 +2577,7 @@ fn produce_execution_list_content<'a>(
         let have_scripts_missing_arguments = execution_lists
             .get_edited_scripts()
             .iter()
-            .any(|script| is_script_missing_arguments(script));
+            .any(|script| is_original_script_missing_arguments(script));
 
         let mut execution_buttons: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
             Vec::new();
@@ -2870,11 +2851,11 @@ fn produce_script_edit_content<'a>(
         )
     } else {
         match execution_lists.get_edited_scripts().get(edited_script.idx) {
-            Some(config::ScriptDefinition::Original(script)) => {
+            Some(script) => {
                 produce_script_to_execute_edit_content(visual_caches, edited_script.idx, &script)
             }
             _ => {
-                eprintln!("Only original scripts expected in the edited execution list");
+                eprintln!("Could not find script with index {}", edited_script.idx);
                 Column::new()
             }
         }

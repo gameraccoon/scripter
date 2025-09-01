@@ -54,11 +54,11 @@ pub struct Execution {
 
 pub struct ParallelExecutionManager {
     started_executions: SparseSet<Execution>,
-    edited_scripts: Vec<config::ScriptDefinition>,
+    edited_scripts: Vec<config::OriginalScriptDefinition>,
 }
 
 pub struct ScheduledScriptCacheRecord {
-    pub script: config::ScriptDefinition,
+    pub script: config::OriginalScriptDefinition,
     pub status: execution_thread::ScriptExecutionStatus,
 }
 
@@ -89,7 +89,7 @@ impl Execution {
     pub fn execute_scripts(
         &mut self,
         app_config: &config::AppConfig,
-        scripts_to_run: Vec<config::ScriptDefinition>,
+        scripts_to_run: Vec<config::OriginalScriptDefinition>,
     ) {
         if scripts_to_run.is_empty() {
             return;
@@ -379,7 +379,9 @@ impl Execution {
         None
     }
 
-    fn consume_disconnected_and_not_started_scripts(&mut self) -> Vec<config::ScriptDefinition> {
+    fn consume_disconnected_and_not_started_scripts(
+        &mut self,
+    ) -> Vec<config::OriginalScriptDefinition> {
         let mut result = Vec::new();
 
         if self.current_execution_list_index >= self.execution_lists.len() {
@@ -454,7 +456,7 @@ impl ParallelExecutionManager {
         }
     }
 
-    pub fn add_script_to_edited_list(&mut self, script: config::ScriptDefinition) {
+    pub fn add_script_to_edited_list(&mut self, script: config::OriginalScriptDefinition) {
         execution_thread::add_script_to_execution(&mut self.get_edited_scripts_mut(), script);
     }
 
@@ -462,15 +464,15 @@ impl ParallelExecutionManager {
         execution_thread::remove_script_from_execution(&mut self.get_edited_scripts_mut(), idx);
     }
 
-    pub fn get_edited_scripts(&self) -> &Vec<config::ScriptDefinition> {
+    pub fn get_edited_scripts(&self) -> &Vec<config::OriginalScriptDefinition> {
         &self.edited_scripts
     }
 
-    pub fn get_edited_scripts_mut(&mut self) -> &mut Vec<config::ScriptDefinition> {
+    pub fn get_edited_scripts_mut(&mut self) -> &mut Vec<config::OriginalScriptDefinition> {
         &mut self.edited_scripts
     }
 
-    pub fn consume_edited_scripts(&mut self) -> Vec<config::ScriptDefinition> {
+    pub fn consume_edited_scripts(&mut self) -> Vec<config::OriginalScriptDefinition> {
         std::mem::replace(&mut self.edited_scripts, Vec::new())
     }
 
@@ -485,7 +487,7 @@ impl ParallelExecutionManager {
     pub fn start_new_execution(
         &mut self,
         app_config: &config::AppConfig,
-        scripts_to_run: Vec<config::ScriptDefinition>,
+        scripts_to_run: Vec<config::OriginalScriptDefinition>,
     ) -> ExecutionId {
         let index = self.started_executions.push(Execution::new());
         let new_execution = self.started_executions.get_mut(index).unwrap();
@@ -508,7 +510,7 @@ impl ParallelExecutionManager {
         &mut self,
         app_config: &config::AppConfig,
         execution_index: ExecutionId,
-        scripts_to_add: Vec<config::ScriptDefinition>,
+        scripts_to_add: Vec<config::OriginalScriptDefinition>,
     ) {
         if let Some(execution) = self.started_executions.get_mut(execution_index) {
             execution.execute_scripts(app_config, scripts_to_add);

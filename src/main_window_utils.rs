@@ -38,13 +38,6 @@ pub fn is_local_config_script(script_idx: usize, app_config: &config::AppConfig)
     }
 }
 
-pub fn is_script_missing_arguments(script: &config::ScriptDefinition) -> bool {
-    match script {
-        config::ScriptDefinition::Original(script) => is_original_script_missing_arguments(script),
-        _ => false,
-    }
-}
-
 pub fn is_original_script_missing_arguments(script: &config::OriginalScriptDefinition) -> bool {
     if script.arguments_requirement == config::ArgumentRequirement::Required
         && script.arguments.is_empty()
@@ -125,7 +118,7 @@ fn get_script_definition_mut(
 pub fn get_resulting_scripts_from_guid(
     app_config: &config::AppConfig,
     script_uid: config::Guid,
-) -> Vec<config::ScriptDefinition> {
+) -> Vec<config::OriginalScriptDefinition> {
     let original_script = config::get_original_script_definition_by_uid(&app_config, &script_uid);
 
     let (original_script, _idx) = if let Some(original_script) = original_script {
@@ -136,8 +129,8 @@ pub fn get_resulting_scripts_from_guid(
 
     match original_script {
         config::ScriptDefinition::ReferenceToShared(_) => Vec::new(),
-        config::ScriptDefinition::Original(_) => {
-            vec![original_script.clone()]
+        config::ScriptDefinition::Original(script) => {
+            vec![script.clone()]
         }
         config::ScriptDefinition::Preset(preset) => {
             let resulting_scripts = preset
@@ -155,9 +148,8 @@ pub fn get_resulting_scripts_from_guid(
                 .filter(|(optional_definition, _preset_item)| optional_definition.is_some())
                 .map(|(optional_definition, preset_item)| {
                     let (new_script, _idx) = optional_definition.unwrap();
-                    let mut new_script = new_script.clone();
-                    match &mut new_script {
-                        config::ScriptDefinition::Original(script) => {
+                    let script = match new_script.clone() {
+                        config::ScriptDefinition::Original(mut script) => {
                             if let Some(name) = &preset_item.name {
                                 script.name = name.clone();
                             }
@@ -183,11 +175,14 @@ pub fn get_resulting_scripts_from_guid(
                             {
                                 script.ignore_previous_failures = ignore_previous_failures;
                             }
+                            script
                         }
-                        _ => {}
+                        _ => {
+                            panic!("Preset shouldn't contain presets or references");
+                        }
                     };
 
-                    new_script
+                    script
                 })
                 .collect();
 
@@ -867,7 +862,7 @@ pub fn start_new_execution_from_edited_scripts(app: &mut MainWindow) {
         .execution_manager
         .get_edited_scripts()
         .iter()
-        .any(|script| is_script_missing_arguments(script))
+        .any(|script| is_original_script_missing_arguments(script))
     {
         return;
     }
@@ -879,11 +874,11 @@ pub fn start_new_execution_from_edited_scripts(app: &mut MainWindow) {
 
 pub fn start_new_execution_from_provided_scripts(
     app: &mut MainWindow,
-    scripts: Vec<config::ScriptDefinition>,
+    scripts: Vec<config::OriginalScriptDefinition>,
 ) {
     if scripts
         .iter()
-        .any(|script| is_script_missing_arguments(script))
+        .any(|script| is_original_script_missing_arguments(script))
     {
         eprintln!("Some scripts are missing arguments");
         return;
@@ -910,7 +905,7 @@ pub fn add_edited_scripts_to_started_execution(
         .execution_manager
         .get_edited_scripts()
         .iter()
-        .any(|script| is_script_missing_arguments(script))
+        .any(|script| is_original_script_missing_arguments(script))
     {
         return;
     }
@@ -1104,12 +1099,44 @@ fn add_script_to_local_config(
 pub fn select_edited_script(app: &mut MainWindow, config_script_id: ConfigScriptId) {
     set_selected_script(
         &mut app.window_state.cursor_script,
-        &app.execution_manager.get_edited_scripts(),
-        &config::get_script_definition_list(&app.app_config, config_script_id.edit_mode),
-        &mut app.visual_caches,
         config_script_id.idx,
         EditScriptType::ScriptConfig,
     );
+
+    if let Some(script) =
+        &config::get_script_definition_list(&app.app_config, config_script_id.edit_mode)
+            .get(config_script_id.idx)
+    {
+        match script {
+            config::ScriptDefinition::Original(script) => {
+                app.visual_caches.autorerun_count = script.autorerun_count.to_string();
+            }
+            config::ScriptDefinition::ReferenceToShared(reference) => {
+                let Some((script, _idx)) =
+                    config::get_original_script_definition_by_uid(&app.app_config, &reference.uid)
+                else {
+                    app.visual_caches.autorerun_count = "Error 1".to_string();
+                    return;
+                };
+
+                match script {
+                    config::ScriptDefinition::Original(script) => {
+                        app.visual_caches.autorerun_count = script.autorerun_count.to_string();
+                    }
+                    config::ScriptDefinition::ReferenceToShared(_) => {
+                        app.visual_caches.autorerun_count = "Error 2".to_string();
+                    }
+                    config::ScriptDefinition::Preset(_) => {
+                        app.visual_caches.autorerun_count = "Error 3".to_string();
+                    }
+                }
+            }
+            config::ScriptDefinition::Preset(_) => {
+                app.visual_caches.autorerun_count = "Error 4".to_string();
+            }
+        }
+    }
+
     if let Some(window_edit_data) = &mut app.edit_data.window_edit_data {
         window_edit_data.settings_edit_mode = None;
     }
@@ -1118,12 +1145,13 @@ pub fn select_edited_script(app: &mut MainWindow, config_script_id: ConfigScript
 pub fn select_execution_script(app: &mut MainWindow, script_idx: usize) {
     set_selected_script(
         &mut app.window_state.cursor_script,
-        &app.execution_manager.get_edited_scripts(),
-        &app.execution_manager.get_edited_scripts(),
-        &mut app.visual_caches,
         script_idx,
         EditScriptType::ExecutionList,
     );
+
+    if let Some(script) = &app.execution_manager.get_edited_scripts().get(script_idx) {
+        app.visual_caches.autorerun_count = script.autorerun_count.to_string();
+    }
 }
 
 fn select_script_by_type(
@@ -1139,9 +1167,6 @@ fn select_script_by_type(
 
 fn set_selected_script(
     currently_edited_script: &mut Option<EditScriptId>,
-    scripts_to_run: &Vec<config::ScriptDefinition>,
-    script_definitions: &Vec<config::ScriptDefinition>,
-    visual_caches: &mut VisualCaches,
     script_idx: usize,
     script_type: EditScriptType,
 ) {
@@ -1149,27 +1174,6 @@ fn set_selected_script(
         idx: script_idx,
         script_type: script_type.clone(),
     });
-
-    // get autorerun count text from value
-    match &script_type {
-        EditScriptType::ScriptConfig => {
-            if let Some(script) = &script_definitions.get(script_idx) {
-                match script {
-                    config::ScriptDefinition::Original(script) => {
-                        visual_caches.autorerun_count = script.autorerun_count.to_string();
-                    }
-                    _ => {}
-                }
-            }
-        }
-        EditScriptType::ExecutionList => {
-            if let Some(config::ScriptDefinition::Original(script)) =
-                &scripts_to_run.get(script_idx)
-            {
-                visual_caches.autorerun_count = script.autorerun_count.to_string();
-            }
-        }
-    };
 }
 
 pub fn clean_script_selection(currently_edited_script: &mut Option<EditScriptId>) {
@@ -1295,7 +1299,7 @@ pub fn apply_execution_script_edit(
         .get_edited_scripts_mut()
         .get_mut(script_idx)
     {
-        Some(config::ScriptDefinition::Original(script)) => {
+        Some(script) => {
             edit_fn(script);
         }
         _ => {}
@@ -1417,10 +1421,7 @@ pub fn should_autoclean_on_success(
         return execution
             .get_scheduled_scripts_cache()
             .iter()
-            .all(|record| match &record.script {
-                config::ScriptDefinition::Original(script) => script.autoclean_on_success,
-                _ => false,
-            });
+            .all(|record| record.script.autoclean_on_success);
     }
 
     false

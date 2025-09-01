@@ -54,7 +54,7 @@ const REQUESTED_ACTION_STOP: u8 = 1;
 const REQUESTED_ACTION_DISCONNECT: u8 = 2;
 
 pub struct ScriptExecutionData {
-    pub scripts_to_run: Vec<config::ScriptDefinition>,
+    pub scripts_to_run: Vec<config::OriginalScriptDefinition>,
     pub progress_receiver: Option<Receiver<(usize, ScriptExecutionStatus)>>,
     pub requested_action: Arc<AtomicU8>,
     pub thread_join_handle: Option<std::thread::JoinHandle<()>>,
@@ -107,21 +107,14 @@ impl ScriptExecutionStatus {
 }
 
 pub fn add_script_to_execution(
-    scripts_to_run: &mut Vec<config::ScriptDefinition>,
-    script: config::ScriptDefinition,
+    scripts_to_run: &mut Vec<config::OriginalScriptDefinition>,
+    script: config::OriginalScriptDefinition,
 ) {
-    match script {
-        config::ScriptDefinition::Original(_) => {}
-        _ => {
-            panic!("add_script_to_execution() can only be used with OriginalScriptDefinition");
-        }
-    }
-
     scripts_to_run.push(script.clone());
 }
 
 pub fn remove_script_from_execution(
-    scripts_to_run: &mut Vec<config::ScriptDefinition>,
+    scripts_to_run: &mut Vec<config::OriginalScriptDefinition>,
     index: usize,
 ) {
     scripts_to_run.remove(index);
@@ -149,9 +142,7 @@ pub fn run_scripts(
         let mut kill_requested = false;
         for script_idx in 0..scripts_to_run.len() {
             let mut disconnect_requested = false;
-            let config::ScriptDefinition::Original(script) = &scripts_to_run[script_idx] else {
-                panic!("run_scripts() can only be used with OriginalScriptDefinition");
-            };
+            let script = &scripts_to_run[script_idx];
             let mut script_state = get_default_script_execution_status();
             script_state.start_time = Some(Instant::now());
 
