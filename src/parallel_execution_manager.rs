@@ -59,6 +59,7 @@ pub struct ParallelExecutionManager {
 
 pub struct ScheduledScriptCacheRecord {
     pub script: config::OriginalScriptDefinition,
+    pub tooltip: String,
     pub status: execution_thread::ScriptExecutionStatus,
 }
 
@@ -105,6 +106,7 @@ impl Execution {
                     .iter()
                     .map(|script| ScheduledScriptCacheRecord {
                         script: script.clone(),
+                        tooltip: get_tooltip_for_script(script),
                         status: execution_thread::ScriptExecutionStatus {
                             start_time: None,
                             finish_time: None,
@@ -604,4 +606,26 @@ impl ParallelExecutionManager {
             execution_index += 1;
         }
     }
+}
+
+fn get_tooltip_for_script(script: &config::OriginalScriptDefinition) -> String {
+    let mut tooltip = String::new();
+
+    if let Some(custom_executor) = &script.custom_executor {
+        tooltip.push_str(format!("[{}]", custom_executor.join("][")).as_str());
+    }
+
+    tooltip.push_str(
+        format!(
+            "[{} {}]",
+            script.command.path,
+            execution_thread::replace_placeholders(
+                script.arguments.clone(),
+                &script.argument_placeholders
+            )
+        )
+        .as_str(),
+    );
+
+    tooltip
 }

@@ -445,7 +445,7 @@ struct PlaceholderOccurrence {
     replacement: String,
 }
 
-fn replace_placeholders(
+pub fn replace_placeholders(
     mut arguments: String,
     placeholders: &Vec<config::ArgumentPlaceholder>,
 ) -> String {

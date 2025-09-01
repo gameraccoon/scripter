@@ -2318,7 +2318,15 @@ fn produce_execution_list_content<'a>(
                 );
                 row_data.push(Space::with_width(4).into());
             }
-            row_data.push(text(script_name).style(style).into());
+            row_data.push(
+                tooltip(
+                    text(script_name).style(style),
+                    text(record.tooltip.as_str()),
+                    tooltip::Position::Bottom,
+                )
+                .style(theme::Container::Box)
+                .into(),
+            );
             row_data.push(progress.into());
 
             if script_status.has_script_started() {
