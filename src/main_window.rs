@@ -1368,6 +1368,16 @@ impl Application for MainWindow {
                         Some(script.ignore_previous_failures)
                     };
 
+                    let autoclean_on_success = if let Some(original_script) = original_script {
+                        if original_script.autoclean_on_success == script.autoclean_on_success {
+                            None
+                        } else {
+                            Some(script.autoclean_on_success)
+                        }
+                    } else {
+                        Some(script.autoclean_on_success)
+                    };
+
                     preset.items.push(config::PresetItem {
                         uid: script.uid.clone(),
                         name,
@@ -1375,6 +1385,7 @@ impl Application for MainWindow {
                         overridden_placeholder_values,
                         autorerun_count,
                         ignore_previous_failures,
+                        autoclean_on_success,
                     });
                 }
 

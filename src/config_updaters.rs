@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.18.1";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.18.1";
+pub static LATEST_CONFIG_VERSION: &str = "0.18.4";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.18.4";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -140,6 +140,8 @@ fn register_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.18.0", v0_18_0_add_placeholders_to_presets);
     json_config_updater
         .add_update_function("0.18.1", v0_18_1_added_placeholder_hints_and_is_required);
+    json_config_updater
+        .add_update_function("0.18.4", v0_18_4_added_autoclean_on_success_for_presets);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -222,7 +224,8 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.18.0", v0_18_0_add_placeholders_to_presets);
     json_config_updater
         .add_update_function("0.18.1", v0_18_1_added_placeholder_hints_and_is_required);
-
+    json_config_updater
+        .add_update_function("0.18.4", v0_18_4_added_autoclean_on_success_for_presets);
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
 
@@ -608,6 +611,16 @@ fn v0_18_1_added_placeholder_hints_and_is_required(config_json: &mut JsonValue) 
             for placeholder in argument_placeholders.iter_mut() {
                 placeholder["hint"] = json!("");
                 placeholder["is_required"] = json!(false);
+            }
+        }
+    });
+}
+
+fn v0_18_4_added_autoclean_on_success_for_presets(config_json: &mut JsonValue) {
+    for_each_script_preset(config_json, |preset| {
+        if let Some(items) = preset["items"].as_array_mut() {
+            for item in items {
+                item["autoclean_on_success"] = json!(false);
             }
         }
     });

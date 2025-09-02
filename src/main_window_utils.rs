@@ -175,6 +175,11 @@ pub fn get_resulting_scripts_from_guid(
                             {
                                 script.ignore_previous_failures = ignore_previous_failures;
                             }
+
+                            if let Some(autoclean_on_success) = preset_item.autoclean_on_success {
+                                script.autoclean_on_success = autoclean_on_success;
+                            }
+
                             script
                         }
                         _ => {
@@ -1501,6 +1506,7 @@ mod tests {
                                     overridden_placeholder_values: std::collections::HashMap::new(),
                                     autorerun_count: None,
                                     ignore_previous_failures: None,
+                                    autoclean_on_success: None,
                                 },
                                 config::PresetItem {
                                     uid: test_script_guid_2.clone(),
@@ -1509,6 +1515,7 @@ mod tests {
                                     overridden_placeholder_values: std::collections::HashMap::new(),
                                     autorerun_count: None,
                                     ignore_previous_failures: None,
+                                    autoclean_on_success: None,
                                 },
                             ],
                         }),

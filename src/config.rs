@@ -168,6 +168,7 @@ pub struct PresetItem {
     pub overridden_placeholder_values: std::collections::HashMap<String, String>,
     pub autorerun_count: Option<usize>,
     pub ignore_previous_failures: Option<bool>,
+    pub autoclean_on_success: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
