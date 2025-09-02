@@ -1263,13 +1263,6 @@ impl Application for MainWindow {
                             .script_definitions
                             .insert(insert_position, replacement_script);
                         self.edit_data.is_dirty = true;
-                        select_edited_script(
-                            self,
-                            ConfigScriptId {
-                                idx: insert_position,
-                                edit_mode: config::ConfigEditMode::Local,
-                            },
-                        );
                     }
                 }
             }
