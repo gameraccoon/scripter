@@ -2268,15 +2268,14 @@ fn produce_execution_list_content<'a>(
                         .unwrap_or(Instant::now())
                         .duration_since(script_status.start_time.unwrap_or(Instant::now()))
                         .as_secs();
-                    progress = text(format!(
+                    progress = format!(
                         " ({:02}:{:02}){}",
                         time_taken_sec / 60,
                         time_taken_sec % 60,
                         repeat_text,
-                    ))
-                    .style(style);
+                    );
                 } else {
-                    progress = text("").style(style);
+                    progress = String::new();
                 }
             } else if script_status.has_script_started() {
                 let time_taken_sec = Instant::now()
@@ -2285,17 +2284,16 @@ fn produce_execution_list_content<'a>(
                 status = image(icons.in_progress.clone());
                 status_tooltip = "In progress";
 
-                progress = text(format!(
+                progress = format!(
                     " ({:02}:{:02}){}",
                     time_taken_sec / 60,
                     time_taken_sec % 60,
                     repeat_text,
-                ))
-                .style(style);
+                );
             } else {
                 status = image(icons.idle.clone());
                 status_tooltip = "Idle";
-                progress = text("").style(style);
+                progress = String::new();
             };
 
             let mut row_data: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
@@ -2320,14 +2318,13 @@ fn produce_execution_list_content<'a>(
             }
             row_data.push(
                 tooltip(
-                    text(script_name).style(style),
+                    text(format!("{} {}", script_name, progress)).style(style),
                     text(record.tooltip.as_str()),
                     tooltip::Position::Bottom,
                 )
                 .style(theme::Container::Box)
                 .into(),
             );
-            row_data.push(progress.into());
 
             if script_status.has_script_started() {
                 row_data.push(Space::with_width(8).into());
