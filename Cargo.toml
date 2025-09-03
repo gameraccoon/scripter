@@ -13,7 +13,7 @@ serde_json = { version = "1.0.117", default-features = false, features = ["std"]
 once_cell = { version = "1.19.0", default-features = false }
 open = { version = "5.1.4", default-features = false }
 bitflags = { version = "2.5.0", default-features = false, features = ["serde"] }
-notify = { version = "6.1.1", default-features = false, features = ["macos_kqueue"] }
+notify = { version = "8.2.0", default-features = false, features = ["macos_kqueue"] }
 smol_str = { version = "0.2.2", default-features = false }
 sparse_set_container = { version = "1.1.1", default-features = false }
 
