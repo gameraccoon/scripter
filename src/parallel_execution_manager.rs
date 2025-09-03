@@ -223,6 +223,18 @@ impl Execution {
 
                 if script_status.has_script_failed() {
                     self.has_failed_scripts = true;
+                } else {
+                    if let Some(script) = current_execution_list
+                        .execution_data
+                        .scripts_to_run
+                        .get_mut(script_local_idx)
+                    {
+                        if execution_thread::should_turn_failure_to_success(
+                            script.reaction_to_previous_failures,
+                        ) {
+                            self.has_failed_scripts = false;
+                        }
+                    }
                 }
 
                 let mut no_execution_progress_change = false;

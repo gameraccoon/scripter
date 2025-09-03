@@ -146,7 +146,12 @@ pub fn run_scripts(
             let mut script_state = get_default_script_execution_status();
             script_state.start_time = Some(Instant::now());
 
-            if kill_requested || (has_previous_script_failed && !script.ignore_previous_failures) {
+            if kill_requested
+                || (has_previous_script_failed
+                    && should_skip_script_on_failure(script.reaction_to_previous_failures))
+                || (!has_previous_script_failed
+                    && should_skip_script_on_success(script.reaction_to_previous_failures))
+            {
                 script_state.result = ScriptResultStatus::Skipped;
                 script_state.finish_time = Some(Instant::now());
                 send_script_execution_status(&progress_sender, script_idx, script_state.clone());
@@ -328,7 +333,13 @@ pub fn run_scripts(
                                 script_idx,
                                 script_state.clone(),
                             );
-                            has_previous_script_failed = false;
+                            if has_previous_script_failed
+                                && should_turn_failure_to_success(
+                                    script.reaction_to_previous_failures,
+                                )
+                            {
+                                has_previous_script_failed = false;
+                            }
                             join_threads(threads_to_join);
                             break 'retry_loop;
                         } else {
@@ -670,5 +681,41 @@ fn send_log_line(
 fn join_threads(threads: Vec<std::thread::JoinHandle<()>>) {
     for thread in threads {
         let _ = thread.join();
+    }
+}
+
+fn should_skip_script_on_failure(
+    reaction_to_previous_failures: config::ReactionToPreviousFailures,
+) -> bool {
+    match reaction_to_previous_failures {
+        config::ReactionToPreviousFailures::SkipOnFailure => true,
+        config::ReactionToPreviousFailures::ExecuteOnSuccessOrFailure => false,
+        config::ReactionToPreviousFailures::ExecuteOnSuccessOrFailureTurnToSuccess => false,
+        config::ReactionToPreviousFailures::SkipOnSuccessExecuteOnFailure => false,
+        config::ReactionToPreviousFailures::SkipOnSuccessExecuteOnFailureTurnToSuccess => false,
+    }
+}
+
+fn should_skip_script_on_success(
+    reaction_to_previous_failures: config::ReactionToPreviousFailures,
+) -> bool {
+    match reaction_to_previous_failures {
+        config::ReactionToPreviousFailures::SkipOnFailure => false,
+        config::ReactionToPreviousFailures::ExecuteOnSuccessOrFailure => false,
+        config::ReactionToPreviousFailures::ExecuteOnSuccessOrFailureTurnToSuccess => false,
+        config::ReactionToPreviousFailures::SkipOnSuccessExecuteOnFailure => true,
+        config::ReactionToPreviousFailures::SkipOnSuccessExecuteOnFailureTurnToSuccess => true,
+    }
+}
+
+pub fn should_turn_failure_to_success(
+    reaction_to_previous_failures: config::ReactionToPreviousFailures,
+) -> bool {
+    match reaction_to_previous_failures {
+        config::ReactionToPreviousFailures::SkipOnFailure => false,
+        config::ReactionToPreviousFailures::ExecuteOnSuccessOrFailure => false,
+        config::ReactionToPreviousFailures::ExecuteOnSuccessOrFailureTurnToSuccess => true,
+        config::ReactionToPreviousFailures::SkipOnSuccessExecuteOnFailure => false,
+        config::ReactionToPreviousFailures::SkipOnSuccessExecuteOnFailureTurnToSuccess => true,
     }
 }

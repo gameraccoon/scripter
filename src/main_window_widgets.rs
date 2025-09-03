@@ -53,6 +53,35 @@ impl std::fmt::Display for config::ArgumentRequirement {
     }
 }
 
+pub(crate) const CONFIG_REACTION_TO_PREVIOUS_FAILURES_PICK_LIST:
+    &[config::ReactionToPreviousFailures] = &[
+    config::ReactionToPreviousFailures::SkipOnFailure,
+    config::ReactionToPreviousFailures::ExecuteOnSuccessOrFailure,
+    config::ReactionToPreviousFailures::ExecuteOnSuccessOrFailureTurnToSuccess,
+    config::ReactionToPreviousFailures::SkipOnSuccessExecuteOnFailure,
+    config::ReactionToPreviousFailures::SkipOnSuccessExecuteOnFailureTurnToSuccess,
+];
+
+impl std::fmt::Display for config::ReactionToPreviousFailures {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                config::ReactionToPreviousFailures::SkipOnFailure => "Skip on failure",
+                config::ReactionToPreviousFailures::ExecuteOnSuccessOrFailure =>
+                    "Execute on success or failure",
+                config::ReactionToPreviousFailures::ExecuteOnSuccessOrFailureTurnToSuccess =>
+                    "Execute on success or failure (turn to success)",
+                config::ReactionToPreviousFailures::SkipOnSuccessExecuteOnFailure =>
+                    "Skip on success, execute on failure",
+                config::ReactionToPreviousFailures::SkipOnSuccessExecuteOnFailureTurnToSuccess =>
+                    "Skip on success, execute on failure (turn to success)",
+            }
+        )
+    }
+}
+
 pub fn edit_button(label: &str, message: WindowMessage) -> Button<WindowMessage> {
     button(
         text(label)

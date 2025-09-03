@@ -170,10 +170,11 @@ pub fn get_resulting_scripts_from_guid(
                                 script.autorerun_count = autorerun_count;
                             }
 
-                            if let Some(ignore_previous_failures) =
-                                preset_item.ignore_previous_failures
+                            if let Some(reaction_to_previous_failures) =
+                                preset_item.reaction_to_previous_failures
                             {
-                                script.ignore_previous_failures = ignore_previous_failures;
+                                script.reaction_to_previous_failures =
+                                    reaction_to_previous_failures;
                             }
 
                             if let Some(autoclean_on_success) = preset_item.autoclean_on_success {
@@ -1469,7 +1470,8 @@ mod tests {
                             arguments: "".to_string(),
                             argument_placeholders: Vec::new(),
                             autorerun_count: 0,
-                            ignore_previous_failures: false,
+                            reaction_to_previous_failures:
+                                config::ReactionToPreviousFailures::SkipOnFailure,
                             arguments_requirement: config::ArgumentRequirement::Optional,
                             arguments_hint: String::new(),
                             custom_executor: None,
@@ -1486,7 +1488,8 @@ mod tests {
                             arguments: "".to_string(),
                             argument_placeholders: Vec::new(),
                             autorerun_count: 0,
-                            ignore_previous_failures: false,
+                            reaction_to_previous_failures:
+                                config::ReactionToPreviousFailures::SkipOnFailure,
                             arguments_requirement: config::ArgumentRequirement::Optional,
                             arguments_hint: String::new(),
                             custom_executor: None,
@@ -1505,7 +1508,7 @@ mod tests {
                                     arguments: None,
                                     overridden_placeholder_values: std::collections::HashMap::new(),
                                     autorerun_count: None,
-                                    ignore_previous_failures: None,
+                                    reaction_to_previous_failures: None,
                                     autoclean_on_success: None,
                                 },
                                 config::PresetItem {
@@ -1514,7 +1517,7 @@ mod tests {
                                     arguments: None,
                                     overridden_placeholder_values: std::collections::HashMap::new(),
                                     autorerun_count: None,
-                                    ignore_previous_failures: None,
+                                    reaction_to_previous_failures: None,
                                     autoclean_on_success: None,
                                 },
                             ],
@@ -1575,7 +1578,8 @@ mod tests {
                                 arguments: "".to_string(),
                                 argument_placeholders: Vec::new(),
                                 autorerun_count: 0,
-                                ignore_previous_failures: false,
+                                reaction_to_previous_failures:
+                                    config::ReactionToPreviousFailures::SkipOnFailure,
                                 arguments_requirement: config::ArgumentRequirement::Optional,
                                 arguments_hint: "\"arg1\" \"arg2\"".to_string(),
                                 custom_executor: None,

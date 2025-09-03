@@ -235,8 +235,8 @@ pub(crate) enum WindowMessage {
     EditArgumentPlaceholderValueForScriptExecution(usize, String),
     EditAutorerunCountForConfig(ConfigScriptId, String),
     EditAutorerunCountForExecutionList(String),
-    ToggleIgnoreFailuresForConfig(ConfigScriptId, bool),
-    ToggleIgnoreFailuresForExecutionList(bool),
+    EditReactionToPreviousFailuresForConfig(ConfigScriptId, config::ReactionToPreviousFailures),
+    EditReactionToPreviousFailuresForExecutionList(config::ReactionToPreviousFailures),
     ToggleUseCustomExecutor(ConfigScriptId, bool),
     EditCustomExecutor(ConfigScriptId, String, usize),
     ToggleAutocleanOnSuccessForConfig(ConfigScriptId, bool),
@@ -641,7 +641,8 @@ impl Application for MainWindow {
                     arguments: "".to_string(),
                     argument_placeholders: Vec::new(),
                     autorerun_count: 0,
-                    ignore_previous_failures: false,
+                    reaction_to_previous_failures:
+                        config::ReactionToPreviousFailures::SkipOnFailure,
                     arguments_requirement: config::ArgumentRequirement::Optional,
                     arguments_hint: "\"arg1\" \"arg2\"".to_string(),
                     custom_executor: None,
@@ -852,15 +853,15 @@ impl Application for MainWindow {
                     }
                 }
             }
-            WindowMessage::ToggleIgnoreFailuresForConfig(config_script_id, value) => {
+            WindowMessage::EditReactionToPreviousFailuresForConfig(config_script_id, value) => {
                 apply_config_script_edit(self, config_script_id, |script| {
-                    script.ignore_previous_failures = value
+                    script.reaction_to_previous_failures = value
                 });
             }
-            WindowMessage::ToggleIgnoreFailuresForExecutionList(value) => {
+            WindowMessage::EditReactionToPreviousFailuresForExecutionList(value) => {
                 if let Some(script) = &self.window_state.cursor_script {
                     apply_execution_script_edit(self, script.idx, |script| {
-                        script.ignore_previous_failures = value
+                        script.reaction_to_previous_failures = value
                     });
                 }
             }
@@ -1356,17 +1357,18 @@ impl Application for MainWindow {
                         Some(script.autorerun_count)
                     };
 
-                    let ignore_previous_failures = if let Some(original_script) = original_script {
-                        if original_script.ignore_previous_failures
-                            == script.ignore_previous_failures
-                        {
-                            None
+                    let reaction_to_previous_failures =
+                        if let Some(original_script) = original_script {
+                            if original_script.reaction_to_previous_failures
+                                == script.reaction_to_previous_failures
+                            {
+                                None
+                            } else {
+                                Some(script.reaction_to_previous_failures)
+                            }
                         } else {
-                            Some(script.ignore_previous_failures)
-                        }
-                    } else {
-                        Some(script.ignore_previous_failures)
-                    };
+                            Some(script.reaction_to_previous_failures)
+                        };
 
                     let autoclean_on_success = if let Some(original_script) = original_script {
                         if original_script.autoclean_on_success == script.autoclean_on_success {
@@ -1384,7 +1386,7 @@ impl Application for MainWindow {
                         arguments,
                         overridden_placeholder_values,
                         autorerun_count,
-                        ignore_previous_failures,
+                        reaction_to_previous_failures,
                         autoclean_on_success,
                     });
                 }
@@ -3134,10 +3136,14 @@ fn produce_script_to_execute_edit_content<'a>(
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(text("Reaction to previous failures:").into());
     parameters.push(
-        checkbox("Ignore previous failures", script.ignore_previous_failures)
-            .on_toggle(move |val| WindowMessage::ToggleIgnoreFailuresForExecutionList(val))
-            .into(),
+        pick_list(
+            CONFIG_REACTION_TO_PREVIOUS_FAILURES_PICK_LIST,
+            Some(script.reaction_to_previous_failures.clone()),
+            move |val| WindowMessage::EditReactionToPreviousFailuresForExecutionList(val),
+        )
+        .into(),
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -3299,12 +3305,16 @@ fn populate_original_script_config_edit_content<'a>(
     }
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(text("Reaction to previous failures:").into());
     parameters.push(
-        checkbox("Ignore previous failures", script.ignore_previous_failures)
-            .on_toggle(move |val| {
-                WindowMessage::ToggleIgnoreFailuresForConfig(config_script_id, val)
-            })
-            .into(),
+        pick_list(
+            CONFIG_REACTION_TO_PREVIOUS_FAILURES_PICK_LIST,
+            Some(script.reaction_to_previous_failures.clone()),
+            move |val| {
+                WindowMessage::EditReactionToPreviousFailuresForConfig(config_script_id, val)
+            },
+        )
+        .into(),
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());

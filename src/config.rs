@@ -133,11 +133,20 @@ pub struct ArgumentPlaceholder {
     pub is_required: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
 pub enum ArgumentRequirement {
     Required,
     Optional,
     Hidden,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
+pub enum ReactionToPreviousFailures {
+    SkipOnFailure,
+    ExecuteOnSuccessOrFailure,
+    ExecuteOnSuccessOrFailureTurnToSuccess,
+    SkipOnSuccessExecuteOnFailure,
+    SkipOnSuccessExecuteOnFailureTurnToSuccess,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -151,7 +160,7 @@ pub struct OriginalScriptDefinition {
     pub argument_placeholders: Vec<ArgumentPlaceholder>,
     pub arguments_requirement: ArgumentRequirement,
     pub autorerun_count: usize,
-    pub ignore_previous_failures: bool,
+    pub reaction_to_previous_failures: ReactionToPreviousFailures,
     pub arguments_hint: String,
     pub custom_executor: Option<Vec<String>>,
     pub is_hidden: bool,
@@ -167,7 +176,7 @@ pub struct PresetItem {
     pub arguments: Option<String>,
     pub overridden_placeholder_values: std::collections::HashMap<String, String>,
     pub autorerun_count: Option<usize>,
-    pub ignore_previous_failures: Option<bool>,
+    pub reaction_to_previous_failures: Option<ReactionToPreviousFailures>,
     pub autoclean_on_success: Option<bool>,
 }
 
