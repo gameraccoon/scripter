@@ -228,7 +228,7 @@ impl<'de> Deserialize<'de> for Guid {
 impl Guid {
     pub fn new() -> Guid {
         // generate version 4 GUID
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut bytes = [0u8; 16];
         rng.fill_bytes(&mut bytes);
         bytes[6] = (bytes[6] & 0x0F) | 0x40;
