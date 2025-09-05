@@ -2133,10 +2133,16 @@ fn produce_execution_list_content<'a>(
     } else if main_config.enable_title_editing && edit_data.window_edit_data.is_none() {
         row![
             horizontal_space(),
-            text(config.custom_title.as_ref().unwrap_or(&EMPTY_STRING))
-                .size(16)
-                .align_x(alignment::Horizontal::Center)
-                .width(Length::Shrink),
+            text(
+                config
+                    .custom_title
+                    .as_ref()
+                    .map(|x| x.to_string())
+                    .unwrap_or_else(|| EMPTY_STRING.clone())
+            )
+            .size(16)
+            .align_x(alignment::Horizontal::Center)
+            .width(Length::Shrink),
             tooltip(
                 button(
                     image(
@@ -2158,7 +2164,7 @@ fn produce_execution_list_content<'a>(
         .align_y(Alignment::Center)
     } else if let Some(custom_title) = &config.custom_title {
         if !custom_title.is_empty() {
-            row![text(custom_title)
+            row![text(custom_title.to_string())
                 .size(16)
                 .align_x(alignment::Horizontal::Center)
                 .width(Length::Fill),]
@@ -2174,16 +2180,22 @@ fn produce_execution_list_content<'a>(
 
     if config.rewritable.show_working_directory {
         title = title.push(
-            text(path_caches.work_path.to_str().unwrap_or_default())
-                .size(16)
-                .align_x(alignment::Horizontal::Center)
-                .width(Length::Fill),
+            text(
+                path_caches
+                    .work_path
+                    .to_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            )
+            .size(16)
+            .align_x(alignment::Horizontal::Center)
+            .width(Length::Fill),
         );
     }
 
     if let Some(git_branch_requester) = &visual_caches.git_branch_requester {
         title = title.push(
-            text(git_branch_requester.get_current_branch_ref())
+            text(git_branch_requester.get_current_branch_ref().clone())
                 .size(16)
                 .align_x(alignment::Horizontal::Center)
                 .width(Length::Fill),
@@ -2199,7 +2211,7 @@ fn produce_execution_list_content<'a>(
     for execution in execution_lists.get_started_executions().values() {
         if should_show_execution_names {
             data_lines.push(
-                row![text(execution.get_name())
+                row![text(execution.get_name().clone())
                     .size(16)
                     .align_x(alignment::Horizontal::Left)
                     .width(Length::Fill),]
@@ -2737,7 +2749,7 @@ fn produce_log_output_content<'a>(
             .map(|execution| {
                 let is_selected_execution =
                     Some(execution.get_id()) == visual_caches.selected_execution_log;
-                let tab_button = button(text(execution.get_name()));
+                let tab_button = button(text(execution.get_name().clone()));
                 if is_selected_execution {
                     tab_button
                 } else {

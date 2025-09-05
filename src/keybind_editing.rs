@@ -305,7 +305,7 @@ pub fn populate_keybind_editing_content(
     if let Some((action, error)) = &window_edit_data.keybind_editing.edited_keybind_error {
         if *action == data {
             edit_content.push(
-                button(text(error))
+                button(text(error.to_string()))
                     .on_press(main_window::WindowMessage::StartRecordingKeybind(data))
                     .into(),
             );
@@ -315,7 +315,7 @@ pub fn populate_keybind_editing_content(
 
     if let Some(keybind_hint) = visual_caches.keybind_hints.get(&data) {
         edit_content.push(
-            button(text(keybind_hint))
+            button(text(keybind_hint.to_string()))
                 .on_press(main_window::WindowMessage::StartRecordingKeybind(data))
                 .into(),
         );
