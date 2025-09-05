@@ -286,7 +286,7 @@ pub fn populate_keybind_editing_content(
     edit_content: &mut Vec<Element<'_, main_window::WindowMessage, iced::Theme, iced::Renderer>>,
     window_edit_data: &main_window::WindowEditData,
     visual_caches: &main_window::VisualCaches,
-    caption: &str,
+    caption: &'static str,
     data: KeybindAssociatedData,
 ) {
     edit_content.push(text(caption).into());

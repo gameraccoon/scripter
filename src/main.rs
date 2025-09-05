@@ -23,7 +23,6 @@ mod style;
 mod ui_icons;
 
 use iced::window::icon;
-use iced::{Application, Settings};
 
 pub fn main() -> iced::Result {
     if let Some(e) = config::get_arguments_read_error() {
@@ -31,10 +30,23 @@ pub fn main() -> iced::Result {
         return Ok(());
     }
 
-    let mut settings = Settings::default();
-    if let Ok(icon) = icon::from_rgba(include_bytes!("../res/icon.rgba").to_vec(), 128, 128) {
-        settings.window.icon = Some(icon);
-    }
-    settings.window.position = iced::window::Position::Centered;
-    main_window::MainWindow::run(settings)
+    let icon = icon::from_rgba(include_bytes!("../res/icon.rgba").to_vec(), 128, 128);
+    let icon = if let Ok(icon) = icon {
+        Some(icon)
+    } else {
+        None
+    };
+    let window_settings = iced::window::Settings {
+        position: iced::window::Position::Centered,
+        icon,
+        ..Default::default()
+    };
+    iced::application(
+        main_window::MainWindow::title,
+        main_window::MainWindow::update,
+        main_window::MainWindow::view,
+    )
+    .window(window_settings)
+    .subscription(main_window::MainWindow::subscription)
+    .run_with(main_window::MainWindow::new)
 }

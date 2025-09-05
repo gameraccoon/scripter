@@ -83,13 +83,9 @@ impl std::fmt::Display for config::ReactionToPreviousFailures {
 }
 
 pub fn edit_button(label: &str, message: WindowMessage) -> Button<WindowMessage> {
-    button(
-        text(label)
-            .vertical_alignment(alignment::Vertical::Center)
-            .size(16),
-    )
-    .padding(4)
-    .on_press(message)
+    button(text(label).align_y(alignment::Vertical::Center).size(16))
+        .padding(4)
+        .on_press(message)
 }
 
 pub fn populate_quick_launch_edit_button<'a>(
@@ -118,7 +114,7 @@ pub fn populate_quick_launch_edit_button<'a>(
 }
 
 pub fn populate_path_editing_content(
-    caption: &str,
+    caption: &'static str,
     hint: &str,
     path: &config::PathConfig,
     edit_content: &mut Vec<Element<'_, WindowMessage, Theme, iced::Renderer>>,
@@ -187,7 +183,7 @@ pub fn main_icon_button(
             Space::with_width(4),
             text(label).width(Length::Shrink).size(16),
         ]
-        .align_items(Alignment::Center),
+        .align_y(Alignment::Center),
     )
     .width(Length::Shrink)
     .padding(8);
@@ -212,7 +208,7 @@ pub fn main_icon_button_string(
             Space::with_width(4),
             text(label.to_string()).width(Length::Shrink).size(16),
         ]
-        .align_items(Alignment::Center),
+        .align_y(Alignment::Center),
     )
     .width(Length::Shrink)
     .padding(8);
@@ -258,7 +254,7 @@ pub fn edit_mode_button<'a>(
             Space::with_width(4),
             icon
         ]
-        .align_items(Alignment::Center)
+        .align_y(Alignment::Center)
     } else {
         row![icon]
     })
@@ -523,7 +519,7 @@ pub fn populate_argument_placeholders_content<'a>(
         content.push(
             text(format!("{}:", argument_placeholder.name))
                 .size(16)
-                .horizontal_alignment(alignment::Horizontal::Left)
+                .align_x(alignment::Horizontal::Left)
                 .into(),
         );
         content.push(
