@@ -748,30 +748,34 @@ pub fn maximize_pane(
             title_lines += 1;
         }
 
-        return resize(
-            window::Id::MAIN,
-            Size {
-                width: size.width,
-                height: f32::min(
-                    size.height,
-                    EMPTY_EXECUTION_LIST_HEIGHT
-                        + title_lines as f32 * ONE_TITLE_LINE_HEIGHT
-                        + if should_show_execution_names {
-                            ONE_EXECUTION_NAME_HEIGHT * executions_count as f32
-                        } else {
-                            0.0
-                        }
-                        + scheduled_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
-                        + EDIT_BUTTONS_HEIGHT * executions_count as f32
-                        + edited_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
-                        + if edited_elements_count > 0 {
-                            EDIT_BUTTONS_HEIGHT
-                        } else {
-                            0.0
-                        },
-                ),
-            },
-        );
+        let size = size.clone();
+
+        return window::get_oldest().and_then(move |window_id| {
+            resize(
+                window_id,
+                Size {
+                    width: size.width,
+                    height: f32::min(
+                        size.height,
+                        EMPTY_EXECUTION_LIST_HEIGHT
+                            + title_lines as f32 * ONE_TITLE_LINE_HEIGHT
+                            + if should_show_execution_names {
+                                ONE_EXECUTION_NAME_HEIGHT * executions_count as f32
+                            } else {
+                                0.0
+                            }
+                            + scheduled_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+                            + EDIT_BUTTONS_HEIGHT * executions_count as f32
+                            + edited_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+                            + if edited_elements_count > 0 {
+                                EDIT_BUTTONS_HEIGHT
+                            } else {
+                                0.0
+                            },
+                    ),
+                },
+            )
+        });
     }
 
     Task::none()
@@ -781,13 +785,8 @@ pub fn restore_window(app: &mut MainWindow) -> Task<WindowMessage> {
     app.window_state.has_maximized_pane = false;
     app.panes.restore();
     if !config::get_main_rewritable_config(&app.app_config).keep_window_size {
-        return resize(
-            window::Id::MAIN,
-            Size {
-                width: app.window_state.full_window_size.width,
-                height: app.window_state.full_window_size.height,
-            },
-        );
+        let window_size = app.window_state.full_window_size.clone();
+        return window::get_oldest().and_then(move |window_id| resize(window_id, window_size));
     }
     Task::none()
 }

@@ -570,10 +570,12 @@ impl MainWindow {
 
                     if config::get_main_rewritable_config(&self.app_config).window_status_reactions
                     {
-                        return request_user_attention(
-                            window::Id::MAIN,
-                            Some(window::UserAttention::Informational),
-                        );
+                        return window::get_oldest().and_then(|window_id| {
+                            request_user_attention(
+                                window_id,
+                                Some(window::UserAttention::Informational),
+                            )
+                        });
                     }
                 }
 
