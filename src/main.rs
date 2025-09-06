@@ -48,5 +48,6 @@ pub fn main() -> iced::Result {
     )
     .window(window_settings)
     .subscription(main_window::MainWindow::subscription)
+    .theme(main_window::MainWindow::theme)
     .run_with(main_window::MainWindow::new)
 }
