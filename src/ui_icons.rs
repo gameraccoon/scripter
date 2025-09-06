@@ -1,4 +1,4 @@
-// Copyright (C) Pavel Grebnev 2023
+// Copyright (C) Pavel Grebnev 2023,2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use iced::widget::image::Handle;

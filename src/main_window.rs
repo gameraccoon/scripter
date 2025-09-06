@@ -12,6 +12,7 @@ use crate::main_window_widgets::*;
 use crate::parallel_execution_manager;
 use crate::ui_icons;
 use crate::{color_utils, style};
+
 use iced::alignment::{self, Alignment};
 use iced::event::listen_with;
 use iced::theme::Theme;
