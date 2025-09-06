@@ -1,27 +1,6 @@
 // Copyright (C) Pavel Grebnev 2023-2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
-use iced::alignment::{self, Alignment};
-use iced::event::listen_with;
-use iced::theme::{self, Theme};
-use iced::widget::pane_grid::{self, Configuration, PaneGrid};
-use iced::widget::text::LineHeight;
-use iced::widget::{
-    button, checkbox, column, container, horizontal_rule, horizontal_space, image, image::Handle,
-    pick_list, responsive, row, scrollable, text, text_input, tooltip, Column, Space,
-};
-use iced::window::{self, request_user_attention};
-use iced::{executor, keyboard, ContentFit};
-use iced::{time, Size};
-use iced::{Application, Command, Element, Length, Subscription};
-use once_cell::sync::Lazy;
-use std::collections::HashMap;
-use std::mem::swap;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::time::{Duration, Instant};
-
-use crate::color_utils;
 use crate::config;
 use crate::custom_keybinds;
 use crate::execution_thread;
@@ -31,8 +10,29 @@ use crate::keybind_editing;
 use crate::main_window_utils::*;
 use crate::main_window_widgets::*;
 use crate::parallel_execution_manager;
-use crate::style;
 use crate::ui_icons;
+use crate::{color_utils, style};
+
+use iced::alignment::{self, Alignment};
+use iced::event::listen_with;
+use iced::theme::Theme;
+use iced::widget::pane_grid::{self, Configuration, PaneGrid};
+use iced::widget::scrollable::Scrollbar;
+use iced::widget::text::LineHeight;
+use iced::widget::{
+    button, checkbox, column, container, horizontal_rule, horizontal_space, image, image::Handle,
+    pick_list, responsive, row, scrollable, text, text_input, tooltip, Column, Space,
+};
+use iced::window::{self, request_user_attention};
+use iced::{keyboard, ContentFit, Task};
+use iced::{time, Size};
+use iced::{Element, Length, Subscription};
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
+use std::mem::swap;
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::time::{Duration, Instant};
 
 static EMPTY_STRING: String = String::new();
 
@@ -83,19 +83,6 @@ pub(crate) struct ScriptListCacheRecord {
     pub(crate) full_icon_path: Option<PathBuf>,
     pub(crate) is_hidden: bool,
     pub(crate) original_script_uid: config::Guid,
-}
-
-pub(crate) struct MainWindow {
-    pub(crate) panes: pane_grid::State<AppPane>,
-    pub(crate) pane_by_pane_type: HashMap<PaneVariant, pane_grid::Pane>,
-    pub(crate) execution_manager: parallel_execution_manager::ParallelExecutionManager,
-    pub(crate) app_config: config::AppConfig,
-    pub(crate) theme: Theme,
-    pub(crate) visual_caches: VisualCaches,
-    pub(crate) edit_data: EditData,
-    pub(crate) window_state: WindowState,
-    pub(crate) keybinds: custom_keybinds::CustomKeybinds<keybind_editing::KeybindAssociatedData>,
-    pub(crate) displayed_configs_list_cache: Vec<ScriptListCacheRecord>,
 }
 
 #[derive(Debug, Clone)]
@@ -301,13 +288,21 @@ pub(crate) enum WindowMessage {
     RemoveFromQuickLaunchPanel(config::Guid),
 }
 
-impl Application for MainWindow {
-    type Executor = executor::Default;
-    type Message = WindowMessage;
-    type Theme = Theme;
-    type Flags = ();
+pub(crate) struct MainWindow {
+    pub(crate) panes: pane_grid::State<AppPane>,
+    pub(crate) pane_by_pane_type: HashMap<PaneVariant, pane_grid::Pane>,
+    pub(crate) execution_manager: parallel_execution_manager::ParallelExecutionManager,
+    pub(crate) app_config: config::AppConfig,
+    pub(crate) theme: Theme,
+    pub(crate) visual_caches: VisualCaches,
+    pub(crate) edit_data: EditData,
+    pub(crate) window_state: WindowState,
+    pub(crate) keybinds: custom_keybinds::CustomKeybinds<keybind_editing::KeybindAssociatedData>,
+    pub(crate) displayed_configs_list_cache: Vec<ScriptListCacheRecord>,
+}
 
-    fn new(_flags: ()) -> (Self, Command<WindowMessage>) {
+impl MainWindow {
+    pub(crate) fn new() -> (Self, Task<WindowMessage>) {
         let pane_configuration = Configuration::Split {
             axis: pane_grid::Axis::Vertical,
             ratio: 0.25,
@@ -381,10 +376,10 @@ impl Application for MainWindow {
         let edit_mode = config::get_main_edit_mode(&main_window.app_config);
         keybind_editing::update_keybind_visual_caches(&mut main_window, edit_mode);
 
-        (main_window, Command::none())
+        (main_window, Task::none())
     }
 
-    fn title(&self) -> String {
+    pub(crate) fn title(&self) -> String {
         if self.edit_data.window_edit_data.is_some() {
             "scripter [Editing]".to_string()
         } else if self.execution_manager.has_any_execution_started() {
@@ -406,7 +401,7 @@ impl Application for MainWindow {
         }
     }
 
-    fn update(&mut self, message: WindowMessage) -> Command<WindowMessage> {
+    pub(crate) fn update(&mut self, message: WindowMessage) -> Task<WindowMessage> {
         match message {
             WindowMessage::WindowResized(_window_id, size) => {
                 if !self.window_state.has_maximized_pane {
@@ -576,10 +571,12 @@ impl Application for MainWindow {
 
                     if config::get_main_rewritable_config(&self.app_config).window_status_reactions
                     {
-                        return request_user_attention(
-                            window::Id::MAIN,
-                            Some(window::UserAttention::Informational),
-                        );
+                        return window::get_oldest().and_then(|window_id| {
+                            request_user_attention(
+                                window_id,
+                                Some(window::UserAttention::Informational),
+                            )
+                        });
                     }
                 }
 
@@ -1150,12 +1147,12 @@ impl Application for MainWindow {
             }
             WindowMessage::ToggleScriptHidden(is_hidden) => {
                 let Some(script_id) = &mut self.window_state.cursor_script else {
-                    return Command::none();
+                    return Task::none();
                 };
 
                 if let Some(config) = &mut self.app_config.local_config_body {
                     let Some(script) = config.script_definitions.get_mut(script_id.idx) else {
-                        return Command::none();
+                        return Task::none();
                     };
 
                     match script {
@@ -1173,10 +1170,10 @@ impl Application for MainWindow {
                     if let Some(script) = config.script_definitions.get(script_idx) {
                         script
                     } else {
-                        return Command::none();
+                        return Task::none();
                     }
                 } else {
-                    return Command::none();
+                    return Task::none();
                 };
 
                 let new_script = match script {
@@ -1199,15 +1196,15 @@ impl Application for MainWindow {
                                     script
                                 }
                                 config::ScriptDefinition::ReferenceToShared(_) => {
-                                    return Command::none();
+                                    return Task::none();
                                 }
                             }
                         } else {
-                            return Command::none();
+                            return Task::none();
                         }
                     }
                     _ => {
-                        return Command::none();
+                        return Task::none();
                     }
                 };
 
@@ -1227,7 +1224,7 @@ impl Application for MainWindow {
             WindowMessage::MoveToShared(script_idx) => {
                 if let Some(config) = &mut self.app_config.local_config_body {
                     if config.script_definitions.len() <= script_idx {
-                        return Command::none();
+                        return Task::none();
                     }
 
                     let insert_position = find_best_shared_script_insert_position(
@@ -1255,7 +1252,7 @@ impl Application for MainWindow {
                                 )
                             }
                             _ => {
-                                return Command::none();
+                                return Task::none();
                             }
                         };
 
@@ -1404,7 +1401,7 @@ impl Application for MainWindow {
             }
             WindowMessage::RequestCloseApp => {
                 let exit_thread_command = || {
-                    Command::perform(async {}, |()| {
+                    Task::perform(async {}, |()| {
                         std::process::exit(0);
                     })
                 };
@@ -1443,13 +1440,13 @@ impl Application for MainWindow {
             }
             WindowMessage::MoveScriptDown => {
                 if self.execution_manager.has_any_execution_started() {
-                    return Command::none();
+                    return Task::none();
                 }
 
                 let focused_pane = if let Some(focus) = self.window_state.pane_focus {
                     self.panes.panes[&focus].variant
                 } else {
-                    return Command::none();
+                    return Task::none();
                 };
 
                 if focused_pane == PaneVariant::ScriptList {
@@ -1464,7 +1461,7 @@ impl Application for MainWindow {
                             if cursor_script.idx + 1
                                 >= self.execution_manager.get_edited_scripts().len()
                             {
-                                return Command::none();
+                                return Task::none();
                             }
                             self.execution_manager
                                 .get_edited_scripts_mut()
@@ -1478,7 +1475,7 @@ impl Application for MainWindow {
                 let focused_pane = if let Some(focus) = self.window_state.pane_focus {
                     self.panes.panes[&focus].variant
                 } else {
-                    return Command::none();
+                    return Task::none();
                 };
 
                 if focused_pane == PaneVariant::ScriptList {
@@ -1491,7 +1488,7 @@ impl Application for MainWindow {
                     if let Some(cursor_script) = &self.window_state.cursor_script {
                         if cursor_script.script_type == EditScriptType::ExecutionList {
                             if cursor_script.idx == 0 {
-                                return Command::none();
+                                return Task::none();
                             }
                             self.execution_manager
                                 .get_edited_scripts_mut()
@@ -1503,11 +1500,11 @@ impl Application for MainWindow {
             }
             WindowMessage::CursorConfirm => {
                 if self.edit_data.window_edit_data.is_some() {
-                    return Command::none();
+                    return Task::none();
                 }
 
                 let Some(cursor_script) = &self.window_state.cursor_script else {
-                    return Command::none();
+                    return Task::none();
                 };
 
                 let cursor_script_id = cursor_script.idx;
@@ -1544,7 +1541,7 @@ impl Application for MainWindow {
             WindowMessage::RemoveCursorScript => {
                 if let Some(focus) = self.window_state.pane_focus {
                     if &self.panes.panes[&focus].variant != &PaneVariant::ExecutionList {
-                        return Command::none();
+                        return Task::none();
                     }
                 }
 
@@ -1636,7 +1633,7 @@ impl Application for MainWindow {
                 self.window_state.is_alt_key_down = iced_modifiers.alt();
 
                 if keybind_editing::process_key_press(self, iced_key.clone(), iced_modifiers) {
-                    return Command::none();
+                    return Task::none();
                 }
 
                 // if we're not in keybind editing, then try to process keybinds
@@ -1644,7 +1641,7 @@ impl Application for MainWindow {
                     self.keybinds.get_keybind_copy(iced_key, iced_modifiers);
 
                 let Some(keybind_associated_data) = keybind_associated_data else {
-                    return Command::none();
+                    return Task::none();
                 };
 
                 let message = match keybind_associated_data {
@@ -1661,18 +1658,18 @@ impl Application for MainWindow {
                 };
 
                 let Some(message) = message else {
-                    return Command::none();
+                    return Task::none();
                 };
 
                 // avoid infinite recursion
                 match message {
-                    WindowMessage::ProcessKeyPress(_, _) => return Command::none(),
+                    WindowMessage::ProcessKeyPress(_, _) => return Task::none(),
                     _ => {}
                 };
 
                 let command = self.update(message);
 
-                return Command::batch([text_input::focus(text_input::Id::new("dummy")), command]);
+                return Task::batch([text_input::focus(text_input::Id::new("dummy")), command]);
             }
             WindowMessage::StartRecordingKeybind(data) => {
                 if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
@@ -1703,7 +1700,7 @@ impl Application for MainWindow {
                     let original_script_id = match original_script {
                         config::ScriptDefinition::Original(script) => script.uid.clone(),
                         config::ScriptDefinition::Preset(preset) => preset.uid.clone(),
-                        _ => return Command::none(),
+                        _ => return Task::none(),
                     };
                     config::get_main_rewritable_config_mut(&mut self.app_config)
                         .quick_launch_scripts
@@ -1726,10 +1723,10 @@ impl Application for MainWindow {
             }
         }
 
-        Command::none()
+        Task::none()
     }
 
-    fn view(&self) -> Element<WindowMessage> {
+    pub(crate) fn view(&self) -> Element<WindowMessage> {
         let focus = self.window_state.pane_focus;
         let total_panes = self.panes.len();
 
@@ -1804,21 +1801,15 @@ impl Application for MainWindow {
             .into()
     }
 
-    fn theme(&self) -> Theme {
+    pub(crate) fn theme(&self) -> Theme {
         self.theme.clone()
     }
 
-    fn subscription(&self) -> Subscription<WindowMessage> {
+    pub(crate) fn subscription(&self) -> Subscription<WindowMessage> {
         Subscription::batch([
-            listen_with(move |event, _status| match event {
-                iced::event::Event::Window(id, window::Event::Resized { width, height }) => {
-                    Some(WindowMessage::WindowResized(
-                        id,
-                        Size {
-                            width: width as f32,
-                            height: height as f32,
-                        },
-                    ))
+            listen_with(move |event, _status, id| match event {
+                iced::event::Event::Window(window::Event::Resized(size)) => {
+                    Some(WindowMessage::WindowResized(id, size))
                 }
                 _ => None,
             }),
@@ -1964,9 +1955,9 @@ fn produce_script_list_content<'a>(
                 )
                 .padding(4)
                 .style(if is_selected {
-                    theme::Button::Primary
+                    button::primary
                 } else {
-                    theme::Button::Secondary
+                    button::secondary
                 })
                 .on_press(if edit_data.window_edit_data.is_none() {
                     WindowMessage::AddScriptToExecutionOrRun(script.original_script_uid.clone())
@@ -1984,18 +1975,18 @@ fn produce_script_list_content<'a>(
     let edit_controls = if edit_data.window_edit_data.is_some() {
         column![
             text("Editing config")
-                .horizontal_alignment(alignment::Horizontal::Center)
+                .align_x(alignment::Horizontal::Center)
                 .width(Length::Fill)
                 .size(16),
             Space::with_height(4.0),
             if edit_data.is_dirty {
                 column![row![
                     button(text("Save").size(16))
-                        .style(theme::Button::Positive)
+                        .style(button::success)
                         .on_press(WindowMessage::SaveConfigAndExitEditing),
                     Space::with_width(4.0),
                     button(text("Revert").size(16))
-                        .style(theme::Button::Destructive)
+                        .style(button::danger)
                         .on_press(WindowMessage::RevertConfigAndExitEditing),
                     Space::with_width(4.0),
                     button(text("Preview").size(16)).on_press(WindowMessage::ExitWindowEditMode),
@@ -2024,11 +2015,11 @@ fn produce_script_list_content<'a>(
             {
                 let mut buttons = row![
                     button(text("Save").size(16))
-                        .style(theme::Button::Positive)
+                        .style(button::success)
                         .on_press(WindowMessage::SaveConfigAndExitEditing),
                     Space::with_width(4.0),
                     button(text("Revert").size(16))
-                        .style(theme::Button::Destructive)
+                        .style(button::danger)
                         .on_press(WindowMessage::RevertConfigAndExitEditing),
                 ];
                 if !execution_lists.has_any_execution_started() {
@@ -2076,7 +2067,7 @@ fn produce_script_list_content<'a>(
                                 .remove
                                 .clone()
                         ))
-                        .style(theme::Button::Destructive)
+                        .style(button::danger)
                         .height(Length::Fixed(22.0))
                         .on_press(WindowMessage::ScriptFilterChanged("".to_string())),
                     ]
@@ -2102,9 +2093,7 @@ fn produce_script_list_content<'a>(
                 .spacing(4),
                 Space::with_height(4.0),
             ])
-            .direction(scrollable::Direction::Horizontal(
-                scrollable::Properties::default()
-            ))
+            .direction(scrollable::Direction::Horizontal(Scrollbar::default()))
         ]
     } else {
         column![]
@@ -2118,7 +2107,7 @@ fn produce_script_list_content<'a>(
     ]
     .width(Length::Fill)
     .height(Length::Fill)
-    .align_items(Alignment::Start)
+    .align_x(Alignment::Start)
 }
 
 fn produce_execution_list_content<'a>(
@@ -2145,10 +2134,16 @@ fn produce_execution_list_content<'a>(
     } else if main_config.enable_title_editing && edit_data.window_edit_data.is_none() {
         row![
             horizontal_space(),
-            text(config.custom_title.as_ref().unwrap_or(&EMPTY_STRING))
-                .size(16)
-                .horizontal_alignment(alignment::Horizontal::Center)
-                .width(Length::Shrink),
+            text(
+                config
+                    .custom_title
+                    .as_ref()
+                    .map(|x| x.to_string())
+                    .unwrap_or_else(|| EMPTY_STRING.clone())
+            )
+            .size(16)
+            .align_x(alignment::Horizontal::Center)
+            .width(Length::Shrink),
             tooltip(
                 button(
                     image(
@@ -2160,21 +2155,21 @@ fn produce_execution_list_content<'a>(
                     .width(Length::Fixed(8.0))
                     .height(Length::Fixed(8.0))
                 )
-                .style(theme::Button::Secondary)
+                .style(button::secondary)
                 .on_press(WindowMessage::SetExecutionListTitleEditing(true)),
                 "Edit title",
                 tooltip::Position::Right
             ),
             horizontal_space(),
         ]
-        .align_items(Alignment::Center)
+        .align_y(Alignment::Center)
     } else if let Some(custom_title) = &config.custom_title {
         if !custom_title.is_empty() {
-            row![text(custom_title)
+            row![text(custom_title.to_string())
                 .size(16)
-                .horizontal_alignment(alignment::Horizontal::Center)
+                .align_x(alignment::Horizontal::Center)
                 .width(Length::Fill),]
-            .align_items(Alignment::Center)
+            .align_y(Alignment::Center)
         } else {
             row![]
         }
@@ -2186,18 +2181,24 @@ fn produce_execution_list_content<'a>(
 
     if config.rewritable.show_working_directory {
         title = title.push(
-            text(path_caches.work_path.to_str().unwrap_or_default())
-                .size(16)
-                .horizontal_alignment(alignment::Horizontal::Center)
-                .width(Length::Fill),
+            text(
+                path_caches
+                    .work_path
+                    .to_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            )
+            .size(16)
+            .align_x(alignment::Horizontal::Center)
+            .width(Length::Fill),
         );
     }
 
     if let Some(git_branch_requester) = &visual_caches.git_branch_requester {
         title = title.push(
-            text(git_branch_requester.get_current_branch_ref())
+            text(git_branch_requester.get_current_branch_ref().clone())
                 .size(16)
-                .horizontal_alignment(alignment::Horizontal::Center)
+                .align_x(alignment::Horizontal::Center)
                 .width(Length::Fill),
         )
     }
@@ -2211,9 +2212,9 @@ fn produce_execution_list_content<'a>(
     for execution in execution_lists.get_started_executions().values() {
         if should_show_execution_names {
             data_lines.push(
-                row![text(execution.get_name())
+                row![text(execution.get_name().clone())
                     .size(16)
-                    .horizontal_alignment(alignment::Horizontal::Left)
+                    .align_x(alignment::Horizontal::Left)
                     .width(Length::Fill),]
                 .height(30)
                 .into(),
@@ -2225,7 +2226,6 @@ fn produce_execution_list_content<'a>(
         for i in 0..scripts.len() {
             let record = &scripts[i];
             let script_status = &record.status;
-            let script_name = &record.script.name;
 
             let repeat_text = if script_status.retry_count > 0 {
                 format!(
@@ -2237,9 +2237,9 @@ fn produce_execution_list_content<'a>(
             };
 
             let status;
-            let status_tooltip;
+            let status_tooltip: &'static str;
             let progress;
-            let style = if script_status.has_script_failed() {
+            let color = if script_status.has_script_failed() {
                 if let Some(custom_theme) = &main_config.custom_theme {
                     iced::Color::from_rgb(
                         custom_theme.error_text[0],
@@ -2309,7 +2309,7 @@ fn produce_execution_list_content<'a>(
                     status_tooltip,
                     tooltip::Position::Right,
                 )
-                .style(theme::Container::Box)
+                .style(container::bordered_box)
                 .into(),
             );
             row_data.push(Space::with_width(4).into());
@@ -2324,11 +2324,11 @@ fn produce_execution_list_content<'a>(
             }
             row_data.push(
                 tooltip(
-                    text(format!("{} {}", script_name, progress)).style(style),
-                    text(record.tooltip.as_str()),
+                    text(format!("{} {}", record.script.name, progress)).color(color),
+                    text(record.tooltip.clone()),
                     tooltip::Position::Bottom,
                 )
-                .style(theme::Container::Box)
+                .style(container::bordered_box)
                 .into(),
             );
 
@@ -2344,7 +2344,7 @@ fn produce_execution_list_content<'a>(
                             "Open log directory",
                             tooltip::Position::Right,
                         )
-                        .style(theme::Container::Box)
+                        .style(container::bordered_box)
                         .into(),
                     );
                 } else if !script_status.has_script_been_skipped() {
@@ -2357,7 +2357,7 @@ fn produce_execution_list_content<'a>(
                             "Open log file",
                             tooltip::Position::Right,
                         )
-                        .style(theme::Container::Box)
+                        .style(container::bordered_box)
                         .into(),
                     );
                 }
@@ -2460,7 +2460,7 @@ fn produce_execution_list_content<'a>(
             }
             .spacing(5)]
             .width(Length::Fill)
-            .align_items(Alignment::Center)
+            .align_x(Alignment::Center)
             .into(),
         );
 
@@ -2468,7 +2468,7 @@ fn produce_execution_list_content<'a>(
     }
     let scheduled_block = column(data_lines)
         .width(Length::Fill)
-        .align_items(Alignment::Start);
+        .align_x(Alignment::Start);
 
     let edited_data: Element<_> = column(
         execution_lists
@@ -2476,8 +2476,6 @@ fn produce_execution_list_content<'a>(
             .iter()
             .enumerate()
             .map(|(i, script)| {
-                let script_name = &script.name;
-
                 let is_selected = match &window_state.cursor_script {
                     Some(selected_script) => {
                         selected_script.idx == i
@@ -2486,7 +2484,7 @@ fn produce_execution_list_content<'a>(
                     None => false,
                 };
 
-                let style = if is_selected {
+                let color = if is_selected {
                     theme.extended_palette().primary.strong.text
                 } else {
                     theme.extended_palette().background.strong.text
@@ -2505,7 +2503,7 @@ fn produce_execution_list_content<'a>(
                     );
                     row_data.push(Space::with_width(4).into());
                 }
-                row_data.push(text(script_name).style(style).into());
+                row_data.push(text(script.name.clone()).color(color).into());
 
                 if is_selected {
                     row_data.push(horizontal_space().into());
@@ -2515,7 +2513,7 @@ fn produce_execution_list_content<'a>(
                                 icons.themed.up.clone(),
                                 WindowMessage::MoveExecutionScriptUp(i),
                             )
-                            .style(theme::Button::Primary)
+                            .style(button::primary)
                             .into(),
                         );
                     }
@@ -2525,7 +2523,7 @@ fn produce_execution_list_content<'a>(
                                 icons.themed.down.clone(),
                                 WindowMessage::MoveExecutionScriptDown(i),
                             )
-                            .style(theme::Button::Primary)
+                            .style(button::primary)
                             .into(),
                         );
                     } else {
@@ -2541,11 +2539,11 @@ fn produce_execution_list_content<'a>(
                                     .clone(),
                                 WindowMessage::RemoveExecutionListScript(i),
                             )
-                            .style(theme::Button::Destructive),
+                            .style(button::danger),
                             "Remove script from execution list",
                             tooltip::Position::Left,
                         )
-                        .style(theme::Container::Box)
+                        .style(container::bordered_box)
                         .into(),
                     );
                 }
@@ -2558,12 +2556,12 @@ fn produce_execution_list_content<'a>(
                 }
 
                 list_item = list_item.style(if is_selected {
-                    theme::Button::Primary
+                    button::primary
                 } else {
                     if is_original_script_missing_arguments(&script) {
-                        theme::Button::Destructive
+                        button::danger
                     } else {
-                        theme::Button::Secondary
+                        button::secondary
                     }
                 });
 
@@ -2572,7 +2570,7 @@ fn produce_execution_list_content<'a>(
             .collect::<Vec<_>>(),
     )
     .width(Length::Fill)
-    .align_items(Alignment::Start)
+    .align_x(Alignment::Start)
     .into();
 
     let edit_controls = column![if edit_data.window_edit_data.is_some() {
@@ -2693,15 +2691,13 @@ fn produce_execution_list_content<'a>(
             row(execution_buttons).spacing(5),
             Space::with_height(8),
         ])
-        .direction(scrollable::Direction::Horizontal(
-            scrollable::Properties::default()
-        ))]
+        .direction(scrollable::Direction::Horizontal(Scrollbar::default()))]
     } else {
         row![]
     }
-    .align_items(Alignment::Center)
+    .align_y(Alignment::Center)
     .spacing(3)]
-    .align_items(Alignment::Center)
+    .align_x(Alignment::Center)
     .spacing(5)
     .width(Length::Fill);
 
@@ -2732,7 +2728,7 @@ fn produce_execution_list_content<'a>(
     .width(Length::Fill)
     .height(Length::Fill)
     .spacing(10)
-    .align_items(Alignment::Center)
+    .align_x(Alignment::Center)
 }
 
 fn produce_log_output_content<'a>(
@@ -2752,7 +2748,7 @@ fn produce_log_output_content<'a>(
             .map(|execution| {
                 let is_selected_execution =
                     Some(execution.get_id()) == visual_caches.selected_execution_log;
-                let tab_button = button(text(execution.get_name()));
+                let tab_button = button(text(execution.get_name().clone()));
                 if is_selected_execution {
                     tab_button
                 } else {
@@ -2763,11 +2759,8 @@ fn produce_log_output_content<'a>(
             .collect::<Vec<_>>())
         .spacing(5);
 
-        let tabs = row![
-            scrollable(column![tabs, Space::with_height(12),]).direction(
-                scrollable::Direction::Horizontal(scrollable::Properties::default())
-            )
-        ];
+        let tabs = row![scrollable(column![tabs, Space::with_height(12),])
+            .direction(scrollable::Direction::Horizontal(Scrollbar::default()))];
         tabs
     } else {
         row![]
@@ -2810,7 +2803,7 @@ fn produce_log_output_content<'a>(
                         element.timestamp.format("%H:%M:%S"),
                         element.text
                     ))
-                    .style(match element.output_type {
+                    .color(match element.output_type {
                         execution_thread::OutputType::StdOut => {
                             theme.extended_palette().primary.weak.text
                         }
@@ -2830,7 +2823,7 @@ fn produce_log_output_content<'a>(
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
-        .align_items(Alignment::Start)
+        .align_x(Alignment::Start)
 }
 
 fn produce_script_edit_content<'a>(
@@ -2937,7 +2930,7 @@ fn produce_script_config_edit_content<'a>(
                     "Remove script",
                     WindowMessage::RemoveConfigScript(config_script_id),
                 )
-                .style(theme::Button::Destructive)
+                .style(button::danger)
                 .into(),
             );
         }
@@ -3021,7 +3014,7 @@ fn produce_script_config_edit_content<'a>(
                     "Remove shared",
                     WindowMessage::RemoveConfigScript(original_script_id),
                 )
-                .style(theme::Button::Destructive)
+                .style(button::danger)
                 .into(),
             );
         }
@@ -3068,7 +3061,7 @@ fn produce_script_config_edit_content<'a>(
                     "Remove preset",
                     WindowMessage::RemoveConfigScript(config_script_id),
                 )
-                .style(theme::Button::Destructive)
+                .style(button::danger)
                 .into(),
             );
         }
@@ -3082,7 +3075,7 @@ fn produce_script_config_edit_content<'a>(
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
-        .align_items(Alignment::Start)
+        .align_x(Alignment::Start)
 }
 
 fn produce_script_to_execute_edit_content<'a>(
@@ -3113,9 +3106,9 @@ fn produce_script_to_execute_edit_content<'a>(
                     if script.arguments_requirement == config::ArgumentRequirement::Required
                         && script.arguments.is_empty()
                     {
-                        theme::TextInput::Custom(Box::new(style::InvalidInputStyleSheet))
+                        style::invalid_text_input_style
                     } else {
-                        theme::TextInput::Default
+                        text_input::default
                     },
                 )
                 .padding(5)
@@ -3159,7 +3152,7 @@ fn produce_script_to_execute_edit_content<'a>(
             "Remove script",
             WindowMessage::RemoveExecutionListScript(edited_script_idx),
         )
-        .style(theme::Button::Destructive)
+        .style(button::danger)
         .into(),
     );
 
@@ -3171,7 +3164,7 @@ fn produce_script_to_execute_edit_content<'a>(
         .width(Length::Fill)
         .height(Length::Fill)
         .spacing(10)
-        .align_items(Alignment::Start)
+        .align_x(Alignment::Start)
 }
 
 fn populate_original_script_config_edit_content<'a>(
@@ -3228,7 +3221,7 @@ fn populate_original_script_config_edit_content<'a>(
             .on_input(move |new_value| {
                 WindowMessage::EditArgumentsForConfig(config_script_id, new_value)
             })
-            .style(theme::TextInput::Default)
+            .style(text_input::default)
             .padding(5)
             .id(ARGUMENTS_INPUT_ID.clone())
             .into(),
@@ -3660,7 +3653,7 @@ fn produce_settings_edit_content<'a>(
     ]
     .width(Length::Fill)
     .height(Length::Fill)
-    .align_items(Alignment::Start)
+    .align_x(Alignment::Start)
 }
 
 fn view_content<'a>(
@@ -3718,9 +3711,8 @@ fn view_content<'a>(
 
     container(content)
         .width(Length::Fill)
-        .height(Length::Fill)
         .padding(5)
-        .center_y()
+        .center_y(Length::Fill)
         .into()
 }
 
@@ -3760,7 +3752,7 @@ fn view_controls<'a>(
                 "Edit configuration",
                 tooltip::Position::Left,
             )
-            .style(theme::Container::Box),
+            .style(container::bordered_box),
         );
     }
 
@@ -3810,7 +3802,7 @@ fn view_controls<'a>(
                     .size(14)
                     .line_height(LineHeight::Absolute(iced::Pixels(14.0))),
             )
-            .style(theme::Button::Secondary)
+            .style(button::secondary)
             .padding(3)
             .on_press(message)
         };

@@ -4,7 +4,7 @@
 use iced::advanced::image::Handle;
 use iced::widget::{pane_grid, text_input};
 use iced::window::resize;
-use iced::{keyboard, window, Command, Size, Theme};
+use iced::{keyboard, window, Size, Task, Theme};
 
 use crate::color_utils;
 use crate::config;
@@ -699,7 +699,7 @@ pub fn maximize_pane(
     app: &mut MainWindow,
     pane: pane_grid::Pane,
     window_size: Size,
-) -> Command<WindowMessage> {
+) -> Task<WindowMessage> {
     if app.window_state.pane_focus != Some(pane) {
         clean_script_selection(&mut app.window_state.cursor_script);
     }
@@ -714,7 +714,7 @@ pub fn maximize_pane(
             .pane_regions(1.0, Size::new(window_size.width, window_size.height));
         let size = regions.get(&pane);
         let Some(size) = size else {
-            return Command::none();
+            return Task::none();
         };
 
         let executions_count = app.execution_manager.get_started_executions().size() as u32;
@@ -748,48 +748,47 @@ pub fn maximize_pane(
             title_lines += 1;
         }
 
-        return resize(
-            window::Id::MAIN,
-            Size {
-                width: size.width,
-                height: f32::min(
-                    size.height,
-                    EMPTY_EXECUTION_LIST_HEIGHT
-                        + title_lines as f32 * ONE_TITLE_LINE_HEIGHT
-                        + if should_show_execution_names {
-                            ONE_EXECUTION_NAME_HEIGHT * executions_count as f32
-                        } else {
-                            0.0
-                        }
-                        + scheduled_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
-                        + EDIT_BUTTONS_HEIGHT * executions_count as f32
-                        + edited_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
-                        + if edited_elements_count > 0 {
-                            EDIT_BUTTONS_HEIGHT
-                        } else {
-                            0.0
-                        },
-                ),
-            },
-        );
+        let size = size.clone();
+
+        return window::get_oldest().and_then(move |window_id| {
+            resize(
+                window_id,
+                Size {
+                    width: size.width,
+                    height: f32::min(
+                        size.height,
+                        EMPTY_EXECUTION_LIST_HEIGHT
+                            + title_lines as f32 * ONE_TITLE_LINE_HEIGHT
+                            + if should_show_execution_names {
+                                ONE_EXECUTION_NAME_HEIGHT * executions_count as f32
+                            } else {
+                                0.0
+                            }
+                            + scheduled_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+                            + EDIT_BUTTONS_HEIGHT * executions_count as f32
+                            + edited_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+                            + if edited_elements_count > 0 {
+                                EDIT_BUTTONS_HEIGHT
+                            } else {
+                                0.0
+                            },
+                    ),
+                },
+            )
+        });
     }
 
-    Command::none()
+    Task::none()
 }
 
-pub fn restore_window(app: &mut MainWindow) -> Command<WindowMessage> {
+pub fn restore_window(app: &mut MainWindow) -> Task<WindowMessage> {
     app.window_state.has_maximized_pane = false;
     app.panes.restore();
     if !config::get_main_rewritable_config(&app.app_config).keep_window_size {
-        return resize(
-            window::Id::MAIN,
-            Size {
-                width: app.window_state.full_window_size.width,
-                height: app.window_state.full_window_size.height,
-            },
-        );
+        let window_size = app.window_state.full_window_size.clone();
+        return window::get_oldest().and_then(move |window_id| resize(window_id, window_size));
     }
-    Command::none()
+    Task::none()
 }
 
 pub fn move_cursor(app: &mut MainWindow, is_up: bool) {
@@ -1390,7 +1389,7 @@ pub fn apply_theme(app: &mut MainWindow) {
     update_theme_icons(app);
 }
 
-pub fn focus_filter(app: &mut MainWindow) -> Command<WindowMessage> {
+pub fn focus_filter(app: &mut MainWindow) -> Task<WindowMessage> {
     if app.panes.maximized().is_none() {
         if let Some(focus) = app.window_state.pane_focus {
             if &app.panes.panes[&focus].variant != &PaneVariant::ScriptList {
@@ -1400,7 +1399,7 @@ pub fn focus_filter(app: &mut MainWindow) -> Command<WindowMessage> {
             app.window_state.pane_focus = Some(app.pane_by_pane_type[&PaneVariant::ScriptList]);
         }
     }
-    Command::batch([
+    Task::batch([
         text_input::focus(FILTER_INPUT_ID.clone()),
         text_input::select_all(FILTER_INPUT_ID.clone()),
     ])

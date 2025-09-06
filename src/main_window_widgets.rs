@@ -7,10 +7,10 @@ use crate::{config, keybind_editing, style};
 use iced::advanced::image::Handle;
 use iced::widget::text::LineHeight;
 use iced::widget::{
-    button, checkbox, horizontal_rule, image, pick_list, row, text, text_input, tooltip, Button,
-    Column, Space,
+    button, checkbox, container, horizontal_rule, image, pick_list, row, text, text_input, tooltip,
+    Button, Column, Space,
 };
-use iced::{alignment, theme, Alignment, Element, Length, Theme};
+use iced::{alignment, Alignment, Element, Length, Theme};
 
 const SEPARATOR_HEIGHT: u16 = 8;
 
@@ -83,13 +83,9 @@ impl std::fmt::Display for config::ReactionToPreviousFailures {
 }
 
 pub fn edit_button(label: &str, message: WindowMessage) -> Button<WindowMessage> {
-    button(
-        text(label)
-            .vertical_alignment(alignment::Vertical::Center)
-            .size(16),
-    )
-    .padding(4)
-    .on_press(message)
+    button(text(label).align_y(alignment::Vertical::Center).size(16))
+        .padding(4)
+        .on_press(message)
 }
 
 pub fn populate_quick_launch_edit_button<'a>(
@@ -118,7 +114,7 @@ pub fn populate_quick_launch_edit_button<'a>(
 }
 
 pub fn populate_path_editing_content(
-    caption: &str,
+    caption: &'static str,
     hint: &str,
     path: &config::PathConfig,
     edit_content: &mut Vec<Element<'_, WindowMessage, Theme, iced::Renderer>>,
@@ -162,7 +158,7 @@ pub fn quick_launch_button(button_description: &QuickLaunchButton) -> Element<Wi
                 .width(Length::Fixed(22.0))
                 .height(Length::Fixed(22.0)),
         )
-        .style(theme::Button::Secondary)
+        .style(button::secondary)
         .on_press(WindowMessage::OnQuickLaunchButtonPressed(
             button_description.script_uid.clone(),
         ))
@@ -170,7 +166,7 @@ pub fn quick_launch_button(button_description: &QuickLaunchButton) -> Element<Wi
         button_description.label.as_str(),
         tooltip::Position::Top,
     )
-    .style(theme::Container::Box)
+    .style(container::bordered_box)
     .into()
 }
 
@@ -187,7 +183,7 @@ pub fn main_icon_button(
             Space::with_width(4),
             text(label).width(Length::Shrink).size(16),
         ]
-        .align_items(Alignment::Center),
+        .align_y(Alignment::Center),
     )
     .width(Length::Shrink)
     .padding(8);
@@ -212,7 +208,7 @@ pub fn main_icon_button_string(
             Space::with_width(4),
             text(label.to_string()).width(Length::Shrink).size(16),
         ]
-        .align_items(Alignment::Center),
+        .align_y(Alignment::Center),
     )
     .width(Length::Shrink)
     .padding(8);
@@ -258,11 +254,11 @@ pub fn edit_mode_button<'a>(
             Space::with_width(4),
             icon
         ]
-        .align_items(Alignment::Center)
+        .align_y(Alignment::Center)
     } else {
         row![icon]
     })
-    .style(theme::Button::Secondary)
+    .style(button::secondary)
     .width(Length::Shrink)
     .padding(4)
     .on_press(message)
@@ -523,7 +519,7 @@ pub fn populate_argument_placeholders_content<'a>(
         content.push(
             text(format!("{}:", argument_placeholder.name))
                 .size(16)
-                .horizontal_alignment(alignment::Horizontal::Left)
+                .align_x(alignment::Horizontal::Left)
                 .into(),
         );
         content.push(
@@ -534,9 +530,9 @@ pub fn populate_argument_placeholders_content<'a>(
                 .padding(5)
                 .style(
                     if argument_placeholder.is_required && argument_placeholder.value.is_empty() {
-                        theme::TextInput::Custom(Box::new(style::InvalidInputStyleSheet))
+                        style::invalid_text_input_style
                     } else {
-                        theme::TextInput::Default
+                        text_input::default
                     },
                 )
                 .into(),

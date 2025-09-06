@@ -1,4 +1,4 @@
-// Copyright (C) Pavel Grebnev 2023-2024
+// Copyright (C) Pavel Grebnev 2023-2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use iced::{
@@ -286,7 +286,7 @@ pub fn populate_keybind_editing_content(
     edit_content: &mut Vec<Element<'_, main_window::WindowMessage, iced::Theme, iced::Renderer>>,
     window_edit_data: &main_window::WindowEditData,
     visual_caches: &main_window::VisualCaches,
-    caption: &str,
+    caption: &'static str,
     data: KeybindAssociatedData,
 ) {
     edit_content.push(text(caption).into());
@@ -305,7 +305,7 @@ pub fn populate_keybind_editing_content(
     if let Some((action, error)) = &window_edit_data.keybind_editing.edited_keybind_error {
         if *action == data {
             edit_content.push(
-                button(text(error))
+                button(text(error.to_string()))
                     .on_press(main_window::WindowMessage::StartRecordingKeybind(data))
                     .into(),
             );
@@ -315,7 +315,7 @@ pub fn populate_keybind_editing_content(
 
     if let Some(keybind_hint) = visual_caches.keybind_hints.get(&data) {
         edit_content.push(
-            button(text(keybind_hint))
+            button(text(keybind_hint.to_string()))
                 .on_press(main_window::WindowMessage::StartRecordingKeybind(data))
                 .into(),
         );

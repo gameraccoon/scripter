@@ -1,4 +1,4 @@
-// Copyright (C) Pavel Grebnev 2023
+// Copyright (C) Pavel Grebnev 2023,2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use iced::widget::image::Handle;
@@ -38,11 +38,31 @@ impl IconCaches {
         let dark = get_dark_themed_icons();
 
         Self {
-            idle: Handle::from_memory(include_bytes!("../res/icons/idle.png")),
-            in_progress: Handle::from_memory(include_bytes!("../res/icons/in-progress.png")),
-            succeeded: Handle::from_memory(include_bytes!("../res/icons/positive.png")),
-            failed: Handle::from_memory(include_bytes!("../res/icons/negative.png")),
-            skipped: Handle::from_memory(include_bytes!("../res/icons/skip.png")),
+            idle: Handle::from_bytes(
+                include_bytes!("../res/icons/idle.png")
+                    .into_iter()
+                    .as_slice(),
+            ),
+            in_progress: Handle::from_bytes(
+                include_bytes!("../res/icons/in-progress.png")
+                    .into_iter()
+                    .as_slice(),
+            ),
+            succeeded: Handle::from_bytes(
+                include_bytes!("../res/icons/positive.png")
+                    .into_iter()
+                    .as_slice(),
+            ),
+            failed: Handle::from_bytes(
+                include_bytes!("../res/icons/negative.png")
+                    .into_iter()
+                    .as_slice(),
+            ),
+            skipped: Handle::from_bytes(
+                include_bytes!("../res/icons/skip.png")
+                    .into_iter()
+                    .as_slice(),
+            ),
 
             bright,
             dark: dark.clone(),
@@ -62,32 +82,120 @@ impl IconCaches {
 
 fn get_dark_themed_icons() -> ThemedIcons {
     ThemedIcons {
-        play: Handle::from_memory(include_bytes!("../res/icons/play-b.png")),
-        stop: Handle::from_memory(include_bytes!("../res/icons/stop-b.png")),
-        retry: Handle::from_memory(include_bytes!("../res/icons/retry-b.png")),
-        remove: Handle::from_memory(include_bytes!("../res/icons/remove-b.png")),
-        plus: Handle::from_memory(include_bytes!("../res/icons/plus-b.png")),
-        settings: Handle::from_memory(include_bytes!("../res/icons/settings-b.png")),
-        up: Handle::from_memory(include_bytes!("../res/icons/up-b.png")),
-        down: Handle::from_memory(include_bytes!("../res/icons/down-b.png")),
-        log: Handle::from_memory(include_bytes!("../res/icons/log-b.png")),
-        edit: Handle::from_memory(include_bytes!("../res/icons/edit-b.png")),
-        quick_launch: Handle::from_memory(include_bytes!("../res/icons/quick_launch-b.png")),
+        play: Handle::from_bytes(
+            include_bytes!("../res/icons/play-b.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        stop: Handle::from_bytes(
+            include_bytes!("../res/icons/stop-b.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        retry: Handle::from_bytes(
+            include_bytes!("../res/icons/retry-b.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        remove: Handle::from_bytes(
+            include_bytes!("../res/icons/remove-b.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        plus: Handle::from_bytes(
+            include_bytes!("../res/icons/plus-b.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        settings: Handle::from_bytes(
+            include_bytes!("../res/icons/settings-b.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        up: Handle::from_bytes(
+            include_bytes!("../res/icons/up-b.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        down: Handle::from_bytes(
+            include_bytes!("../res/icons/down-b.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        log: Handle::from_bytes(
+            include_bytes!("../res/icons/log-b.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        edit: Handle::from_bytes(
+            include_bytes!("../res/icons/edit-b.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        quick_launch: Handle::from_bytes(
+            include_bytes!("../res/icons/quick_launch-b.png")
+                .into_iter()
+                .as_slice(),
+        ),
     }
 }
 
 fn get_bright_themed_icons() -> ThemedIcons {
     ThemedIcons {
-        play: Handle::from_memory(include_bytes!("../res/icons/play-w.png")),
-        stop: Handle::from_memory(include_bytes!("../res/icons/stop-w.png")),
-        retry: Handle::from_memory(include_bytes!("../res/icons/retry-w.png")),
-        remove: Handle::from_memory(include_bytes!("../res/icons/remove-w.png")),
-        plus: Handle::from_memory(include_bytes!("../res/icons/plus-w.png")),
-        settings: Handle::from_memory(include_bytes!("../res/icons/settings-w.png")),
-        up: Handle::from_memory(include_bytes!("../res/icons/up-w.png")),
-        down: Handle::from_memory(include_bytes!("../res/icons/down-w.png")),
-        log: Handle::from_memory(include_bytes!("../res/icons/log-w.png")),
-        edit: Handle::from_memory(include_bytes!("../res/icons/edit-w.png")),
-        quick_launch: Handle::from_memory(include_bytes!("../res/icons/quick_launch-w.png")),
+        play: Handle::from_bytes(
+            include_bytes!("../res/icons/play-w.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        stop: Handle::from_bytes(
+            include_bytes!("../res/icons/stop-w.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        retry: Handle::from_bytes(
+            include_bytes!("../res/icons/retry-w.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        remove: Handle::from_bytes(
+            include_bytes!("../res/icons/remove-w.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        plus: Handle::from_bytes(
+            include_bytes!("../res/icons/plus-w.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        settings: Handle::from_bytes(
+            include_bytes!("../res/icons/settings-w.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        up: Handle::from_bytes(
+            include_bytes!("../res/icons/up-w.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        down: Handle::from_bytes(
+            include_bytes!("../res/icons/down-w.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        log: Handle::from_bytes(
+            include_bytes!("../res/icons/log-w.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        edit: Handle::from_bytes(
+            include_bytes!("../res/icons/edit-w.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        quick_launch: Handle::from_bytes(
+            include_bytes!("../res/icons/quick_launch-w.png")
+                .into_iter()
+                .as_slice(),
+        ),
     }
 }
