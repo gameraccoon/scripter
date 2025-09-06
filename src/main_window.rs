@@ -4,6 +4,7 @@
 use crate::color_utils;
 use crate::config;
 use crate::custom_keybinds;
+use crate::drag_and_drop_list;
 use crate::execution_thread;
 use crate::file_utils;
 use crate::git_support;
@@ -16,6 +17,7 @@ use crate::ui_icons;
 
 use iced::alignment::{self, Alignment};
 use iced::event::listen_with;
+use iced::mouse::Event;
 use iced::theme::Theme;
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::scrollable::Scrollbar;
@@ -160,18 +162,30 @@ impl WindowEditData {
     }
 }
 
+#[derive(Default)]
+struct DragAndDropAreas {
+    script_list: drag_and_drop_list::DragAndDropList,
+    edit_script_list: drag_and_drop_list::DragAndDropList,
+    execution_lists: Vec<drag_and_drop_list::DragAndDropList>,
+}
+
 pub(crate) struct WindowState {
     pub(crate) pane_focus: Option<pane_grid::Pane>,
     pub(crate) cursor_script: Option<EditScriptId>,
     pub(crate) full_window_size: Size,
     pub(crate) is_command_key_down: bool,
     is_alt_key_down: bool,
+    mouse_position: iced::Point,
     pub(crate) has_maximized_pane: bool,
+    drag_and_drop_areas: DragAndDropAreas,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) enum WindowMessage {
     WindowResized(window::Id, Size),
+    WindowOnMouseDown,
+    WindowOnMouseUp,
+    WindowOnMouseMove(iced::Point),
     PaneHeaderClicked(pane_grid::Pane),
     PaneHeaderDragged(pane_grid::DragEvent),
     PaneResized(pane_grid::ResizeEvent),
@@ -363,7 +377,9 @@ impl MainWindow {
                 full_window_size: Size::new(1024.0, 768.0),
                 is_command_key_down: false,
                 is_alt_key_down: false,
+                mouse_position: iced::Point::new(0.0, 0.0),
                 has_maximized_pane: false,
+                drag_and_drop_areas: DragAndDropAreas::default(),
             },
             keybinds: custom_keybinds::CustomKeybinds::new(),
             displayed_configs_list_cache: Vec::new(),
@@ -405,6 +421,46 @@ impl MainWindow {
             WindowMessage::WindowResized(_window_id, size) => {
                 if !self.window_state.has_maximized_pane {
                     self.window_state.full_window_size = size;
+                }
+            }
+            WindowMessage::WindowOnMouseDown => {
+                self.window_state
+                    .drag_and_drop_areas
+                    .script_list
+                    .on_mouse_down(self.window_state.mouse_position);
+                self.window_state
+                    .drag_and_drop_areas
+                    .edit_script_list
+                    .on_mouse_down(self.window_state.mouse_position);
+                for area in &mut self.window_state.drag_and_drop_areas.execution_lists {
+                    area.on_mouse_down(self.window_state.mouse_position);
+                }
+            }
+            WindowMessage::WindowOnMouseUp => {
+                self.window_state
+                    .drag_and_drop_areas
+                    .script_list
+                    .on_mouse_up(self.window_state.mouse_position);
+                self.window_state
+                    .drag_and_drop_areas
+                    .edit_script_list
+                    .on_mouse_up(self.window_state.mouse_position);
+                for area in &mut self.window_state.drag_and_drop_areas.execution_lists {
+                    area.on_mouse_up(self.window_state.mouse_position);
+                }
+            }
+            WindowMessage::WindowOnMouseMove(position) => {
+                self.window_state.mouse_position = position;
+                self.window_state
+                    .drag_and_drop_areas
+                    .script_list
+                    .on_mouse_move(self.window_state.mouse_position);
+                self.window_state
+                    .drag_and_drop_areas
+                    .edit_script_list
+                    .on_mouse_move(self.window_state.mouse_position);
+                for area in &mut self.window_state.drag_and_drop_areas.execution_lists {
+                    area.on_mouse_move(position);
                 }
             }
             WindowMessage::PaneHeaderClicked(pane) => {
@@ -1804,6 +1860,26 @@ impl MainWindow {
                 iced::event::Event::Window(window::Event::Resized(size)) => {
                     Some(WindowMessage::WindowResized(id, size))
                 }
+                iced::event::Event::Mouse(event) => match event {
+                    Event::ButtonPressed(button) => {
+                        if button == iced::mouse::Button::Left {
+                            Some(WindowMessage::WindowOnMouseDown)
+                        } else {
+                            None
+                        }
+                    }
+                    Event::ButtonReleased(button) => {
+                        if button == iced::mouse::Button::Left {
+                            Some(WindowMessage::WindowOnMouseUp)
+                        } else {
+                            None
+                        }
+                    }
+                    Event::CursorMoved { position } => {
+                        Some(WindowMessage::WindowOnMouseMove(position))
+                    }
+                    _ => None,
+                },
                 _ => None,
             }),
             keyboard::on_key_press(|key, modifiers| {
