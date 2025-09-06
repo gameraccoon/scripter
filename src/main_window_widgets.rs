@@ -1,9 +1,11 @@
 // Copyright (C) Pavel Grebnev 2023-2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
+use crate::config;
+use crate::keybind_editing;
 use crate::main_window::*;
 use crate::main_window_utils::*;
-use crate::{config, keybind_editing, style};
+use crate::style;
 use iced::advanced::image::Handle;
 use iced::widget::text::LineHeight;
 use iced::widget::{

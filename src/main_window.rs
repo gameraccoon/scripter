@@ -1,6 +1,7 @@
 // Copyright (C) Pavel Grebnev 2023-2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
+use crate::color_utils;
 use crate::config;
 use crate::custom_keybinds;
 use crate::execution_thread;
@@ -10,8 +11,8 @@ use crate::keybind_editing;
 use crate::main_window_utils::*;
 use crate::main_window_widgets::*;
 use crate::parallel_execution_manager;
+use crate::style;
 use crate::ui_icons;
-use crate::{color_utils, style};
 
 use iced::alignment::{self, Alignment};
 use iced::event::listen_with;
