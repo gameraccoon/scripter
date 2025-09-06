@@ -65,7 +65,6 @@ pub(crate) struct VisualCaches {
     pub(crate) is_custom_title_editing: bool,
     pub(crate) icons: ui_icons::IconCaches,
     pub(crate) keybind_hints: HashMap<keybind_editing::KeybindAssociatedData, String>,
-    pane_drag_start_time: Instant,
     pub(crate) selected_execution_log: Option<parallel_execution_manager::ExecutionId>,
     pub(crate) git_branch_requester: Option<git_support::GitCurrentBranchRequester>,
     pub(crate) button_key_caches: ButtonKeyCaches,
@@ -172,11 +171,11 @@ pub(crate) struct WindowState {
 #[derive(Debug, Clone)]
 pub(crate) enum WindowMessage {
     WindowResized(window::Id, Size),
-    Clicked(pane_grid::Pane),
-    Dragged(pane_grid::DragEvent),
-    Resized(pane_grid::ResizeEvent),
-    Maximize(pane_grid::Pane, Size),
-    Restore,
+    PaneHeaderClicked(pane_grid::Pane),
+    PaneHeaderDragged(pane_grid::DragEvent),
+    PaneResized(pane_grid::ResizeEvent),
+    EnterFocusMode(pane_grid::Pane, Size),
+    ExitFocusMode,
     MaximizeOrRestoreExecutionPane,
     AddScriptToExecutionOrRun(config::Guid),
     AddScriptToExecutionWithoutRunning(config::Guid),
@@ -343,7 +342,6 @@ impl MainWindow {
                 is_custom_title_editing: false,
                 icons: ui_icons::IconCaches::new(),
                 keybind_hints: HashMap::new(),
-                pane_drag_start_time: Instant::now(),
                 selected_execution_log: None,
                 git_branch_requester: if show_current_git_branch {
                     Some(git_support::GitCurrentBranchRequester::new())
@@ -408,38 +406,32 @@ impl MainWindow {
                     self.window_state.full_window_size = size;
                 }
             }
-            WindowMessage::Clicked(pane) => {
+            WindowMessage::PaneHeaderClicked(pane) => {
                 self.window_state.pane_focus = Some(pane);
             }
-            WindowMessage::Resized(pane_grid::ResizeEvent { split, ratio }) => {
+            WindowMessage::PaneResized(pane_grid::ResizeEvent { split, ratio }) => {
                 self.panes.resize(split, ratio);
             }
-            WindowMessage::Dragged(pane_grid::DragEvent::Picked { pane: _pane }) => {
-                self.visual_caches.pane_drag_start_time = Instant::now();
+            WindowMessage::PaneHeaderDragged(drag_event) => {
+                match drag_event {
+                    pane_grid::DragEvent::Picked { pane: _pane } => {}
+                    pane_grid::DragEvent::Dropped {
+                        pane: _pane,
+                        target: _target,
+                    } => {
+                        self.pane_by_pane_type = HashMap::new();
+                        for pane in self.panes.panes.iter() {
+                            self.pane_by_pane_type
+                                .insert(pane.1.variant.clone(), *pane.0);
+                        }
+                    }
+                    pane_grid::DragEvent::Canceled { pane: _pane } => {}
+                };
             }
-            WindowMessage::Dragged(pane_grid::DragEvent::Dropped { pane, target }) => {
-                // avoid rearranging panes when trying to focus a pane by clicking on the title
-                if self
-                    .visual_caches
-                    .pane_drag_start_time
-                    .elapsed()
-                    .as_millis()
-                    > 200
-                {
-                    self.panes.drop(pane, target);
-                }
-
-                self.pane_by_pane_type = HashMap::new();
-                for pane in self.panes.panes.iter() {
-                    self.pane_by_pane_type
-                        .insert(pane.1.variant.clone(), *pane.0);
-                }
-            }
-            WindowMessage::Dragged(pane_grid::DragEvent::Canceled { pane: _ }) => {}
-            WindowMessage::Maximize(pane, window_size) => {
+            WindowMessage::EnterFocusMode(pane, window_size) => {
                 return maximize_pane(self, pane, window_size);
             }
-            WindowMessage::Restore => {
+            WindowMessage::ExitFocusMode => {
                 return restore_window(self);
             }
             WindowMessage::MaximizeOrRestoreExecutionPane => {
@@ -1788,9 +1780,9 @@ impl MainWindow {
             .width(Length::Fill)
             .height(Length::Fill)
             .spacing(1)
-            .on_click(WindowMessage::Clicked)
-            .on_drag(WindowMessage::Dragged)
-            .on_resize(10, WindowMessage::Resized)
+            .on_click(WindowMessage::PaneHeaderClicked)
+            .on_drag(WindowMessage::PaneHeaderDragged)
+            .on_resize(10, WindowMessage::PaneResized)
             .into()
         });
 
@@ -3775,7 +3767,7 @@ fn view_controls<'a>(
                     } else {
                         "Restore full window".to_string()
                     },
-                    WindowMessage::Restore,
+                    WindowMessage::ExitFocusMode,
                 )
             } else {
                 // adjust for window decorations
@@ -3794,7 +3786,7 @@ fn view_controls<'a>(
                     } else {
                         "Focus".to_string()
                     },
-                    WindowMessage::Maximize(pane, window_size),
+                    WindowMessage::EnterFocusMode(pane, window_size),
                 )
             };
             button(
