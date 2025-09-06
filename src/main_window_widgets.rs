@@ -7,10 +7,10 @@ use crate::{config, keybind_editing, style};
 use iced::advanced::image::Handle;
 use iced::widget::text::LineHeight;
 use iced::widget::{
-    button, checkbox, horizontal_rule, image, pick_list, row, text, text_input, tooltip, Button,
-    Column, Space,
+    button, checkbox, container, horizontal_rule, image, pick_list, row, text, text_input, tooltip,
+    Button, Column, Space,
 };
-use iced::{alignment, theme, Alignment, Element, Length, Theme};
+use iced::{alignment, Alignment, Element, Length, Theme};
 
 const SEPARATOR_HEIGHT: u16 = 8;
 
@@ -158,7 +158,7 @@ pub fn quick_launch_button(button_description: &QuickLaunchButton) -> Element<Wi
                 .width(Length::Fixed(22.0))
                 .height(Length::Fixed(22.0)),
         )
-        .style(theme::Button::Secondary)
+        .style(button::secondary)
         .on_press(WindowMessage::OnQuickLaunchButtonPressed(
             button_description.script_uid.clone(),
         ))
@@ -166,7 +166,7 @@ pub fn quick_launch_button(button_description: &QuickLaunchButton) -> Element<Wi
         button_description.label.as_str(),
         tooltip::Position::Top,
     )
-    .style(theme::Container::Box)
+    .style(container::bordered_box)
     .into()
 }
 
@@ -258,7 +258,7 @@ pub fn edit_mode_button<'a>(
     } else {
         row![icon]
     })
-    .style(theme::Button::Secondary)
+    .style(button::secondary)
     .width(Length::Shrink)
     .padding(4)
     .on_press(message)
@@ -530,9 +530,9 @@ pub fn populate_argument_placeholders_content<'a>(
                 .padding(5)
                 .style(
                     if argument_placeholder.is_required && argument_placeholder.value.is_empty() {
-                        theme::TextInput::Custom(Box::new(style::InvalidInputStyleSheet))
+                        style::invalid_text_input_style
                     } else {
-                        theme::TextInput::Default
+                        text_input::default
                     },
                 )
                 .into(),

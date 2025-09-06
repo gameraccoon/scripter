@@ -1,57 +1,55 @@
 // Copyright (C) Pavel Grebnev 2023-2024
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
-use iced::border::Radius;
+use crate::config;
 use iced::theme::{self, Theme};
-use iced::widget::container;
+use iced::widget::{container, text_input};
 use iced::Border;
 
-use crate::config;
-
-pub fn title_bar_active(theme: &Theme) -> container::Appearance {
+pub fn title_bar_active(theme: &Theme) -> container::Style {
     let palette = theme.extended_palette();
 
-    container::Appearance {
+    container::Style {
         text_color: Some(palette.background.strong.text),
         background: Some(palette.background.strong.color.into()),
         ..Default::default()
     }
 }
 
-pub fn title_bar_focused(theme: &Theme) -> container::Appearance {
+pub fn title_bar_focused(theme: &Theme) -> container::Style {
     let palette = theme.extended_palette();
 
-    container::Appearance {
+    container::Style {
         text_color: Some(palette.primary.strong.text),
         background: Some(palette.primary.strong.color.into()),
         ..Default::default()
     }
 }
 
-pub fn title_bar_focused_completed(theme: &Theme) -> container::Appearance {
+pub fn title_bar_focused_completed(theme: &Theme) -> container::Style {
     let palette = theme.extended_palette();
 
-    container::Appearance {
+    container::Style {
         text_color: Some(palette.background.weak.text),
         background: Some(palette.success.strong.color.into()),
         ..Default::default()
     }
 }
 
-pub fn title_bar_focused_failed(theme: &Theme) -> container::Appearance {
+pub fn title_bar_focused_failed(theme: &Theme) -> container::Style {
     let palette = theme.extended_palette();
 
-    container::Appearance {
+    container::Style {
         text_color: Some(palette.background.weak.text),
         background: Some(palette.danger.base.color.into()),
         ..Default::default()
     }
 }
 
-pub fn pane_active(theme: &Theme) -> container::Appearance {
+pub fn pane_active(theme: &Theme) -> container::Style {
     let palette = theme.extended_palette();
 
-    container::Appearance {
+    container::Style {
         background: Some(palette.background.weak.color.into()),
         border: Border {
             color: palette.background.strong.color,
@@ -62,10 +60,10 @@ pub fn pane_active(theme: &Theme) -> container::Appearance {
     }
 }
 
-pub fn pane_focused(theme: &Theme) -> container::Appearance {
+pub fn pane_focused(theme: &Theme) -> container::Style {
     let palette = theme.extended_palette();
 
-    container::Appearance {
+    container::Style {
         background: Some(palette.background.weak.color.into()),
         border: Border {
             color: palette.primary.strong.color,
@@ -109,65 +107,28 @@ pub fn get_custom_theme(custom_config: config::CustomTheme) -> Theme {
     )
 }
 
-pub struct InvalidInputStyleSheet;
+pub(crate) fn invalid_text_input_style(
+    theme: &Theme,
+    status: text_input::Status,
+) -> text_input::Style {
+    let default_theme = text_input::default(theme, status);
 
-impl iced::widget::text_input::StyleSheet for InvalidInputStyleSheet {
-    type Style = Theme;
-
-    fn active(&self, style: &Self::Style) -> iced::widget::text_input::Appearance {
-        iced::widget::text_input::Appearance {
-            background: iced::Background::Color(style.extended_palette().background.base.color),
+    match status {
+        text_input::Status::Active => text_input::Style {
             border: Border {
-                color: style.extended_palette().danger.base.color,
-                width: 1.0,
-                radius: Radius::from(1.0),
+                color: theme.extended_palette().danger.base.color,
+                ..default_theme.border
             },
-            icon_color: iced::Color::WHITE,
-        }
-    }
-
-    fn focused(&self, style: &Self::Style) -> iced::widget::text_input::Appearance {
-        iced::widget::text_input::Appearance {
-            background: iced::Background::Color(style.extended_palette().background.base.color),
+            ..default_theme
+        },
+        text_input::Status::Hovered => default_theme,
+        text_input::Status::Focused => text_input::Style {
             border: Border {
-                color: style.extended_palette().danger.strong.color,
-                ..self.active(style).border
+                color: theme.extended_palette().danger.strong.color,
+                ..default_theme.border
             },
-            ..self.active(style)
-        }
-    }
-
-    fn placeholder_color(&self, style: &Self::Style) -> iced::Color {
-        style.extended_palette().background.strong.color
-    }
-
-    fn value_color(&self, style: &Self::Style) -> iced::Color {
-        style.extended_palette().background.strong.text
-    }
-
-    fn disabled_color(&self, style: &Self::Style) -> iced::Color {
-        style.extended_palette().background.weak.text
-    }
-
-    fn selection_color(&self, style: &Self::Style) -> iced::Color {
-        style.extended_palette().background.strong.text
-    }
-
-    fn hovered(&self, style: &Self::Style) -> iced::widget::text_input::Appearance {
-        iced::widget::text_input::Appearance {
-            background: iced::Background::Color(style.extended_palette().background.base.color),
-            border: Border {
-                color: style.extended_palette().danger.strong.text,
-                ..self.active(style).border
-            },
-            ..self.active(style)
-        }
-    }
-
-    fn disabled(&self, style: &Self::Style) -> iced::widget::text_input::Appearance {
-        iced::widget::text_input::Appearance {
-            background: iced::Background::Color(style.extended_palette().background.weak.color),
-            ..self.active(style)
-        }
+            ..default_theme
+        },
+        text_input::Status::Disabled => default_theme,
     }
 }

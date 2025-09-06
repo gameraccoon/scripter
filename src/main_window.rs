@@ -1,7 +1,6 @@
 // Copyright (C) Pavel Grebnev 2023-2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
-use crate::color_utils;
 use crate::config;
 use crate::custom_keybinds;
 use crate::execution_thread;
@@ -12,6 +11,7 @@ use crate::main_window_utils::*;
 use crate::main_window_widgets::*;
 use crate::parallel_execution_manager;
 use crate::ui_icons;
+use crate::{color_utils, style};
 use iced::alignment::{self, Alignment};
 use iced::event::listen_with;
 use iced::theme::Theme;
@@ -1954,9 +1954,9 @@ fn produce_script_list_content<'a>(
                 )
                 .padding(4)
                 .style(if is_selected {
-                    theme::Button::Primary
+                    button::primary
                 } else {
-                    theme::Button::Secondary
+                    button::secondary
                 })
                 .on_press(if edit_data.window_edit_data.is_none() {
                     WindowMessage::AddScriptToExecutionOrRun(script.original_script_uid.clone())
@@ -1981,11 +1981,11 @@ fn produce_script_list_content<'a>(
             if edit_data.is_dirty {
                 column![row![
                     button(text("Save").size(16))
-                        .style(theme::Button::Positive)
+                        .style(button::success)
                         .on_press(WindowMessage::SaveConfigAndExitEditing),
                     Space::with_width(4.0),
                     button(text("Revert").size(16))
-                        .style(theme::Button::Destructive)
+                        .style(button::danger)
                         .on_press(WindowMessage::RevertConfigAndExitEditing),
                     Space::with_width(4.0),
                     button(text("Preview").size(16)).on_press(WindowMessage::ExitWindowEditMode),
@@ -2014,11 +2014,11 @@ fn produce_script_list_content<'a>(
             {
                 let mut buttons = row![
                     button(text("Save").size(16))
-                        .style(theme::Button::Positive)
+                        .style(button::success)
                         .on_press(WindowMessage::SaveConfigAndExitEditing),
                     Space::with_width(4.0),
                     button(text("Revert").size(16))
-                        .style(theme::Button::Destructive)
+                        .style(button::danger)
                         .on_press(WindowMessage::RevertConfigAndExitEditing),
                 ];
                 if !execution_lists.has_any_execution_started() {
@@ -2066,7 +2066,7 @@ fn produce_script_list_content<'a>(
                                 .remove
                                 .clone()
                         ))
-                        .style(theme::Button::Destructive)
+                        .style(button::danger)
                         .height(Length::Fixed(22.0))
                         .on_press(WindowMessage::ScriptFilterChanged("".to_string())),
                     ]
@@ -2154,7 +2154,7 @@ fn produce_execution_list_content<'a>(
                     .width(Length::Fixed(8.0))
                     .height(Length::Fixed(8.0))
                 )
-                .style(theme::Button::Secondary)
+                .style(button::secondary)
                 .on_press(WindowMessage::SetExecutionListTitleEditing(true)),
                 "Edit title",
                 tooltip::Position::Right
@@ -2236,9 +2236,9 @@ fn produce_execution_list_content<'a>(
             };
 
             let status;
-            let status_tooltip;
+            let status_tooltip: &'static str;
             let progress;
-            let style = if script_status.has_script_failed() {
+            let color = if script_status.has_script_failed() {
                 if let Some(custom_theme) = &main_config.custom_theme {
                     iced::Color::from_rgb(
                         custom_theme.error_text[0],
@@ -2308,7 +2308,7 @@ fn produce_execution_list_content<'a>(
                     status_tooltip,
                     tooltip::Position::Right,
                 )
-                .style(theme::Container::Box)
+                .style(container::bordered_box)
                 .into(),
             );
             row_data.push(Space::with_width(4).into());
@@ -2323,11 +2323,11 @@ fn produce_execution_list_content<'a>(
             }
             row_data.push(
                 tooltip(
-                    text(format!("{} {}", script_name, progress)).style(style),
-                    text(record.tooltip.as_str()),
+                    text(format!("{} {}", record.script.name, progress)).color(color),
+                    text(record.tooltip.clone()),
                     tooltip::Position::Bottom,
                 )
-                .style(theme::Container::Box)
+                .style(container::bordered_box)
                 .into(),
             );
 
@@ -2343,7 +2343,7 @@ fn produce_execution_list_content<'a>(
                             "Open log directory",
                             tooltip::Position::Right,
                         )
-                        .style(theme::Container::Box)
+                        .style(container::bordered_box)
                         .into(),
                     );
                 } else if !script_status.has_script_been_skipped() {
@@ -2356,7 +2356,7 @@ fn produce_execution_list_content<'a>(
                             "Open log file",
                             tooltip::Position::Right,
                         )
-                        .style(theme::Container::Box)
+                        .style(container::bordered_box)
                         .into(),
                     );
                 }
@@ -2475,8 +2475,6 @@ fn produce_execution_list_content<'a>(
             .iter()
             .enumerate()
             .map(|(i, script)| {
-                let script_name = &script.name;
-
                 let is_selected = match &window_state.cursor_script {
                     Some(selected_script) => {
                         selected_script.idx == i
@@ -2485,7 +2483,7 @@ fn produce_execution_list_content<'a>(
                     None => false,
                 };
 
-                let style = if is_selected {
+                let color = if is_selected {
                     theme.extended_palette().primary.strong.text
                 } else {
                     theme.extended_palette().background.strong.text
@@ -2504,7 +2502,7 @@ fn produce_execution_list_content<'a>(
                     );
                     row_data.push(Space::with_width(4).into());
                 }
-                row_data.push(text(script_name).style(style).into());
+                row_data.push(text(script.name.clone()).color(color).into());
 
                 if is_selected {
                     row_data.push(horizontal_space().into());
@@ -2514,7 +2512,7 @@ fn produce_execution_list_content<'a>(
                                 icons.themed.up.clone(),
                                 WindowMessage::MoveExecutionScriptUp(i),
                             )
-                            .style(theme::Button::Primary)
+                            .style(button::primary)
                             .into(),
                         );
                     }
@@ -2524,7 +2522,7 @@ fn produce_execution_list_content<'a>(
                                 icons.themed.down.clone(),
                                 WindowMessage::MoveExecutionScriptDown(i),
                             )
-                            .style(theme::Button::Primary)
+                            .style(button::primary)
                             .into(),
                         );
                     } else {
@@ -2540,11 +2538,11 @@ fn produce_execution_list_content<'a>(
                                     .clone(),
                                 WindowMessage::RemoveExecutionListScript(i),
                             )
-                            .style(theme::Button::Destructive),
+                            .style(button::danger),
                             "Remove script from execution list",
                             tooltip::Position::Left,
                         )
-                        .style(theme::Container::Box)
+                        .style(container::bordered_box)
                         .into(),
                     );
                 }
@@ -2557,12 +2555,12 @@ fn produce_execution_list_content<'a>(
                 }
 
                 list_item = list_item.style(if is_selected {
-                    theme::Button::Primary
+                    button::primary
                 } else {
                     if is_original_script_missing_arguments(&script) {
-                        theme::Button::Destructive
+                        button::danger
                     } else {
-                        theme::Button::Secondary
+                        button::secondary
                     }
                 });
 
@@ -2804,7 +2802,7 @@ fn produce_log_output_content<'a>(
                         element.timestamp.format("%H:%M:%S"),
                         element.text
                     ))
-                    .style(match element.output_type {
+                    .color(match element.output_type {
                         execution_thread::OutputType::StdOut => {
                             theme.extended_palette().primary.weak.text
                         }
@@ -2931,7 +2929,7 @@ fn produce_script_config_edit_content<'a>(
                     "Remove script",
                     WindowMessage::RemoveConfigScript(config_script_id),
                 )
-                .style(theme::Button::Destructive)
+                .style(button::danger)
                 .into(),
             );
         }
@@ -3015,7 +3013,7 @@ fn produce_script_config_edit_content<'a>(
                     "Remove shared",
                     WindowMessage::RemoveConfigScript(original_script_id),
                 )
-                .style(theme::Button::Destructive)
+                .style(button::danger)
                 .into(),
             );
         }
@@ -3062,7 +3060,7 @@ fn produce_script_config_edit_content<'a>(
                     "Remove preset",
                     WindowMessage::RemoveConfigScript(config_script_id),
                 )
-                .style(theme::Button::Destructive)
+                .style(button::danger)
                 .into(),
             );
         }
@@ -3107,9 +3105,9 @@ fn produce_script_to_execute_edit_content<'a>(
                     if script.arguments_requirement == config::ArgumentRequirement::Required
                         && script.arguments.is_empty()
                     {
-                        theme::TextInput::Custom(Box::new(style::InvalidInputStyleSheet))
+                        style::invalid_text_input_style
                     } else {
-                        theme::TextInput::Default
+                        text_input::default
                     },
                 )
                 .padding(5)
@@ -3153,7 +3151,7 @@ fn produce_script_to_execute_edit_content<'a>(
             "Remove script",
             WindowMessage::RemoveExecutionListScript(edited_script_idx),
         )
-        .style(theme::Button::Destructive)
+        .style(button::danger)
         .into(),
     );
 
@@ -3222,7 +3220,7 @@ fn populate_original_script_config_edit_content<'a>(
             .on_input(move |new_value| {
                 WindowMessage::EditArgumentsForConfig(config_script_id, new_value)
             })
-            .style(theme::TextInput::Default)
+            .style(text_input::default)
             .padding(5)
             .id(ARGUMENTS_INPUT_ID.clone())
             .into(),
@@ -3753,7 +3751,7 @@ fn view_controls<'a>(
                 "Edit configuration",
                 tooltip::Position::Left,
             )
-            .style(theme::Container::Box),
+            .style(container::bordered_box),
         );
     }
 
@@ -3803,7 +3801,7 @@ fn view_controls<'a>(
                     .size(14)
                     .line_height(LineHeight::Absolute(iced::Pixels(14.0))),
             )
-            .style(theme::Button::Secondary)
+            .style(button::secondary)
             .padding(3)
             .on_press(message)
         };
