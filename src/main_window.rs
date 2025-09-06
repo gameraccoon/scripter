@@ -2200,7 +2200,8 @@ fn produce_execution_list_content<'a>(
     let started_execution_count = execution_lists.get_started_executions().size();
     let should_show_execution_names = started_execution_count > 1;
 
-    let mut data_lines: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
+    let mut data_lines: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
+        Vec::with_capacity(started_execution_count * 10);
     for execution in execution_lists.get_started_executions().values() {
         if should_show_execution_names {
             data_lines.push(
@@ -2294,7 +2295,8 @@ fn produce_execution_list_content<'a>(
                 progress = String::new();
             };
 
-            let mut row_data: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
+            let mut row_data: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
+                Vec::with_capacity(10);
             row_data.push(
                 tooltip(
                     status.width(22).height(22).content_fit(ContentFit::None),
@@ -2581,7 +2583,7 @@ fn produce_execution_list_content<'a>(
             .any(|script| is_original_script_missing_arguments(script));
 
         let mut execution_buttons: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
-            Vec::new();
+            Vec::with_capacity(6);
 
         if !have_scripts_missing_arguments {
             if should_show_execution_names {
@@ -2865,7 +2867,8 @@ fn produce_script_config_edit_content<'a>(
     edited_script_idx: usize,
     script: &config::ScriptDefinition,
 ) -> Column<'a, WindowMessage> {
-    let mut parameters: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
+    let mut parameters: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
+        Vec::with_capacity(40);
 
     let Some(window_edit_data) = &edit_data.window_edit_data else {
         return Column::new();
@@ -3075,7 +3078,8 @@ fn produce_script_to_execute_edit_content<'a>(
     edited_script_idx: usize,
     script: &config::OriginalScriptDefinition,
 ) -> Column<'a, WindowMessage> {
-    let mut parameters: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
+    let mut parameters: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
+        Vec::with_capacity(20);
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     parameters.push(text("Name:").into());
@@ -3358,8 +3362,10 @@ fn produce_settings_edit_content<'a>(
     visual_caches: &VisualCaches,
     edit_mode: config::ConfigEditMode,
 ) -> Column<'a, WindowMessage> {
-    let mut header_elements: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
-    let mut list_elements: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
+    let mut header_elements: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
+        Vec::with_capacity(4);
+    let mut list_elements: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
+        Vec::with_capacity(40);
 
     let rewritable_config = config::get_rewritable_config(&config, edit_mode);
 
