@@ -15,6 +15,7 @@ use crate::parallel_execution_manager;
 use crate::style;
 use crate::ui_icons;
 
+use crate::drag_and_drop_list::{DragAndDropList, DragResult};
 use iced::alignment::{self, Alignment};
 use iced::event::listen_with;
 use iced::mouse::Event;
@@ -38,8 +39,6 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 static EMPTY_STRING: String = String::new();
-
-const SEPARATOR_HEIGHT: u16 = 8;
 
 const CONFIG_UPDATE_BEHAVIOR_PICK_LIST: &[config::ConfigUpdateBehavior] = &[
     config::ConfigUpdateBehavior::OnStartup,
@@ -72,6 +71,9 @@ pub(crate) struct VisualCaches {
     pub(crate) git_branch_requester: Option<git_support::GitCurrentBranchRequester>,
     pub(crate) button_key_caches: ButtonKeyCaches,
     pub(crate) quick_launch_buttons: Vec<QuickLaunchButton>,
+    pub(crate) enable_script_filtering: bool,
+    pub(crate) enable_title_editing: bool,
+    pub(crate) custom_theme: Option<config::CustomTheme>,
 }
 
 #[derive(Default)]
@@ -162,11 +164,10 @@ impl WindowEditData {
     }
 }
 
-#[derive(Default)]
-struct DragAndDropAreas {
-    script_list: drag_and_drop_list::DragAndDropList,
-    edit_script_list: drag_and_drop_list::DragAndDropList,
-    execution_lists: Vec<drag_and_drop_list::DragAndDropList>,
+pub(crate) struct DragAndDropAreas {
+    pub(crate) script_list: DragAndDropList,
+    pub(crate) edit_script_list: DragAndDropList,
+    pub(crate) execution_lists: Vec<DragAndDropList>,
 }
 
 pub(crate) struct WindowState {
@@ -177,7 +178,7 @@ pub(crate) struct WindowState {
     is_alt_key_down: bool,
     mouse_position: iced::Point,
     pub(crate) has_maximized_pane: bool,
-    drag_and_drop_areas: DragAndDropAreas,
+    pub(crate) drag_and_drop_areas: DragAndDropAreas,
 }
 
 #[derive(Debug, Clone)]
@@ -189,6 +190,7 @@ pub(crate) enum WindowMessage {
     PaneHeaderClicked(pane_grid::Pane),
     PaneHeaderDragged(pane_grid::DragEvent),
     PaneResized(pane_grid::ResizeEvent),
+    OnScriptListScroll(scrollable::Viewport),
     EnterFocusMode(pane_grid::Pane, Size),
     ExitFocusMode,
     MaximizeOrRestoreExecutionPane,
@@ -350,7 +352,7 @@ impl MainWindow {
             panes,
             pane_by_pane_type,
             execution_manager: parallel_execution_manager::ParallelExecutionManager::new(),
-            theme: get_theme(&app_config, config::get_main_edit_mode(&app_config)),
+            theme: get_theme(&app_config),
             app_config,
             visual_caches: VisualCaches {
                 autorerun_count: String::new(),
@@ -365,6 +367,9 @@ impl MainWindow {
                 },
                 button_key_caches: ButtonKeyCaches::default(),
                 quick_launch_buttons: Vec::new(),
+                enable_script_filtering: false,
+                enable_title_editing: false,
+                custom_theme: None,
             },
             edit_data: EditData {
                 script_filter: String::new(),
@@ -379,7 +384,27 @@ impl MainWindow {
                 is_alt_key_down: false,
                 mouse_position: iced::Point::new(0.0, 0.0),
                 has_maximized_pane: false,
-                drag_and_drop_areas: DragAndDropAreas::default(),
+                drag_and_drop_areas: DragAndDropAreas {
+                    script_list: DragAndDropList::new(
+                        0,
+                        drag_and_drop_list::StaticListParameters {
+                            element_height: ONE_SCRIPT_LIST_ELEMENT_HEIGHT,
+                            is_dragging_outside_allowed: true,
+                            is_drop_allowed: false,
+                            is_reordering_allowed: false,
+                        },
+                    ),
+                    edit_script_list: DragAndDropList::new(
+                        0,
+                        drag_and_drop_list::StaticListParameters {
+                            element_height: ONE_SCRIPT_LIST_ELEMENT_HEIGHT,
+                            is_dragging_outside_allowed: false,
+                            is_drop_allowed: false,
+                            is_reordering_allowed: true,
+                        },
+                    ),
+                    execution_lists: Vec::new(),
+                },
             },
             keybinds: custom_keybinds::CustomKeybinds::new(),
             displayed_configs_list_cache: Vec::new(),
@@ -422,32 +447,24 @@ impl MainWindow {
                 if !self.window_state.has_maximized_pane {
                     self.window_state.full_window_size = size;
                 }
+                update_drag_and_drop_area_bounds(self);
             }
             WindowMessage::WindowOnMouseDown => {
-                self.window_state
-                    .drag_and_drop_areas
-                    .script_list
-                    .on_mouse_down(self.window_state.mouse_position);
-                self.window_state
-                    .drag_and_drop_areas
-                    .edit_script_list
-                    .on_mouse_down(self.window_state.mouse_position);
-                for area in &mut self.window_state.drag_and_drop_areas.execution_lists {
-                    area.on_mouse_down(self.window_state.mouse_position);
-                }
+                let mouse_pos = self.window_state.mouse_position;
+                for_each_drag_area(self, |area| area.on_mouse_down(mouse_pos));
             }
             WindowMessage::WindowOnMouseUp => {
-                self.window_state
-                    .drag_and_drop_areas
-                    .script_list
-                    .on_mouse_up(self.window_state.mouse_position);
-                self.window_state
-                    .drag_and_drop_areas
-                    .edit_script_list
-                    .on_mouse_up(self.window_state.mouse_position);
-                for area in &mut self.window_state.drag_and_drop_areas.execution_lists {
-                    area.on_mouse_up(self.window_state.mouse_position);
-                }
+                let mouse_pos = self.window_state.mouse_position;
+                for_each_drag_area(self, |area| {
+                    let drop_result = area.on_mouse_up(mouse_pos);
+                    match drop_result {
+                        drag_and_drop_list::DropResult::None => {}
+                        drag_and_drop_list::DropResult::ItemTaken(_index) => {}
+                        drag_and_drop_list::DropResult::ItemReceived => {}
+                        drag_and_drop_list::DropResult::ItemChangedPosition(_index, _new_index) => {
+                        }
+                    }
+                });
             }
             WindowMessage::WindowOnMouseMove(position) => {
                 self.window_state.mouse_position = position;
@@ -459,8 +476,17 @@ impl MainWindow {
                     .drag_and_drop_areas
                     .edit_script_list
                     .on_mouse_move(self.window_state.mouse_position);
-                for area in &mut self.window_state.drag_and_drop_areas.execution_lists {
-                    area.on_mouse_move(position);
+                let mut just_started_dragging = false;
+                for_each_drag_area(self, |area| {
+                    let result = area.on_mouse_move(position);
+                    if let DragResult::JustStartedDragging(_) = result {
+                        just_started_dragging = true;
+                    }
+                });
+                if just_started_dragging {
+                    for_each_drag_area(self, |area| {
+                        area.started_dragging_somewhere();
+                    });
                 }
             }
             WindowMessage::PaneHeaderClicked(pane) => {
@@ -468,6 +494,16 @@ impl MainWindow {
             }
             WindowMessage::PaneResized(pane_grid::ResizeEvent { split, ratio }) => {
                 self.panes.resize(split, ratio);
+                update_drag_and_drop_area_bounds(self);
+                for_each_drag_area(self, |area| {
+                    area.cancel_operations();
+                });
+            }
+            WindowMessage::OnScriptListScroll(viewport) => {
+                let scroll_offset_y = viewport.absolute_offset().y;
+                for_each_drag_area(self, |area| {
+                    area.set_scroll_offset(scroll_offset_y);
+                });
             }
             WindowMessage::PaneHeaderDragged(drag_event) => {
                 match drag_event {
@@ -1035,6 +1071,7 @@ impl MainWindow {
             WindowMessage::SettingsToggleTitleEditing(edit_mode, is_checked) => {
                 config::get_rewritable_config_mut(&mut self.app_config, edit_mode)
                     .enable_title_editing = is_checked;
+                self.visual_caches.enable_title_editing = is_checked;
                 self.edit_data.is_dirty = true;
             }
             WindowMessage::SettingsUpdateBehaviorChanged(edit_mode, value) => {
@@ -1937,7 +1974,6 @@ impl AppPane {
 fn produce_script_list_content<'a>(
     execution_lists: &parallel_execution_manager::ParallelExecutionManager,
     config: &config::AppConfig,
-    main_config: &config::RewritableConfig,
     displayed_configs_list_cache: &Vec<ScriptListCacheRecord>,
     edit_data: &EditData,
     visual_caches: &'a VisualCaches,
@@ -1950,12 +1986,27 @@ fn produce_script_list_content<'a>(
 
     let is_editing = edit_data.window_edit_data.is_some();
 
+    let drag_and_drop_area = if !is_editing {
+        &window_state.drag_and_drop_areas.script_list
+    } else {
+        &window_state.drag_and_drop_areas.edit_script_list
+    };
+
+    let dragged_element_index = drag_and_drop_area.get_dragged_element_index();
+    let insert_position_index = drag_and_drop_area.get_reordering_target_index();
+
     let data: Element<_> = column(
         displayed_configs_list_cache
             .iter()
             .enumerate()
             .map(|(i, script)| {
                 let mut name_text = script.name.clone();
+
+                if Some(i) == dragged_element_index {
+                    name_text.insert_str(0, "[*] ");
+                } else if Some(i) == insert_position_index {
+                    name_text.insert_str(0, "^^^");
+                }
 
                 if is_editing && is_local_config_script(i, &config) {
                     name_text += " [local]";
@@ -2107,7 +2158,7 @@ fn produce_script_list_content<'a>(
     };
 
     let filter_field =
-        if main_config.enable_script_filtering && edit_data.window_edit_data.is_none() {
+        if visual_caches.enable_script_filtering && edit_data.window_edit_data.is_none() {
             row![
                 Space::with_width(5),
                 if window_state.is_command_key_down {
@@ -2171,7 +2222,9 @@ fn produce_script_list_content<'a>(
     column![
         edit_controls,
         filter_field,
-        scrollable(data).height(Length::Fill),
+        scrollable(data)
+            .height(Length::Fill)
+            .on_scroll(move |viewport| WindowMessage::OnScriptListScroll(viewport)),
         quick_launch_buttons,
     ]
     .width(Length::Fill)
@@ -2186,7 +2239,6 @@ fn produce_execution_list_content<'a>(
     config: &config::AppConfig,
     visual_caches: &VisualCaches,
     edit_data: &EditData,
-    main_config: &config::RewritableConfig,
     window_state: &WindowState,
 ) -> Column<'a, WindowMessage> {
     let icons = &visual_caches.icons;
@@ -2200,7 +2252,7 @@ fn produce_execution_list_content<'a>(
         .on_submit(WindowMessage::SetExecutionListTitleEditing(false))
         .size(16)
         .width(Length::Fill),]
-    } else if main_config.enable_title_editing && edit_data.window_edit_data.is_none() {
+    } else if visual_caches.enable_title_editing && edit_data.window_edit_data.is_none() {
         row![
             horizontal_space(),
             text(
@@ -2310,7 +2362,7 @@ fn produce_execution_list_content<'a>(
             let status_tooltip: &'static str;
             let progress;
             let color = if script_status.has_script_failed() {
-                if let Some(custom_theme) = &main_config.custom_theme {
+                if let Some(custom_theme) = &visual_caches.custom_theme {
                     iced::Color::from_rgb(
                         custom_theme.error_text[0],
                         custom_theme.error_text[1],
@@ -3746,7 +3798,6 @@ fn view_content<'a>(
         PaneVariant::ScriptList => produce_script_list_content(
             execution_lists,
             config,
-            config::get_main_rewritable_config(&config),
             displayed_configs_list_cache,
             edit_data,
             &visual_caches,
@@ -3760,7 +3811,6 @@ fn view_content<'a>(
             config,
             &visual_caches,
             edit_data,
-            config::get_main_rewritable_config(&config),
             window_state,
         ),
         PaneVariant::LogOutput => produce_log_output_content(
@@ -3905,4 +3955,15 @@ fn update_autorerun_count_text(
         }
     }
     new_autorerun_count
+}
+
+fn for_each_drag_area(app: &mut MainWindow, mut f: impl FnMut(&mut DragAndDropList)) {
+    if !app.edit_data.window_edit_data.is_some() {
+        f(&mut app.window_state.drag_and_drop_areas.script_list);
+    } else {
+        f(&mut app.window_state.drag_and_drop_areas.edit_script_list);
+    }
+    for area in &mut app.window_state.drag_and_drop_areas.execution_lists {
+        f(area);
+    }
 }
