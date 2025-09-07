@@ -219,8 +219,6 @@ pub(crate) enum WindowMessage {
     RemoveConfigScript(ConfigScriptId),
     RemoveExecutionListScript(usize),
     AddScriptToConfig,
-    MoveExecutionScriptUp(usize),
-    MoveExecutionScriptDown(usize),
     EditScriptNameForConfig(ConfigScriptId, String),
     EditScriptNameForExecutionList(String),
     EditScriptCommand(ConfigScriptId, String),
@@ -495,10 +493,22 @@ impl MainWindow {
                     }
                 }
 
-                self.window_state
+                let drop_result = self
+                    .window_state
                     .drag_and_drop_lists
                     .execution_edit_list
                     .on_mouse_up(mouse_pos);
+                match drop_result {
+                    drag_and_drop_list::DropResult::ItemChangedPosition(index, new_index) => {
+                        move_vec_element_to_index(
+                            self.execution_manager.get_edited_scripts_mut(),
+                            index,
+                            new_index,
+                        );
+                        clean_script_selection(&mut self.window_state.cursor_script);
+                    }
+                    _ => {}
+                }
 
                 let execution_edit_list_got_item_dropped = self
                     .window_state
@@ -813,18 +823,6 @@ impl MainWindow {
                 );
 
                 update_config_cache(self);
-            }
-            WindowMessage::MoveExecutionScriptUp(script_idx) => {
-                self.execution_manager
-                    .get_edited_scripts_mut()
-                    .swap(script_idx, script_idx - 1);
-                select_execution_script(self, script_idx - 1);
-            }
-            WindowMessage::MoveExecutionScriptDown(script_idx) => {
-                self.execution_manager
-                    .get_edited_scripts_mut()
-                    .swap(script_idx, script_idx + 1);
-                select_execution_script(self, script_idx + 1);
             }
             WindowMessage::EditScriptNameForConfig(config_script_id, new_name) => {
                 if let Some(preset) = get_editing_preset(&mut self.app_config, config_script_id) {
@@ -2077,26 +2075,7 @@ fn produce_script_list_content<'a>(
     let dragged_element_index = drag_and_drop_area.get_dragged_element_index();
     let insert_position_index = drag_and_drop_area.get_reordering_target_index();
 
-    let drop_marker = if let Some(insert_position_index) = insert_position_index {
-        column![
-            Space::with_height(ONE_SCRIPT_LIST_ELEMENT_HEIGHT * insert_position_index as f32),
-            row![
-                Space::with_width(10.0),
-                horizontal_rule(SEPARATOR_HEIGHT).style(|theme: &Theme| {
-                    let color = theme.extended_palette().primary.strong.text;
-                    iced::widget::rule::Style {
-                        color,
-                        width: 3,
-                        radius: Default::default(),
-                        fill_mode: iced::widget::rule::FillMode::Full,
-                    }
-                }),
-                Space::with_width(Length::FillPortion(5)),
-            ]
-        ]
-    } else {
-        column![]
-    };
+    let drop_marker = drop_marker(insert_position_index, ONE_SCRIPT_LIST_ELEMENT_HEIGHT);
 
     let data: Element<_> = column(
         displayed_configs_list_cache
@@ -2707,6 +2686,17 @@ fn produce_execution_list_content<'a>(
         .width(Length::Fill)
         .align_x(Alignment::Start);
 
+    let dragged_script_idx = window_state
+        .drag_and_drop_lists
+        .execution_edit_list
+        .get_dragged_element_index();
+    let insert_position_index = window_state
+        .drag_and_drop_lists
+        .execution_edit_list
+        .get_reordering_target_index();
+
+    let drop_marker = drop_marker(insert_position_index, ONE_EXECUTION_LIST_ELEMENT_HEIGHT);
+
     let edited_data: Element<_> = column(
         execution_lists
             .get_edited_scripts()
@@ -2744,29 +2734,7 @@ fn produce_execution_list_content<'a>(
 
                 if is_selected {
                     row_data.push(horizontal_space().into());
-                    if i > 0 {
-                        row_data.push(
-                            inline_icon_button(
-                                icons.themed.up.clone(),
-                                WindowMessage::MoveExecutionScriptUp(i),
-                            )
-                            .style(button::primary)
-                            .into(),
-                        );
-                    }
-                    if i + 1 < execution_lists.get_edited_scripts().len() {
-                        row_data.push(
-                            inline_icon_button(
-                                icons.themed.down.clone(),
-                                WindowMessage::MoveExecutionScriptDown(i),
-                            )
-                            .style(button::primary)
-                            .into(),
-                        );
-                    } else {
-                        row_data.push(Space::with_width(22).into());
-                    }
-                    row_data.push(Space::with_width(8).into());
+                    row_data.push(Space::with_width(30).into());
                     row_data.push(
                         tooltip(
                             inline_icon_button(
@@ -2792,7 +2760,11 @@ fn produce_execution_list_content<'a>(
                     list_item = list_item.on_press(WindowMessage::OpenScriptEditing(i));
                 }
 
-                list_item = list_item.style(if is_selected {
+                let is_dragged = dragged_script_idx == Some(i);
+
+                list_item = list_item.style(if is_dragged {
+                    button::success
+                } else if is_selected {
                     button::primary
                 } else {
                     if is_original_script_missing_arguments(&script) {
@@ -2938,11 +2910,14 @@ fn produce_execution_list_content<'a>(
     .spacing(5)
     .width(Length::Fill);
 
-    let edited_block = column![
-        edited_data,
-        Space::with_height(8),
-        edit_controls,
-        Space::with_height(8),
+    let edited_block = stack![
+        column![
+            edited_data,
+            Space::with_height(8),
+            edit_controls,
+            Space::with_height(8),
+        ],
+        drop_marker
     ];
 
     column![stack![
@@ -2959,7 +2934,7 @@ fn produce_execution_list_content<'a>(
                 {
                     edited_block
                 } else {
-                    column![]
+                    stack![]
                 },
             ]),
         ]

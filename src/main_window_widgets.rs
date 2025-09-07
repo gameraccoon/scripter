@@ -539,3 +539,29 @@ pub fn populate_argument_placeholders_content<'a>(
         );
     }
 }
+
+pub(crate) fn drop_marker<'a>(
+    insert_position_index: Option<usize>,
+    element_height: f32,
+) -> Column<'a, WindowMessage> {
+    if let Some(insert_position_index) = insert_position_index {
+        iced::widget::column![
+            Space::with_height(element_height * insert_position_index as f32),
+            row![
+                Space::with_width(10.0),
+                horizontal_rule(SEPARATOR_HEIGHT).style(|theme: &Theme| {
+                    let color = theme.extended_palette().primary.strong.text;
+                    iced::widget::rule::Style {
+                        color,
+                        width: 3,
+                        radius: Default::default(),
+                        fill_mode: iced::widget::rule::FillMode::Full,
+                    }
+                }),
+                Space::with_width(Length::FillPortion(5)),
+            ]
+        ]
+    } else {
+        iced::widget::column![]
+    }
+}

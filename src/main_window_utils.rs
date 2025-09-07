@@ -18,7 +18,7 @@ pub(crate) const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
 pub(crate) const ONE_SCRIPT_LIST_ELEMENT_HEIGHT: f32 = 30.0;
 const ONE_TITLE_LINE_HEIGHT: f32 = 20.0;
 const ONE_EXECUTION_NAME_HEIGHT: f32 = 32.0;
-const EMPTY_EXECUTION_LIST_HEIGHT: f32 = 100.0;
+const EMPTY_EXECUTION_LIST_HEIGHT: f32 = 90.0;
 const EXECUTION_EDIT_BUTTONS_HEIGHT: f32 = 50.0;
 const DIRTY_CONFIG_BUTTONS_HEIGHT: f32 = 34.0;
 pub(crate) const PANE_SPACING: f32 = 1.0;
@@ -26,6 +26,7 @@ pub(crate) const SEPARATOR_HEIGHT: u16 = 8;
 pub(crate) const PANE_HEADER_HEIGHT: f32 = 47.0;
 const SCRIPT_FILTER_HEIGHT: f32 = 30.0;
 const CONFIG_EDIT_HEADER_HEIGHT: f32 = 100.0;
+const FIRST_EXECUTION_ELEMENT_OFFSET_Y: f32 = 10.0;
 
 #[derive(Clone, Debug, Copy)]
 pub(crate) struct ConfigScriptId {
@@ -429,6 +430,7 @@ pub fn try_add_script_to_execution_or_start_new(app: &mut MainWindow, script_uid
             execution_id,
             scripts_to_add,
         );
+        update_drag_and_drop_area_bounds(app);
     } else if executions_number == 0 {
         // if there are no executions, then we can start a new one
         start_new_execution_from_provided_scripts(app, scripts_to_add);
@@ -624,6 +626,8 @@ pub fn update_config_cache(app: &mut MainWindow) {
             .edit_script_list
             .change_number_of_elements(0);
     }
+
+    update_edited_execution_list_script_number(app);
 }
 
 pub fn add_cache_record(
@@ -746,38 +750,20 @@ pub fn maximize_pane(
             return Task::none();
         };
 
-        let executions_count = app.execution_manager.get_started_executions().size() as u32;
-        let should_show_execution_names = executions_count > 1;
-
-        let scheduled_elements_count = app
-            .execution_manager
-            .get_started_executions()
-            .values()
-            .fold(0, |acc, x| {
-                acc + x.get_scheduled_scripts_cache().len() as u32
-            });
-        let edited_elements_count = app.execution_manager.get_edited_scripts().len() as u32;
-        let mut title_lines = if app.visual_caches.is_custom_title_editing {
-            // for now the edit field is only one line high
-            1
-        } else if let Some(custom_title) = app.app_config.custom_title.as_ref() {
-            custom_title.lines().count() as u32
-        } else {
-            0
-        };
-
-        // if title editing enabled, we can't be less than 1 line
-        if title_lines == 0
-            && config::get_current_rewritable_config(&app.app_config).enable_title_editing
-        {
-            title_lines = 1;
-        }
-
-        if app.visual_caches.git_branch_requester.is_some() {
-            title_lines += 1;
-        }
-
         let size = size.clone();
+
+        let title_size_y = get_execution_list_title_size_y(app);
+        let started_executions_size_y = get_started_execution_list_size_y(app);
+
+        let edited_executions_size_y = {
+            let edited_elements_count = app.execution_manager.get_edited_scripts().len() as u32;
+            edited_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+                + if edited_elements_count > 0 {
+                    EXECUTION_EDIT_BUTTONS_HEIGHT
+                } else {
+                    0.0
+                }
+        };
 
         return window::get_oldest().and_then(move |window_id| {
             resize(
@@ -787,20 +773,9 @@ pub fn maximize_pane(
                     height: f32::min(
                         size.height,
                         EMPTY_EXECUTION_LIST_HEIGHT
-                            + title_lines as f32 * ONE_TITLE_LINE_HEIGHT
-                            + if should_show_execution_names {
-                                ONE_EXECUTION_NAME_HEIGHT * executions_count as f32
-                            } else {
-                                0.0
-                            }
-                            + scheduled_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
-                            + EXECUTION_EDIT_BUTTONS_HEIGHT * executions_count as f32
-                            + edited_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
-                            + if edited_elements_count > 0 {
-                                EXECUTION_EDIT_BUTTONS_HEIGHT
-                            } else {
-                                0.0
-                            },
+                            + title_size_y
+                            + started_executions_size_y
+                            + edited_executions_size_y,
                     ),
                 },
             )
@@ -925,6 +900,7 @@ pub fn start_new_execution_from_provided_scripts(
 
     app.visual_caches.selected_execution_log = Some(new_execution_id);
     update_button_key_hint_caches(app);
+    update_drag_and_drop_area_bounds(app);
 }
 
 pub fn add_edited_scripts_to_started_execution(
@@ -974,6 +950,8 @@ pub fn add_script_to_execution(
         select_execution_script(app, script_idx);
         app.window_state.pane_focus = Some(app.pane_by_pane_type[&PaneVariant::ExecutionList]);
     }
+
+    update_edited_execution_list_script_number(app);
 
     true
 }
@@ -1100,6 +1078,7 @@ pub fn remove_config_script(app: &mut MainWindow, config_script_id: ConfigScript
 pub fn remove_execution_list_script(app: &mut MainWindow, script_idx: usize) {
     app.execution_manager
         .remove_script_from_edited_list(script_idx);
+    update_edited_execution_list_script_number(app);
     clean_script_selection(&mut app.window_state.cursor_script);
 }
 
@@ -1533,10 +1512,30 @@ pub(crate) fn update_drag_and_drop_area_bounds(app: &mut MainWindow) {
 
     let execution_list_pane = app.pane_by_pane_type[&PaneVariant::ExecutionList];
     if let Some(execution_list_pane_region) = regions.get(&execution_list_pane) {
+        {
+            let content_offset_y = PANE_HEADER_HEIGHT
+                + get_execution_list_title_size_y(&app)
+                + get_started_execution_list_size_y(app);
+            let mut content_region = execution_list_pane_region.clone();
+            content_region.y += content_offset_y;
+            content_region.height -= content_offset_y;
+            app.window_state
+                .drag_and_drop_lists
+                .execution_edit_list
+                .set_bounds(content_region);
+        }
+
         app.window_state
             .execution_edit_lists_drop_area
             .set_bounds(execution_list_pane_region.clone());
     }
+}
+
+fn update_edited_execution_list_script_number(app: &mut MainWindow) {
+    app.window_state
+        .drag_and_drop_lists
+        .execution_edit_list
+        .change_number_of_elements(app.execution_manager.get_edited_scripts().len());
 }
 
 pub(crate) fn get_script_list_content_offset_y(app: &MainWindow) -> f32 {
@@ -1555,6 +1554,51 @@ pub(crate) fn get_script_list_content_offset_y(app: &MainWindow) -> f32 {
 
 pub(crate) fn get_edited_script_list_content_offset_y(_app: &MainWindow) -> f32 {
     PANE_HEADER_HEIGHT + CONFIG_EDIT_HEADER_HEIGHT
+}
+
+pub(crate) fn get_execution_list_title_size_y(app: &MainWindow) -> f32 {
+    let mut title_lines = if app.visual_caches.is_custom_title_editing {
+        // for now the edit field is only one line high
+        1
+    } else if let Some(custom_title) = app.app_config.custom_title.as_ref() {
+        custom_title.lines().count() as u32
+    } else {
+        0
+    };
+
+    // if title editing enabled, we can't have less than 1 line
+    if title_lines == 0
+        && config::get_current_rewritable_config(&app.app_config).enable_title_editing
+    {
+        title_lines = 1;
+    }
+
+    if app.visual_caches.git_branch_requester.is_some() {
+        title_lines += 1;
+    }
+
+    FIRST_EXECUTION_ELEMENT_OFFSET_Y + title_lines as f32 * ONE_TITLE_LINE_HEIGHT
+}
+
+pub(crate) fn get_started_execution_list_size_y(app: &MainWindow) -> f32 {
+    let executions_count = app.execution_manager.get_started_executions().size() as u32;
+    let should_show_execution_names = executions_count > 1;
+
+    let scheduled_elements_count = app
+        .execution_manager
+        .get_started_executions()
+        .values()
+        .fold(0, |acc, x| {
+            acc + x.get_scheduled_scripts_cache().len() as u32
+        });
+
+    scheduled_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+        + EXECUTION_EDIT_BUTTONS_HEIGHT * executions_count as f32
+        + if should_show_execution_names {
+            ONE_EXECUTION_NAME_HEIGHT * executions_count as f32
+        } else {
+            0.0
+        }
 }
 
 #[cfg(test)]

@@ -12,8 +12,6 @@ pub struct ThemedIcons {
     pub remove: Handle,
     pub plus: Handle,
     pub settings: Handle,
-    pub up: Handle,
-    pub down: Handle,
     pub log: Handle,
     pub edit: Handle,
     pub quick_launch: Handle,
@@ -112,16 +110,6 @@ fn get_dark_themed_icons() -> ThemedIcons {
                 .into_iter()
                 .as_slice(),
         ),
-        up: Handle::from_bytes(
-            include_bytes!("../res/icons/up-b.png")
-                .into_iter()
-                .as_slice(),
-        ),
-        down: Handle::from_bytes(
-            include_bytes!("../res/icons/down-b.png")
-                .into_iter()
-                .as_slice(),
-        ),
         log: Handle::from_bytes(
             include_bytes!("../res/icons/log-b.png")
                 .into_iter()
@@ -169,16 +157,6 @@ fn get_bright_themed_icons() -> ThemedIcons {
         ),
         settings: Handle::from_bytes(
             include_bytes!("../res/icons/settings-w.png")
-                .into_iter()
-                .as_slice(),
-        ),
-        up: Handle::from_bytes(
-            include_bytes!("../res/icons/up-w.png")
-                .into_iter()
-                .as_slice(),
-        ),
-        down: Handle::from_bytes(
-            include_bytes!("../res/icons/down-w.png")
                 .into_iter()
                 .as_slice(),
         ),
