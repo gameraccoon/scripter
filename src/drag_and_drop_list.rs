@@ -3,7 +3,7 @@ use std::cmp::PartialEq;
 const DRAG_START_TIMEOUT_SECONDS: f32 = 0.2;
 
 #[derive(Debug, Clone, PartialEq)]
-enum Operation {
+enum DragOperation {
     // we just pressed the mouse button, we don't know yet if it is a drag or a click
     PreparingForDragging(usize, std::time::Instant),
     // the element with the first index is being dragged from this list
@@ -16,12 +16,6 @@ enum Operation {
     // we can transition from DraggingFrom to Reordering if we move the dragged element
     // if we move the dragged element back to the list and this is allowed
     DraggingFrom(usize),
-    // we are showing the drop area (not hovered)
-    // we can transition from WaitingForDrop to HoveredByDrop if we hover the drop area
-    IdleWaitingForDrop,
-    // we are hovering over the drop area
-    // we can transition from HoveredByDrop to WaitingForDrop if we move the mouse away
-    HoveredByDrop,
 }
 
 pub(crate) enum DragResult {
@@ -33,28 +27,29 @@ pub(crate) enum DragResult {
 pub(crate) enum DropResult {
     None,
     ItemTaken(usize),
-    ItemReceived,
     ItemChangedPosition(usize, usize),
 }
 
-pub(crate) struct StaticListParameters {
+pub(crate) struct StaticDragAreaParameters {
     pub(crate) element_height: f32,
     pub(crate) is_dragging_outside_allowed: bool,
-    pub(crate) is_drop_allowed: bool,
     pub(crate) is_reordering_allowed: bool,
 }
 
 pub(crate) struct DragAndDropList {
     number_of_elements: usize,
-    current_operation: Option<Operation>,
-    static_parameters: StaticListParameters,
+    current_operation: Option<DragOperation>,
+    static_parameters: StaticDragAreaParameters,
 
     bounds: iced::Rectangle,
     scrolling_offset: f32,
 }
 
 impl DragAndDropList {
-    pub(crate) fn new(number_of_elements: usize, static_parameters: StaticListParameters) -> Self {
+    pub(crate) fn new(
+        number_of_elements: usize,
+        static_parameters: StaticDragAreaParameters,
+    ) -> Self {
         Self {
             number_of_elements,
             current_operation: None,
@@ -85,7 +80,7 @@ impl DragAndDropList {
         let hovered_index = self.get_hovered_index(position);
 
         if let Some(hovered_index) = hovered_index {
-            self.current_operation = Some(Operation::PreparingForDragging(
+            self.current_operation = Some(DragOperation::PreparingForDragging(
                 hovered_index,
                 std::time::Instant::now(),
             ));
@@ -94,11 +89,11 @@ impl DragAndDropList {
 
     pub(crate) fn on_mouse_move(&mut self, position: iced::Point) -> DragResult {
         match self.current_operation.clone() {
-            Some(Operation::PreparingForDragging(index, start_time)) => {
+            Some(DragOperation::PreparingForDragging(index, start_time)) => {
                 if self.static_parameters.is_dragging_outside_allowed
                     && !self.is_mouse_in_bounds(position)
                 {
-                    self.current_operation = Some(Operation::DraggingFrom(index));
+                    self.current_operation = Some(DragOperation::DraggingFrom(index));
                     DragResult::JustStartedDragging
                 } else {
                     if std::time::Instant::now()
@@ -107,12 +102,12 @@ impl DragAndDropList {
                         > DRAG_START_TIMEOUT_SECONDS
                     {
                         if self.static_parameters.is_reordering_allowed {
-                            self.current_operation = Some(Operation::Reordering(
+                            self.current_operation = Some(DragOperation::Reordering(
                                 index,
                                 self.get_hovered_index(position).unwrap_or(index),
                             ));
                         } else if self.static_parameters.is_dragging_outside_allowed {
-                            self.current_operation = Some(Operation::DraggingFrom(index));
+                            self.current_operation = Some(DragOperation::DraggingFrom(index));
                         } else {
                             eprintln!("We can't be in PreparingForDragging with both dragging out and reordering disabled");
                         }
@@ -121,7 +116,7 @@ impl DragAndDropList {
                         if let Some(hovered_index) = self.get_hovered_index(position) {
                             if hovered_index != index {
                                 self.current_operation =
-                                    Some(Operation::Reordering(index, hovered_index));
+                                    Some(DragOperation::Reordering(index, hovered_index));
                                 DragResult::JustStartedDragging
                             } else {
                                 DragResult::None
@@ -134,44 +129,33 @@ impl DragAndDropList {
                     }
                 }
             }
-            Some(Operation::Reordering(index, _hovered_index)) => {
+            Some(DragOperation::Reordering(index, _hovered_index)) => {
                 if self.static_parameters.is_dragging_outside_allowed
                     && !self.is_mouse_in_bounds(position)
                 {
-                    self.current_operation = Some(Operation::DraggingFrom(index));
+                    self.current_operation = Some(DragOperation::DraggingFrom(index));
                 } else {
                     if let Some(hovered_index) = self.get_hovered_index(position) {
                         if hovered_index <= index {
                             self.current_operation =
-                                Some(Operation::Reordering(index, hovered_index));
+                                Some(DragOperation::Reordering(index, hovered_index));
                         } else {
                             self.current_operation =
-                                Some(Operation::Reordering(index, hovered_index + 1));
+                                Some(DragOperation::Reordering(index, hovered_index + 1));
                         }
                     }
                 }
                 DragResult::Dragging
             }
-            Some(Operation::DraggingFrom(index)) => {
+            Some(DragOperation::DraggingFrom(index)) => {
                 if self.is_mouse_in_bounds(position) && self.static_parameters.is_reordering_allowed
                 {
                     if let Some(hovered_index) = self.get_hovered_index(position) {
-                        self.current_operation = Some(Operation::Reordering(index, hovered_index));
+                        self.current_operation =
+                            Some(DragOperation::Reordering(index, hovered_index));
                     }
                 }
                 DragResult::Dragging
-            }
-            Some(Operation::IdleWaitingForDrop) => {
-                if self.is_mouse_in_bounds(position) {
-                    self.current_operation = Some(Operation::HoveredByDrop);
-                }
-                DragResult::None
-            }
-            Some(Operation::HoveredByDrop) => {
-                if !self.is_mouse_in_bounds(position) {
-                    self.current_operation = Some(Operation::IdleWaitingForDrop);
-                }
-                DragResult::None
             }
             None => DragResult::None,
         }
@@ -180,22 +164,12 @@ impl DragAndDropList {
     pub(crate) fn on_mouse_up(&mut self, _position: iced::Point) -> DropResult {
         // clean and return
         match self.current_operation.take() {
-            Some(Operation::PreparingForDragging(_index, _start_time)) => DropResult::None,
-            Some(Operation::Reordering(index, hovered_index)) => {
+            Some(DragOperation::PreparingForDragging(_index, _start_time)) => DropResult::None,
+            Some(DragOperation::Reordering(index, hovered_index)) => {
                 DropResult::ItemChangedPosition(index, hovered_index)
             }
-            Some(Operation::DraggingFrom(index)) => DropResult::ItemTaken(index),
-            Some(Operation::IdleWaitingForDrop) => DropResult::None,
-            Some(Operation::HoveredByDrop) => DropResult::ItemReceived,
+            Some(DragOperation::DraggingFrom(index)) => DropResult::ItemTaken(index),
             None => DropResult::None,
-        }
-    }
-
-    // we assume that the compatibility is handled by the caller
-    pub(crate) fn started_dragging_somewhere(&mut self) {
-        // ignore if it is us dragging from
-        if self.static_parameters.is_drop_allowed && self.current_operation.is_none() {
-            self.current_operation = Some(Operation::IdleWaitingForDrop);
         }
     }
 
@@ -218,26 +192,17 @@ impl DragAndDropList {
 
     pub(crate) fn get_dragged_element_index(&self) -> Option<usize> {
         match &self.current_operation {
-            Some(Operation::DraggingFrom(index)) => Some(*index),
-            Some(Operation::Reordering(index, _)) => Some(*index),
+            Some(DragOperation::DraggingFrom(index)) => Some(*index),
+            Some(DragOperation::Reordering(index, _)) => Some(*index),
             _ => None,
         }
     }
 
     pub(crate) fn get_reordering_target_index(&self) -> Option<usize> {
         match &self.current_operation {
-            Some(Operation::Reordering(_, target_index)) => Some(*target_index),
+            Some(DragOperation::Reordering(_, target_index)) => Some(*target_index),
             _ => None,
         }
-    }
-
-    pub(crate) fn should_show_drop_area(&self) -> bool {
-        self.current_operation == Some(Operation::IdleWaitingForDrop)
-            || self.current_operation == Some(Operation::HoveredByDrop)
-    }
-
-    pub(crate) fn is_drop_area_hovered(&self) -> bool {
-        self.current_operation == Some(Operation::HoveredByDrop)
     }
 
     fn is_mouse_in_bounds(&self, position: iced::Point) -> bool {
@@ -266,5 +231,80 @@ impl DragAndDropList {
         }
 
         Some(index)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum DropOperation {
+    // we are showing the drop area (not hovered)
+    // we can transition from WaitingForDrop to HoveredByDrop if we hover the drop area
+    IdleWaitingForDrop,
+    // we are hovering over the drop area
+    // we can transition from HoveredByDrop to WaitingForDrop if we move the mouse away
+    HoveredByItem,
+}
+
+pub(crate) enum DropAreaState {
+    Inactive,
+    VisibleIdle,
+    HoveredByItem,
+}
+
+pub(crate) struct DropArea {
+    current_operation: Option<DropOperation>,
+    bounds: iced::Rectangle,
+}
+
+impl DropArea {
+    pub(crate) fn new() -> Self {
+        Self {
+            current_operation: None,
+            bounds: iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(0.0, 0.0)),
+        }
+    }
+
+    pub(crate) fn on_mouse_move(&mut self, position: iced::Point) {
+        match self.current_operation.clone() {
+            Some(DropOperation::IdleWaitingForDrop) => {
+                if self.is_mouse_in_bounds(position) {
+                    self.current_operation = Some(DropOperation::HoveredByItem);
+                }
+            }
+            Some(DropOperation::HoveredByItem) => {
+                if !self.is_mouse_in_bounds(position) {
+                    self.current_operation = Some(DropOperation::IdleWaitingForDrop);
+                }
+            }
+            None => {}
+        }
+    }
+
+    pub(crate) fn on_mouse_up(&mut self, _position: iced::Point) -> bool {
+        // clean and return
+        match self.current_operation.take() {
+            Some(DropOperation::IdleWaitingForDrop) => false,
+            Some(DropOperation::HoveredByItem) => true,
+            None => false,
+        }
+    }
+
+    pub(crate) fn on_started_dragging_compatible_element(&mut self) {
+        self.current_operation = Some(DropOperation::IdleWaitingForDrop);
+    }
+
+    pub(crate) fn set_bounds(&mut self, bounds: iced::Rectangle) {
+        self.bounds = bounds;
+    }
+
+    pub(crate) fn get_drop_area_state(&self) -> DropAreaState {
+        match &self.current_operation {
+            Some(DropOperation::IdleWaitingForDrop) => DropAreaState::VisibleIdle,
+            Some(DropOperation::HoveredByItem) => DropAreaState::HoveredByItem,
+            None => DropAreaState::Inactive,
+        }
+    }
+
+    fn is_mouse_in_bounds(&self, position: iced::Point) -> bool {
+        self.bounds.contains(position)
     }
 }

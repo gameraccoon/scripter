@@ -14,7 +14,7 @@ use crate::main_window::*;
 use crate::parallel_execution_manager;
 use crate::style;
 
-const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
+pub(crate) const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
 pub(crate) const ONE_SCRIPT_LIST_ELEMENT_HEIGHT: f32 = 30.0;
 const ONE_TITLE_LINE_HEIGHT: f32 = 20.0;
 const ONE_EXECUTION_NAME_HEIGHT: f32 = 32.0;
@@ -23,7 +23,7 @@ const EXECUTION_EDIT_BUTTONS_HEIGHT: f32 = 50.0;
 const DIRTY_CONFIG_BUTTONS_HEIGHT: f32 = 34.0;
 pub(crate) const PANE_SPACING: f32 = 1.0;
 pub(crate) const SEPARATOR_HEIGHT: u16 = 8;
-const PANE_HEADER_HEIGHT: f32 = 47.0;
+pub(crate) const PANE_HEADER_HEIGHT: f32 = 47.0;
 const SCRIPT_FILTER_HEIGHT: f32 = 30.0;
 const CONFIG_EDIT_HEADER_HEIGHT: f32 = 100.0;
 
@@ -607,20 +607,20 @@ pub fn update_config_cache(app: &mut MainWindow) {
 
     if app.edit_data.window_edit_data.is_some() {
         app.window_state
-            .drag_and_drop_areas
+            .drag_and_drop_lists
             .script_list
             .change_number_of_elements(0);
         app.window_state
-            .drag_and_drop_areas
+            .drag_and_drop_lists
             .edit_script_list
             .change_number_of_elements(app.displayed_configs_list_cache.len());
     } else {
         app.window_state
-            .drag_and_drop_areas
+            .drag_and_drop_lists
             .script_list
             .change_number_of_elements(app.displayed_configs_list_cache.len());
         app.window_state
-            .drag_and_drop_areas
+            .drag_and_drop_lists
             .edit_script_list
             .change_number_of_elements(0);
     }
@@ -1508,16 +1508,15 @@ pub(crate) fn update_drag_and_drop_area_bounds(app: &mut MainWindow) {
         .pane_regions(PANE_SPACING, app.window_state.full_window_size);
 
     let script_list_pane = app.pane_by_pane_type[&PaneVariant::ScriptList];
-    let script_list_pane_region = regions.get(&script_list_pane);
 
-    if let Some(script_list_pane_region) = script_list_pane_region {
+    if let Some(script_list_pane_region) = regions.get(&script_list_pane) {
         if app.edit_data.window_edit_data.is_none() {
             let header_height = get_script_list_content_offset_y(&app);
             let mut content_region = script_list_pane_region.clone();
             content_region.y += header_height;
             content_region.height -= header_height;
             app.window_state
-                .drag_and_drop_areas
+                .drag_and_drop_lists
                 .script_list
                 .set_bounds(content_region);
         } else {
@@ -1526,10 +1525,17 @@ pub(crate) fn update_drag_and_drop_area_bounds(app: &mut MainWindow) {
             content_region.y += header_height;
             content_region.height -= header_height;
             app.window_state
-                .drag_and_drop_areas
+                .drag_and_drop_lists
                 .edit_script_list
                 .set_bounds(content_region);
         }
+    }
+
+    let execution_list_pane = app.pane_by_pane_type[&PaneVariant::ExecutionList];
+    if let Some(execution_list_pane_region) = regions.get(&execution_list_pane) {
+        app.window_state
+            .execution_edit_lists_drop_area
+            .set_bounds(execution_list_pane_region.clone());
     }
 }
 

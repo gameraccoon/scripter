@@ -15,7 +15,9 @@ use crate::parallel_execution_manager;
 use crate::style;
 use crate::ui_icons;
 
-use crate::drag_and_drop_list::{DragAndDropList, DragResult};
+use crate::config::{get_main_script_definition_list, get_script_uid};
+use crate::drag_and_drop_list::{DragAndDropList, DragResult, DropArea};
+use drag_and_drop_list::DropAreaState;
 use iced::alignment::{self, Alignment};
 use iced::event::listen_with;
 use iced::mouse::Event;
@@ -164,10 +166,10 @@ impl WindowEditData {
     }
 }
 
-pub(crate) struct DragAndDropAreas {
+pub(crate) struct DragAndDropLists {
     pub(crate) script_list: DragAndDropList,
     pub(crate) edit_script_list: DragAndDropList,
-    pub(crate) execution_lists: Vec<DragAndDropList>,
+    pub(crate) execution_edit_list: DragAndDropList,
 }
 
 pub(crate) struct WindowState {
@@ -178,7 +180,8 @@ pub(crate) struct WindowState {
     is_alt_key_down: bool,
     mouse_position: iced::Point,
     pub(crate) has_maximized_pane: bool,
-    pub(crate) drag_and_drop_areas: DragAndDropAreas,
+    pub(crate) drag_and_drop_lists: DragAndDropLists,
+    pub(crate) execution_edit_lists_drop_area: DropArea,
 }
 
 #[derive(Debug, Clone)]
@@ -382,27 +385,33 @@ impl MainWindow {
                 is_alt_key_down: false,
                 mouse_position: iced::Point::new(0.0, 0.0),
                 has_maximized_pane: false,
-                drag_and_drop_areas: DragAndDropAreas {
+                drag_and_drop_lists: DragAndDropLists {
                     script_list: DragAndDropList::new(
                         0,
-                        drag_and_drop_list::StaticListParameters {
+                        drag_and_drop_list::StaticDragAreaParameters {
                             element_height: ONE_SCRIPT_LIST_ELEMENT_HEIGHT,
                             is_dragging_outside_allowed: true,
-                            is_drop_allowed: false,
                             is_reordering_allowed: false,
                         },
                     ),
                     edit_script_list: DragAndDropList::new(
                         0,
-                        drag_and_drop_list::StaticListParameters {
+                        drag_and_drop_list::StaticDragAreaParameters {
                             element_height: ONE_SCRIPT_LIST_ELEMENT_HEIGHT,
                             is_dragging_outside_allowed: false,
-                            is_drop_allowed: false,
                             is_reordering_allowed: true,
                         },
                     ),
-                    execution_lists: Vec::new(),
+                    execution_edit_list: DragAndDropList::new(
+                        0,
+                        drag_and_drop_list::StaticDragAreaParameters {
+                            element_height: ONE_EXECUTION_LIST_ELEMENT_HEIGHT,
+                            is_dragging_outside_allowed: false,
+                            is_reordering_allowed: true,
+                        },
+                    ),
                 },
+                execution_edit_lists_drop_area: DropArea::new(),
             },
             keybinds: custom_keybinds::CustomKeybinds::new(),
             displayed_configs_list_cache: Vec::new(),
@@ -454,53 +463,86 @@ impl MainWindow {
             WindowMessage::WindowOnMouseUp => {
                 let mouse_pos = self.window_state.mouse_position;
 
+                let mut taken_script_to_schedule = None;
+
                 if !self.edit_data.window_edit_data.is_some() {
-                    self.window_state
-                        .drag_and_drop_areas
+                    let drop_result = self
+                        .window_state
+                        .drag_and_drop_lists
                         .script_list
                         .on_mouse_up(mouse_pos);
+                    match drop_result {
+                        drag_and_drop_list::DropResult::ItemTaken(index) => {
+                            taken_script_to_schedule = Some(index);
+                        }
+                        _ => {}
+                    }
                 } else {
                     let drop_result = self
                         .window_state
-                        .drag_and_drop_areas
+                        .drag_and_drop_lists
                         .edit_script_list
                         .on_mouse_up(mouse_pos);
                     match drop_result {
-                        drag_and_drop_list::DropResult::None => {}
-                        drag_and_drop_list::DropResult::ItemTaken(_index) => {}
-                        drag_and_drop_list::DropResult::ItemReceived => {}
                         drag_and_drop_list::DropResult::ItemChangedPosition(index, new_index) => {
                             move_config_script_to_index(self, index, new_index);
                         }
+                        _ => {}
                     }
                 }
 
-                for drag_area in &mut self.window_state.drag_and_drop_areas.execution_lists {
-                    drag_area.on_mouse_up(mouse_pos);
+                self.window_state
+                    .drag_and_drop_lists
+                    .execution_edit_list
+                    .on_mouse_up(mouse_pos);
+
+                let execution_edit_list_got_item_dropped = self
+                    .window_state
+                    .execution_edit_lists_drop_area
+                    .on_mouse_up(mouse_pos);
+
+                if execution_edit_list_got_item_dropped {
+                    if let Some(taken_script_to_schedule) = taken_script_to_schedule {
+                        if let Some(script) = get_main_script_definition_list(&self.app_config)
+                            .get(taken_script_to_schedule)
+                        {
+                            add_script_to_execution(self, get_script_uid(script).clone(), false);
+                        }
+                    }
                 }
             }
             WindowMessage::WindowOnMouseMove(position) => {
                 self.window_state.mouse_position = position;
-                self.window_state
-                    .drag_and_drop_areas
-                    .script_list
-                    .on_mouse_move(self.window_state.mouse_position);
-                self.window_state
-                    .drag_and_drop_areas
-                    .edit_script_list
-                    .on_mouse_move(self.window_state.mouse_position);
-                let mut just_started_dragging = false;
-                for_each_drag_area(self, |area| {
-                    let result = area.on_mouse_move(position);
-                    if let DragResult::JustStartedDragging = result {
-                        just_started_dragging = true;
+
+                if !self.edit_data.window_edit_data.is_some() {
+                    let move_result = self
+                        .window_state
+                        .drag_and_drop_lists
+                        .script_list
+                        .on_mouse_move(position);
+                    match move_result {
+                        DragResult::JustStartedDragging => {
+                            self.window_state
+                                .execution_edit_lists_drop_area
+                                .on_started_dragging_compatible_element();
+                        }
+                        _ => {}
                     }
-                });
-                if just_started_dragging {
-                    for_each_drag_area(self, |area| {
-                        area.started_dragging_somewhere();
-                    });
+                } else {
+                    self.window_state
+                        .drag_and_drop_lists
+                        .edit_script_list
+                        .on_mouse_move(position);
                 }
+
+                self.window_state
+                    .drag_and_drop_lists
+                    .execution_edit_list
+                    .on_mouse_move(position);
+
+                self.window_state
+                    .execution_edit_lists_drop_area
+                    .on_mouse_move(position);
             }
             WindowMessage::PaneHeaderClicked(pane) => {
                 self.window_state.pane_focus = Some(pane);
@@ -1994,9 +2036,9 @@ fn produce_script_list_content<'a>(
     let is_editing = edit_data.window_edit_data.is_some();
 
     let drag_and_drop_area = if !is_editing {
-        &window_state.drag_and_drop_areas.script_list
+        &window_state.drag_and_drop_lists.script_list
     } else {
-        &window_state.drag_and_drop_areas.edit_script_list
+        &window_state.drag_and_drop_lists.edit_script_list
     };
 
     let dragged_element_index = drag_and_drop_area.get_dragged_element_index();
@@ -2250,6 +2292,37 @@ fn produce_execution_list_content<'a>(
     window_state: &WindowState,
 ) -> Column<'a, WindowMessage> {
     let icons = &visual_caches.icons;
+
+    let drop_area_stata = window_state
+        .execution_edit_lists_drop_area
+        .get_drop_area_state();
+
+    let drop_area = match drop_area_stata {
+        DropAreaState::Inactive => column![],
+        DropAreaState::VisibleIdle => column![button(
+            text("Drop here to schedule")
+                .color(theme.extended_palette().primary.strong.text)
+                .center()
+                .width(Length::Fill),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(button::secondary),]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(Alignment::Center),
+        DropAreaState::HoveredByItem => column![button(
+            text("Release to schedule")
+                .color(theme.extended_palette().primary.strong.text)
+                .center()
+                .width(Length::Fill),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill),]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(Alignment::Center),
+    };
 
     let title_widget = if visual_caches.is_custom_title_editing {
         row![text_input(
@@ -2839,27 +2912,30 @@ fn produce_execution_list_content<'a>(
         Space::with_height(8),
     ];
 
-    column![
-        title,
-        scrollable(column![
-            if !execution_lists.get_started_executions().is_empty() {
-                scheduled_block
-            } else {
-                column![]
-            },
-            if !execution_lists.get_edited_scripts().is_empty()
-                || edit_data.window_edit_data.is_some()
-            {
-                edited_block
-            } else {
-                column![]
-            },
-        ])
-    ]
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .spacing(10)
-    .align_x(Alignment::Center)
+    column![stack![
+        column![
+            title,
+            scrollable(column![
+                if !execution_lists.get_started_executions().is_empty() {
+                    scheduled_block
+                } else {
+                    column![]
+                },
+                if !execution_lists.get_edited_scripts().is_empty()
+                    || edit_data.window_edit_data.is_some()
+                {
+                    edited_block
+                } else {
+                    column![]
+                },
+            ]),
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .spacing(10)
+        .align_x(Alignment::Center),
+        drop_area,
+    ]]
 }
 
 fn produce_log_output_content<'a>(
@@ -3967,11 +4043,10 @@ fn update_autorerun_count_text(
 
 fn for_each_drag_area(app: &mut MainWindow, mut f: impl FnMut(&mut DragAndDropList)) {
     if !app.edit_data.window_edit_data.is_some() {
-        f(&mut app.window_state.drag_and_drop_areas.script_list);
+        f(&mut app.window_state.drag_and_drop_lists.script_list);
     } else {
-        f(&mut app.window_state.drag_and_drop_areas.edit_script_list);
+        f(&mut app.window_state.drag_and_drop_lists.edit_script_list);
     }
-    for area in &mut app.window_state.drag_and_drop_areas.execution_lists {
-        f(area);
-    }
+
+    f(&mut app.window_state.drag_and_drop_lists.execution_edit_list);
 }
