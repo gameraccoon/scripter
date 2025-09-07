@@ -1290,6 +1290,40 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
     update_config_cache(app);
 }
 
+pub fn move_vec_element_to_index<T>(vec: &mut Vec<T>, index: usize, new_index: usize) {
+    if index < new_index {
+        vec[index..new_index].rotate_left(1);
+    } else {
+        vec[new_index..=index].rotate_right(1);
+    }
+}
+
+pub fn move_config_script_to_index(app: &mut MainWindow, index: usize, new_index: usize) {
+    if app.edit_data.window_edit_data.is_some() {
+        match config::get_main_edit_mode(&app.app_config) {
+            config::ConfigEditMode::Shared => {
+                move_vec_element_to_index(&mut app.app_config.script_definitions, index, new_index);
+                app.edit_data.is_dirty = true;
+            }
+            config::ConfigEditMode::Local => {
+                if let Some(local_config_body) = &mut app.app_config.local_config_body {
+                    move_vec_element_to_index(
+                        &mut local_config_body.script_definitions,
+                        index,
+                        new_index,
+                    );
+                    config::update_shared_config_script_positions_from_local_config(
+                        &mut app.app_config,
+                    );
+                    app.edit_data.is_dirty = true;
+                }
+            }
+        }
+    }
+
+    update_config_cache(app);
+}
+
 pub fn apply_config_script_edit(
     app: &mut MainWindow,
     config_script_id: ConfigScriptId,

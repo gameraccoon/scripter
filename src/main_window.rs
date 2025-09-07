@@ -25,7 +25,7 @@ use iced::widget::scrollable::Scrollbar;
 use iced::widget::text::LineHeight;
 use iced::widget::{
     button, checkbox, column, container, horizontal_rule, horizontal_space, image, image::Handle,
-    pick_list, responsive, row, scrollable, text, text_input, tooltip, Column, Space,
+    pick_list, responsive, row, scrollable, stack, text, text_input, tooltip, Column, Space,
 };
 use iced::window::{self, request_user_attention};
 use iced::{keyboard, ContentFit, Task};
@@ -252,8 +252,6 @@ pub(crate) enum WindowMessage {
     SaveConfigAndExitEditing,
     RevertConfigAndExitEditing,
     OpenScriptConfigEditing(usize),
-    MoveConfigScriptUp(usize),
-    MoveConfigScriptDown(usize),
     ToggleConfigEditing,
     SettingsToggleWindowStatusReactions(config::ConfigEditMode, bool),
     SettingsToggleKeepWindowSize(config::ConfigEditMode, bool),
@@ -455,16 +453,31 @@ impl MainWindow {
             }
             WindowMessage::WindowOnMouseUp => {
                 let mouse_pos = self.window_state.mouse_position;
-                for_each_drag_area(self, |area| {
-                    let drop_result = area.on_mouse_up(mouse_pos);
+
+                if !self.edit_data.window_edit_data.is_some() {
+                    self.window_state
+                        .drag_and_drop_areas
+                        .script_list
+                        .on_mouse_up(mouse_pos);
+                } else {
+                    let drop_result = self
+                        .window_state
+                        .drag_and_drop_areas
+                        .edit_script_list
+                        .on_mouse_up(mouse_pos);
                     match drop_result {
                         drag_and_drop_list::DropResult::None => {}
                         drag_and_drop_list::DropResult::ItemTaken(_index) => {}
                         drag_and_drop_list::DropResult::ItemReceived => {}
-                        drag_and_drop_list::DropResult::ItemChangedPosition(_index, _new_index) => {
+                        drag_and_drop_list::DropResult::ItemChangedPosition(index, new_index) => {
+                            move_config_script_to_index(self, index, new_index);
                         }
                     }
-                });
+                }
+
+                for drag_area in &mut self.window_state.drag_and_drop_areas.execution_lists {
+                    drag_area.on_mouse_up(mouse_pos);
+                }
             }
             WindowMessage::WindowOnMouseMove(position) => {
                 self.window_state.mouse_position = position;
@@ -479,7 +492,7 @@ impl MainWindow {
                 let mut just_started_dragging = false;
                 for_each_drag_area(self, |area| {
                     let result = area.on_mouse_move(position);
-                    if let DragResult::JustStartedDragging(_) = result {
+                    if let DragResult::JustStartedDragging = result {
                         just_started_dragging = true;
                     }
                 });
@@ -1034,12 +1047,6 @@ impl MainWindow {
                         edit_mode: config::get_main_edit_mode(&self.app_config),
                     },
                 );
-            }
-            WindowMessage::MoveConfigScriptUp(index) => {
-                move_config_script_up(self, index);
-            }
-            WindowMessage::MoveConfigScriptDown(index) => {
-                move_config_script_down(self, index);
             }
             WindowMessage::ToggleConfigEditing => {
                 if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
@@ -1995,18 +2002,33 @@ fn produce_script_list_content<'a>(
     let dragged_element_index = drag_and_drop_area.get_dragged_element_index();
     let insert_position_index = drag_and_drop_area.get_reordering_target_index();
 
+    let drop_marker = if let Some(insert_position_index) = insert_position_index {
+        column![
+            Space::with_height(ONE_SCRIPT_LIST_ELEMENT_HEIGHT * insert_position_index as f32),
+            row![
+                Space::with_width(10.0),
+                horizontal_rule(SEPARATOR_HEIGHT).style(|theme: &Theme| {
+                    let color = theme.extended_palette().primary.strong.text;
+                    iced::widget::rule::Style {
+                        color,
+                        width: 3,
+                        radius: Default::default(),
+                        fill_mode: iced::widget::rule::FillMode::Full,
+                    }
+                }),
+                Space::with_width(Length::FillPortion(5)),
+            ]
+        ]
+    } else {
+        column![]
+    };
+
     let data: Element<_> = column(
         displayed_configs_list_cache
             .iter()
             .enumerate()
             .map(|(i, script)| {
                 let mut name_text = script.name.clone();
-
-                if Some(i) == dragged_element_index {
-                    name_text.insert_str(0, "[*] ");
-                } else if Some(i) == insert_position_index {
-                    name_text.insert_str(0, "^^^");
-                }
 
                 if is_editing && is_local_config_script(i, &config) {
                     name_text += " [local]";
@@ -2017,23 +2039,6 @@ fn produce_script_list_content<'a>(
 
                 let will_run_on_click =
                     edit_data.window_edit_data.is_none() && window_state.is_command_key_down;
-
-                let edit_buttons = if edit_data.window_edit_data.is_some() {
-                    row![
-                        inline_icon_button(
-                            visual_caches.icons.themed.up.clone(),
-                            WindowMessage::MoveConfigScriptUp(i)
-                        ),
-                        Space::with_width(5),
-                        inline_icon_button(
-                            visual_caches.icons.themed.down.clone(),
-                            WindowMessage::MoveConfigScriptDown(i)
-                        ),
-                        Space::with_width(5),
-                    ]
-                } else {
-                    row![]
-                };
 
                 let icon = if will_run_on_click {
                     row![
@@ -2063,18 +2068,21 @@ fn produce_script_list_content<'a>(
                     _ => false,
                 };
 
+                let is_dragged = dragged_element_index == Some(i);
+
                 let item_button = button(
                     row![
                         icon,
                         Space::with_width(6),
                         text(name_text).height(22),
-                        horizontal_space(),
-                        edit_buttons,
+                        horizontal_space()
                     ]
                     .height(22),
                 )
                 .padding(4)
-                .style(if is_selected {
+                .style(if is_dragged {
+                    button::success
+                } else if is_selected {
                     button::primary
                 } else {
                     button::secondary
@@ -2222,7 +2230,7 @@ fn produce_script_list_content<'a>(
     column![
         edit_controls,
         filter_field,
-        scrollable(data)
+        scrollable(stack![data, drop_marker])
             .height(Length::Fill)
             .on_scroll(move |viewport| WindowMessage::OnScriptListScroll(viewport)),
         quick_launch_buttons,

@@ -26,8 +26,8 @@ enum Operation {
 
 pub(crate) enum DragResult {
     None,
-    JustStartedDragging(usize),
-    Dragging(usize),
+    JustStartedDragging,
+    Dragging,
 }
 
 pub(crate) enum DropResult {
@@ -67,7 +67,7 @@ impl DragAndDropList {
 
     pub(crate) fn on_mouse_down(&mut self, position: iced::Point) {
         if self.current_operation.is_some() {
-            println!("We already had an drag operation before mouse down, weird");
+            println!("We already had a drag operation before mouse down, weird");
             self.current_operation = None;
             return;
         }
@@ -99,7 +99,7 @@ impl DragAndDropList {
                     && !self.is_mouse_in_bounds(position)
                 {
                     self.current_operation = Some(Operation::DraggingFrom(index));
-                    DragResult::JustStartedDragging(index)
+                    DragResult::JustStartedDragging
                 } else {
                     if std::time::Instant::now()
                         .duration_since(start_time)
@@ -116,13 +116,13 @@ impl DragAndDropList {
                         } else {
                             eprintln!("We can't be in PreparingForDragging with both dragging out and reordering disabled");
                         }
-                        DragResult::JustStartedDragging(index)
+                        DragResult::JustStartedDragging
                     } else if self.static_parameters.is_reordering_allowed {
                         if let Some(hovered_index) = self.get_hovered_index(position) {
                             if hovered_index != index {
                                 self.current_operation =
                                     Some(Operation::Reordering(index, hovered_index));
-                                DragResult::JustStartedDragging(index)
+                                DragResult::JustStartedDragging
                             } else {
                                 DragResult::None
                             }
@@ -134,17 +134,23 @@ impl DragAndDropList {
                     }
                 }
             }
-            Some(Operation::Reordering(index, hovered_index)) => {
+            Some(Operation::Reordering(index, _hovered_index)) => {
                 if self.static_parameters.is_dragging_outside_allowed
                     && !self.is_mouse_in_bounds(position)
                 {
                     self.current_operation = Some(Operation::DraggingFrom(index));
                 } else {
                     if let Some(hovered_index) = self.get_hovered_index(position) {
-                        self.current_operation = Some(Operation::Reordering(index, hovered_index));
+                        if hovered_index <= index {
+                            self.current_operation =
+                                Some(Operation::Reordering(index, hovered_index));
+                        } else {
+                            self.current_operation =
+                                Some(Operation::Reordering(index, hovered_index + 1));
+                        }
                     }
                 }
-                DragResult::Dragging(index)
+                DragResult::Dragging
             }
             Some(Operation::DraggingFrom(index)) => {
                 if self.is_mouse_in_bounds(position) && self.static_parameters.is_reordering_allowed
@@ -153,7 +159,7 @@ impl DragAndDropList {
                         self.current_operation = Some(Operation::Reordering(index, hovered_index));
                     }
                 }
-                DragResult::Dragging(index)
+                DragResult::Dragging
             }
             Some(Operation::IdleWaitingForDrop) => {
                 if self.is_mouse_in_bounds(position) {
@@ -171,7 +177,7 @@ impl DragAndDropList {
         }
     }
 
-    pub(crate) fn on_mouse_up(&mut self, position: iced::Point) -> DropResult {
+    pub(crate) fn on_mouse_up(&mut self, _position: iced::Point) -> DropResult {
         // clean and return
         match self.current_operation.take() {
             Some(Operation::PreparingForDragging(_index, _start_time)) => DropResult::None,
@@ -230,7 +236,7 @@ impl DragAndDropList {
             || self.current_operation == Some(Operation::HoveredByDrop)
     }
 
-    pub(crate) fn is_drop_area_hovered(&self, position: iced::Point) -> bool {
+    pub(crate) fn is_drop_area_hovered(&self) -> bool {
         self.current_operation == Some(Operation::HoveredByDrop)
     }
 
