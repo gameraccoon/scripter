@@ -2340,7 +2340,7 @@ fn produce_execution_list_content<'a>(
         )
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(button::secondary),]
+        .style(style::drop_area_button_style),]
         .width(Length::Fill)
         .height(Length::Fill)
         .align_x(Alignment::Center),

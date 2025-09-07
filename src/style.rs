@@ -3,7 +3,7 @@
 
 use crate::config;
 use iced::theme::{self, Theme};
-use iced::widget::{container, text_input};
+use iced::widget::{button, container, text_input};
 use iced::Border;
 
 pub fn title_bar_active(theme: &Theme) -> container::Style {
@@ -130,5 +130,20 @@ pub(crate) fn invalid_text_input_style(
             ..default_theme
         },
         text_input::Status::Disabled => default_theme,
+    }
+}
+
+pub(crate) fn drop_area_button_style(theme: &Theme, status: button::Status) -> button::Style {
+    let palette = theme.extended_palette();
+
+    let default_style = button::secondary(theme, status);
+
+    button::Style {
+        border: Border {
+            color: palette.primary.strong.text,
+            width: 2.0,
+            ..default_style.border
+        },
+        ..default_style
     }
 }
