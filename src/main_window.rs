@@ -27,10 +27,11 @@ use iced::widget::scrollable::Scrollbar;
 use iced::widget::text::LineHeight;
 use iced::widget::{
     button, checkbox, column, container, horizontal_rule, horizontal_space, image, image::Handle,
-    pick_list, responsive, row, scrollable, stack, text, text_input, tooltip, Column, Space,
+    opaque, pick_list, responsive, row, scrollable, stack, text, text_input, tooltip,
+    vertical_space, Column, Space,
 };
 use iced::window::{self, request_user_attention};
-use iced::{keyboard, ContentFit, Task};
+use iced::{keyboard, mouse, ContentFit, Task};
 use iced::{time, Size};
 use iced::{Element, Length, Subscription};
 use once_cell::sync::Lazy;
@@ -182,6 +183,7 @@ pub(crate) struct WindowState {
     pub(crate) has_maximized_pane: bool,
     pub(crate) drag_and_drop_lists: DragAndDropLists,
     pub(crate) execution_edit_lists_drop_area: DropArea,
+    is_dragging: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -412,6 +414,7 @@ impl MainWindow {
                     ),
                 },
                 execution_edit_lists_drop_area: DropArea::new(),
+                is_dragging: false,
             },
             keybinds: custom_keybinds::CustomKeybinds::new(),
             displayed_configs_list_cache: Vec::new(),
@@ -461,6 +464,7 @@ impl MainWindow {
                 for_each_drag_area(self, |area| area.on_mouse_down(mouse_pos));
             }
             WindowMessage::WindowOnMouseUp => {
+                self.window_state.is_dragging = false;
                 let mouse_pos = self.window_state.mouse_position;
 
                 let mut taken_script_to_schedule = None;
@@ -525,20 +529,35 @@ impl MainWindow {
                             self.window_state
                                 .execution_edit_lists_drop_area
                                 .on_started_dragging_compatible_element();
+                            self.window_state.is_dragging = true;
                         }
                         _ => {}
                     }
                 } else {
-                    self.window_state
+                    let move_result = self
+                        .window_state
                         .drag_and_drop_lists
                         .edit_script_list
                         .on_mouse_move(position);
+                    match move_result {
+                        DragResult::JustStartedDragging => {
+                            self.window_state.is_dragging = true;
+                        }
+                        _ => {}
+                    }
                 }
 
-                self.window_state
+                let move_result = self
+                    .window_state
                     .drag_and_drop_lists
                     .execution_edit_list
                     .on_mouse_move(position);
+                match move_result {
+                    DragResult::JustStartedDragging => {
+                        self.window_state.is_dragging = true;
+                    }
+                    _ => {}
+                }
 
                 self.window_state
                     .execution_edit_lists_drop_area
@@ -1929,11 +1948,25 @@ impl MainWindow {
             .into()
         });
 
-        container(pane_grid)
+        let outer_container = container(pane_grid)
             .width(Length::Fill)
             .height(Length::Fill)
-            .padding(1)
+            .padding(1);
+
+        if self.window_state.is_dragging {
+            stack![
+                outer_container,
+                opaque(
+                    iced::widget::mouse_area(
+                        vertical_space().width(Length::Fill).height(Length::Fill)
+                    )
+                    .interaction(mouse::Interaction::Grabbing)
+                )
+            ]
             .into()
+        } else {
+            outer_container.into()
+        }
     }
 
     pub(crate) fn theme(&self) -> Theme {
@@ -1948,14 +1981,14 @@ impl MainWindow {
                 }
                 iced::event::Event::Mouse(event) => match event {
                     Event::ButtonPressed(button) => {
-                        if button == iced::mouse::Button::Left {
+                        if button == mouse::Button::Left {
                             Some(WindowMessage::WindowOnMouseDown)
                         } else {
                             None
                         }
                     }
                     Event::ButtonReleased(button) => {
-                        if button == iced::mouse::Button::Left {
+                        if button == mouse::Button::Left {
                             Some(WindowMessage::WindowOnMouseUp)
                         } else {
                             None
