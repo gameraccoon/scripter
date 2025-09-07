@@ -14,11 +14,18 @@ use crate::main_window::*;
 use crate::parallel_execution_manager;
 use crate::style;
 
-const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
+pub(crate) const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
+pub(crate) const ONE_SCRIPT_LIST_ELEMENT_HEIGHT: f32 = 30.0;
 const ONE_TITLE_LINE_HEIGHT: f32 = 20.0;
 const ONE_EXECUTION_NAME_HEIGHT: f32 = 32.0;
 const EMPTY_EXECUTION_LIST_HEIGHT: f32 = 100.0;
-const EDIT_BUTTONS_HEIGHT: f32 = 50.0;
+const EXECUTION_EDIT_BUTTONS_HEIGHT: f32 = 50.0;
+const DIRTY_CONFIG_BUTTONS_HEIGHT: f32 = 34.0;
+pub(crate) const PANE_SPACING: f32 = 1.0;
+pub(crate) const SEPARATOR_HEIGHT: u16 = 8;
+pub(crate) const PANE_HEADER_HEIGHT: f32 = 47.0;
+const SCRIPT_FILTER_HEIGHT: f32 = 30.0;
+const CONFIG_EDIT_HEADER_HEIGHT: f32 = 100.0;
 
 #[derive(Clone, Debug, Copy)]
 pub(crate) struct ConfigScriptId {
@@ -77,8 +84,8 @@ pub fn is_command_key(key: &keyboard::Key) -> bool {
     }
 }
 
-pub fn get_theme(config: &config::AppConfig, edit_mode: config::ConfigEditMode) -> Theme {
-    if let Some(theme) = config::get_rewritable_config(&config, edit_mode)
+pub fn get_theme(config: &config::AppConfig) -> Theme {
+    if let Some(theme) = config::get_rewritable_config(&config, config::get_main_edit_mode(&config))
         .custom_theme
         .clone()
     {
@@ -592,6 +599,31 @@ pub fn update_config_cache(app: &mut MainWindow) {
                 script_uid: script_uid.clone(),
             });
     }
+
+    let rewritable_config = config::get_main_rewritable_config(&app.app_config);
+
+    app.visual_caches.enable_script_filtering = rewritable_config.enable_script_filtering;
+    app.visual_caches.enable_title_editing = rewritable_config.enable_title_editing;
+
+    if app.edit_data.window_edit_data.is_some() {
+        app.window_state
+            .drag_and_drop_lists
+            .script_list
+            .change_number_of_elements(0);
+        app.window_state
+            .drag_and_drop_lists
+            .edit_script_list
+            .change_number_of_elements(app.displayed_configs_list_cache.len());
+    } else {
+        app.window_state
+            .drag_and_drop_lists
+            .script_list
+            .change_number_of_elements(app.displayed_configs_list_cache.len());
+        app.window_state
+            .drag_and_drop_lists
+            .edit_script_list
+            .change_number_of_elements(0);
+    }
 }
 
 pub fn add_cache_record(
@@ -708,10 +740,7 @@ pub fn maximize_pane(
     app.window_state.has_maximized_pane = true;
     if !config::get_current_rewritable_config(&app.app_config).keep_window_size {
         app.window_state.full_window_size = window_size.clone();
-        let regions = app
-            .panes
-            .layout()
-            .pane_regions(1.0, Size::new(window_size.width, window_size.height));
+        let regions = app.panes.layout().pane_regions(PANE_SPACING, window_size);
         let size = regions.get(&pane);
         let Some(size) = size else {
             return Task::none();
@@ -765,10 +794,10 @@ pub fn maximize_pane(
                                 0.0
                             }
                             + scheduled_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
-                            + EDIT_BUTTONS_HEIGHT * executions_count as f32
+                            + EXECUTION_EDIT_BUTTONS_HEIGHT * executions_count as f32
                             + edited_elements_count as f32 * ONE_EXECUTION_LIST_ELEMENT_HEIGHT
                             + if edited_elements_count > 0 {
-                                EDIT_BUTTONS_HEIGHT
+                                EXECUTION_EDIT_BUTTONS_HEIGHT
                             } else {
                                 0.0
                             },
@@ -1261,6 +1290,40 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
     update_config_cache(app);
 }
 
+pub fn move_vec_element_to_index<T>(vec: &mut Vec<T>, index: usize, new_index: usize) {
+    if index < new_index {
+        vec[index..new_index].rotate_left(1);
+    } else {
+        vec[new_index..=index].rotate_right(1);
+    }
+}
+
+pub fn move_config_script_to_index(app: &mut MainWindow, index: usize, new_index: usize) {
+    if app.edit_data.window_edit_data.is_some() {
+        match config::get_main_edit_mode(&app.app_config) {
+            config::ConfigEditMode::Shared => {
+                move_vec_element_to_index(&mut app.app_config.script_definitions, index, new_index);
+                app.edit_data.is_dirty = true;
+            }
+            config::ConfigEditMode::Local => {
+                if let Some(local_config_body) = &mut app.app_config.local_config_body {
+                    move_vec_element_to_index(
+                        &mut local_config_body.script_definitions,
+                        index,
+                        new_index,
+                    );
+                    config::update_shared_config_script_positions_from_local_config(
+                        &mut app.app_config,
+                    );
+                    app.edit_data.is_dirty = true;
+                }
+            }
+        }
+    }
+
+    update_config_cache(app);
+}
+
 pub fn apply_config_script_edit(
     app: &mut MainWindow,
     config_script_id: ConfigScriptId,
@@ -1352,6 +1415,7 @@ pub fn enter_window_edit_mode(app: &mut MainWindow) {
     clean_script_selection(&mut app.window_state.cursor_script);
     update_config_cache(app);
     app.visual_caches.is_custom_title_editing = false;
+    update_drag_and_drop_area_bounds(app);
 }
 
 pub fn exit_window_edit_mode(app: &mut MainWindow) {
@@ -1361,6 +1425,7 @@ pub fn exit_window_edit_mode(app: &mut MainWindow) {
     keybind_editing::update_keybind_visual_caches(app, config::get_main_edit_mode(&app.app_config));
     update_config_cache(app);
     update_git_branch_visibility(app);
+    update_drag_and_drop_area_bounds(app);
 }
 
 pub fn apply_theme_color_from_string(
@@ -1385,7 +1450,11 @@ pub fn apply_theme_color_from_string(
 }
 
 pub fn apply_theme(app: &mut MainWindow) {
-    app.theme = get_theme(&app.app_config, config::get_main_edit_mode(&app.app_config));
+    app.theme = get_theme(&app.app_config);
+    app.visual_caches.custom_theme =
+        config::get_rewritable_config(&app.app_config, config::get_main_edit_mode(&app.app_config))
+            .custom_theme
+            .clone();
     update_theme_icons(app);
 }
 
@@ -1430,6 +1499,62 @@ pub fn should_autoclean_on_success(
     }
 
     false
+}
+
+pub(crate) fn update_drag_and_drop_area_bounds(app: &mut MainWindow) {
+    let regions = app
+        .panes
+        .layout()
+        .pane_regions(PANE_SPACING, app.window_state.full_window_size);
+
+    let script_list_pane = app.pane_by_pane_type[&PaneVariant::ScriptList];
+
+    if let Some(script_list_pane_region) = regions.get(&script_list_pane) {
+        if app.edit_data.window_edit_data.is_none() {
+            let header_height = get_script_list_content_offset_y(&app);
+            let mut content_region = script_list_pane_region.clone();
+            content_region.y += header_height;
+            content_region.height -= header_height;
+            app.window_state
+                .drag_and_drop_lists
+                .script_list
+                .set_bounds(content_region);
+        } else {
+            let header_height = get_edited_script_list_content_offset_y(&app);
+            let mut content_region = script_list_pane_region.clone();
+            content_region.y += header_height;
+            content_region.height -= header_height;
+            app.window_state
+                .drag_and_drop_lists
+                .edit_script_list
+                .set_bounds(content_region);
+        }
+    }
+
+    let execution_list_pane = app.pane_by_pane_type[&PaneVariant::ExecutionList];
+    if let Some(execution_list_pane_region) = regions.get(&execution_list_pane) {
+        app.window_state
+            .execution_edit_lists_drop_area
+            .set_bounds(execution_list_pane_region.clone());
+    }
+}
+
+pub(crate) fn get_script_list_content_offset_y(app: &MainWindow) -> f32 {
+    PANE_HEADER_HEIGHT
+        + if app.visual_caches.enable_script_filtering {
+            SCRIPT_FILTER_HEIGHT
+        } else {
+            0.0
+        }
+        + if app.edit_data.is_dirty {
+            DIRTY_CONFIG_BUTTONS_HEIGHT
+        } else {
+            0.0
+        }
+}
+
+pub(crate) fn get_edited_script_list_content_offset_y(_app: &MainWindow) -> f32 {
+    PANE_HEADER_HEIGHT + CONFIG_EDIT_HEADER_HEIGHT
 }
 
 #[cfg(test)]

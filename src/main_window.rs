@@ -4,6 +4,7 @@
 use crate::color_utils;
 use crate::config;
 use crate::custom_keybinds;
+use crate::drag_and_drop_list;
 use crate::execution_thread;
 use crate::file_utils;
 use crate::git_support;
@@ -14,18 +15,23 @@ use crate::parallel_execution_manager;
 use crate::style;
 use crate::ui_icons;
 
+use crate::config::{get_main_script_definition_list, get_script_uid};
+use crate::drag_and_drop_list::{DragAndDropList, DragResult, DropArea};
+use drag_and_drop_list::DropAreaState;
 use iced::alignment::{self, Alignment};
 use iced::event::listen_with;
+use iced::mouse::Event;
 use iced::theme::Theme;
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
 use iced::widget::scrollable::Scrollbar;
 use iced::widget::text::LineHeight;
 use iced::widget::{
     button, checkbox, column, container, horizontal_rule, horizontal_space, image, image::Handle,
-    pick_list, responsive, row, scrollable, text, text_input, tooltip, Column, Space,
+    opaque, pick_list, responsive, row, scrollable, stack, text, text_input, tooltip,
+    vertical_space, Column, Space,
 };
 use iced::window::{self, request_user_attention};
-use iced::{keyboard, ContentFit, Task};
+use iced::{keyboard, mouse, ContentFit, Task};
 use iced::{time, Size};
 use iced::{Element, Length, Subscription};
 use once_cell::sync::Lazy;
@@ -36,8 +42,6 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 static EMPTY_STRING: String = String::new();
-
-const SEPARATOR_HEIGHT: u16 = 8;
 
 const CONFIG_UPDATE_BEHAVIOR_PICK_LIST: &[config::ConfigUpdateBehavior] = &[
     config::ConfigUpdateBehavior::OnStartup,
@@ -70,6 +74,9 @@ pub(crate) struct VisualCaches {
     pub(crate) git_branch_requester: Option<git_support::GitCurrentBranchRequester>,
     pub(crate) button_key_caches: ButtonKeyCaches,
     pub(crate) quick_launch_buttons: Vec<QuickLaunchButton>,
+    pub(crate) enable_script_filtering: bool,
+    pub(crate) enable_title_editing: bool,
+    pub(crate) custom_theme: Option<config::CustomTheme>,
 }
 
 #[derive(Default)]
@@ -160,21 +167,35 @@ impl WindowEditData {
     }
 }
 
+pub(crate) struct DragAndDropLists {
+    pub(crate) script_list: DragAndDropList,
+    pub(crate) edit_script_list: DragAndDropList,
+    pub(crate) execution_edit_list: DragAndDropList,
+}
+
 pub(crate) struct WindowState {
     pub(crate) pane_focus: Option<pane_grid::Pane>,
     pub(crate) cursor_script: Option<EditScriptId>,
     pub(crate) full_window_size: Size,
     pub(crate) is_command_key_down: bool,
     is_alt_key_down: bool,
+    mouse_position: iced::Point,
     pub(crate) has_maximized_pane: bool,
+    pub(crate) drag_and_drop_lists: DragAndDropLists,
+    pub(crate) execution_edit_lists_drop_area: DropArea,
+    is_dragging: bool,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) enum WindowMessage {
     WindowResized(window::Id, Size),
+    WindowOnMouseDown,
+    WindowOnMouseUp,
+    WindowOnMouseMove(iced::Point),
     PaneHeaderClicked(pane_grid::Pane),
     PaneHeaderDragged(pane_grid::DragEvent),
     PaneResized(pane_grid::ResizeEvent),
+    OnScriptListScroll(scrollable::Viewport),
     EnterFocusMode(pane_grid::Pane, Size),
     ExitFocusMode,
     MaximizeOrRestoreExecutionPane,
@@ -236,8 +257,6 @@ pub(crate) enum WindowMessage {
     SaveConfigAndExitEditing,
     RevertConfigAndExitEditing,
     OpenScriptConfigEditing(usize),
-    MoveConfigScriptUp(usize),
-    MoveConfigScriptDown(usize),
     ToggleConfigEditing,
     SettingsToggleWindowStatusReactions(config::ConfigEditMode, bool),
     SettingsToggleKeepWindowSize(config::ConfigEditMode, bool),
@@ -336,7 +355,7 @@ impl MainWindow {
             panes,
             pane_by_pane_type,
             execution_manager: parallel_execution_manager::ParallelExecutionManager::new(),
-            theme: get_theme(&app_config, config::get_main_edit_mode(&app_config)),
+            theme: get_theme(&app_config),
             app_config,
             visual_caches: VisualCaches {
                 autorerun_count: String::new(),
@@ -351,6 +370,9 @@ impl MainWindow {
                 },
                 button_key_caches: ButtonKeyCaches::default(),
                 quick_launch_buttons: Vec::new(),
+                enable_script_filtering: false,
+                enable_title_editing: false,
+                custom_theme: None,
             },
             edit_data: EditData {
                 script_filter: String::new(),
@@ -363,7 +385,36 @@ impl MainWindow {
                 full_window_size: Size::new(1024.0, 768.0),
                 is_command_key_down: false,
                 is_alt_key_down: false,
+                mouse_position: iced::Point::new(0.0, 0.0),
                 has_maximized_pane: false,
+                drag_and_drop_lists: DragAndDropLists {
+                    script_list: DragAndDropList::new(
+                        0,
+                        drag_and_drop_list::StaticDragAreaParameters {
+                            element_height: ONE_SCRIPT_LIST_ELEMENT_HEIGHT,
+                            is_dragging_outside_allowed: true,
+                            is_reordering_allowed: false,
+                        },
+                    ),
+                    edit_script_list: DragAndDropList::new(
+                        0,
+                        drag_and_drop_list::StaticDragAreaParameters {
+                            element_height: ONE_SCRIPT_LIST_ELEMENT_HEIGHT,
+                            is_dragging_outside_allowed: false,
+                            is_reordering_allowed: true,
+                        },
+                    ),
+                    execution_edit_list: DragAndDropList::new(
+                        0,
+                        drag_and_drop_list::StaticDragAreaParameters {
+                            element_height: ONE_EXECUTION_LIST_ELEMENT_HEIGHT,
+                            is_dragging_outside_allowed: false,
+                            is_reordering_allowed: true,
+                        },
+                    ),
+                },
+                execution_edit_lists_drop_area: DropArea::new(),
+                is_dragging: false,
             },
             keybinds: custom_keybinds::CustomKeybinds::new(),
             displayed_configs_list_cache: Vec::new(),
@@ -406,12 +457,127 @@ impl MainWindow {
                 if !self.window_state.has_maximized_pane {
                     self.window_state.full_window_size = size;
                 }
+                update_drag_and_drop_area_bounds(self);
+            }
+            WindowMessage::WindowOnMouseDown => {
+                let mouse_pos = self.window_state.mouse_position;
+                for_each_drag_area(self, |area| area.on_mouse_down(mouse_pos));
+            }
+            WindowMessage::WindowOnMouseUp => {
+                self.window_state.is_dragging = false;
+                let mouse_pos = self.window_state.mouse_position;
+
+                let mut taken_script_to_schedule = None;
+
+                if !self.edit_data.window_edit_data.is_some() {
+                    let drop_result = self
+                        .window_state
+                        .drag_and_drop_lists
+                        .script_list
+                        .on_mouse_up(mouse_pos);
+                    match drop_result {
+                        drag_and_drop_list::DropResult::ItemTaken(index) => {
+                            taken_script_to_schedule = Some(index);
+                        }
+                        _ => {}
+                    }
+                } else {
+                    let drop_result = self
+                        .window_state
+                        .drag_and_drop_lists
+                        .edit_script_list
+                        .on_mouse_up(mouse_pos);
+                    match drop_result {
+                        drag_and_drop_list::DropResult::ItemChangedPosition(index, new_index) => {
+                            move_config_script_to_index(self, index, new_index);
+                        }
+                        _ => {}
+                    }
+                }
+
+                self.window_state
+                    .drag_and_drop_lists
+                    .execution_edit_list
+                    .on_mouse_up(mouse_pos);
+
+                let execution_edit_list_got_item_dropped = self
+                    .window_state
+                    .execution_edit_lists_drop_area
+                    .on_mouse_up(mouse_pos);
+
+                if execution_edit_list_got_item_dropped {
+                    if let Some(taken_script_to_schedule) = taken_script_to_schedule {
+                        if let Some(script) = get_main_script_definition_list(&self.app_config)
+                            .get(taken_script_to_schedule)
+                        {
+                            add_script_to_execution(self, get_script_uid(script).clone(), false);
+                        }
+                    }
+                }
+            }
+            WindowMessage::WindowOnMouseMove(position) => {
+                self.window_state.mouse_position = position;
+
+                if !self.edit_data.window_edit_data.is_some() {
+                    let move_result = self
+                        .window_state
+                        .drag_and_drop_lists
+                        .script_list
+                        .on_mouse_move(position);
+                    match move_result {
+                        DragResult::JustStartedDragging => {
+                            self.window_state
+                                .execution_edit_lists_drop_area
+                                .on_started_dragging_compatible_element();
+                            self.window_state.is_dragging = true;
+                        }
+                        _ => {}
+                    }
+                } else {
+                    let move_result = self
+                        .window_state
+                        .drag_and_drop_lists
+                        .edit_script_list
+                        .on_mouse_move(position);
+                    match move_result {
+                        DragResult::JustStartedDragging => {
+                            self.window_state.is_dragging = true;
+                        }
+                        _ => {}
+                    }
+                }
+
+                let move_result = self
+                    .window_state
+                    .drag_and_drop_lists
+                    .execution_edit_list
+                    .on_mouse_move(position);
+                match move_result {
+                    DragResult::JustStartedDragging => {
+                        self.window_state.is_dragging = true;
+                    }
+                    _ => {}
+                }
+
+                self.window_state
+                    .execution_edit_lists_drop_area
+                    .on_mouse_move(position);
             }
             WindowMessage::PaneHeaderClicked(pane) => {
                 self.window_state.pane_focus = Some(pane);
             }
             WindowMessage::PaneResized(pane_grid::ResizeEvent { split, ratio }) => {
                 self.panes.resize(split, ratio);
+                update_drag_and_drop_area_bounds(self);
+                for_each_drag_area(self, |area| {
+                    area.cancel_operations();
+                });
+            }
+            WindowMessage::OnScriptListScroll(viewport) => {
+                let scroll_offset_y = viewport.absolute_offset().y;
+                for_each_drag_area(self, |area| {
+                    area.set_scroll_offset(scroll_offset_y);
+                });
             }
             WindowMessage::PaneHeaderDragged(drag_event) => {
                 match drag_event {
@@ -943,12 +1109,6 @@ impl MainWindow {
                     },
                 );
             }
-            WindowMessage::MoveConfigScriptUp(index) => {
-                move_config_script_up(self, index);
-            }
-            WindowMessage::MoveConfigScriptDown(index) => {
-                move_config_script_down(self, index);
-            }
             WindowMessage::ToggleConfigEditing => {
                 if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
                     window_edit_data.settings_edit_mode =
@@ -979,6 +1139,7 @@ impl MainWindow {
             WindowMessage::SettingsToggleTitleEditing(edit_mode, is_checked) => {
                 config::get_rewritable_config_mut(&mut self.app_config, edit_mode)
                     .enable_title_editing = is_checked;
+                self.visual_caches.enable_title_editing = is_checked;
                 self.edit_data.is_dirty = true;
             }
             WindowMessage::SettingsUpdateBehaviorChanged(edit_mode, value) => {
@@ -1787,11 +1948,25 @@ impl MainWindow {
             .into()
         });
 
-        container(pane_grid)
+        let outer_container = container(pane_grid)
             .width(Length::Fill)
             .height(Length::Fill)
-            .padding(1)
+            .padding(1);
+
+        if self.window_state.is_dragging {
+            stack![
+                outer_container,
+                opaque(
+                    iced::widget::mouse_area(
+                        vertical_space().width(Length::Fill).height(Length::Fill)
+                    )
+                    .interaction(mouse::Interaction::Grabbing)
+                )
+            ]
             .into()
+        } else {
+            outer_container.into()
+        }
     }
 
     pub(crate) fn theme(&self) -> Theme {
@@ -1804,6 +1979,26 @@ impl MainWindow {
                 iced::event::Event::Window(window::Event::Resized(size)) => {
                     Some(WindowMessage::WindowResized(id, size))
                 }
+                iced::event::Event::Mouse(event) => match event {
+                    Event::ButtonPressed(button) => {
+                        if button == mouse::Button::Left {
+                            Some(WindowMessage::WindowOnMouseDown)
+                        } else {
+                            None
+                        }
+                    }
+                    Event::ButtonReleased(button) => {
+                        if button == mouse::Button::Left {
+                            Some(WindowMessage::WindowOnMouseUp)
+                        } else {
+                            None
+                        }
+                    }
+                    Event::CursorMoved { position } => {
+                        Some(WindowMessage::WindowOnMouseMove(position))
+                    }
+                    _ => None,
+                },
                 _ => None,
             }),
             keyboard::on_key_press(|key, modifiers| {
@@ -1861,7 +2056,6 @@ impl AppPane {
 fn produce_script_list_content<'a>(
     execution_lists: &parallel_execution_manager::ParallelExecutionManager,
     config: &config::AppConfig,
-    main_config: &config::RewritableConfig,
     displayed_configs_list_cache: &Vec<ScriptListCacheRecord>,
     edit_data: &EditData,
     visual_caches: &'a VisualCaches,
@@ -1873,6 +2067,36 @@ fn produce_script_list_content<'a>(
     }
 
     let is_editing = edit_data.window_edit_data.is_some();
+
+    let drag_and_drop_area = if !is_editing {
+        &window_state.drag_and_drop_lists.script_list
+    } else {
+        &window_state.drag_and_drop_lists.edit_script_list
+    };
+
+    let dragged_element_index = drag_and_drop_area.get_dragged_element_index();
+    let insert_position_index = drag_and_drop_area.get_reordering_target_index();
+
+    let drop_marker = if let Some(insert_position_index) = insert_position_index {
+        column![
+            Space::with_height(ONE_SCRIPT_LIST_ELEMENT_HEIGHT * insert_position_index as f32),
+            row![
+                Space::with_width(10.0),
+                horizontal_rule(SEPARATOR_HEIGHT).style(|theme: &Theme| {
+                    let color = theme.extended_palette().primary.strong.text;
+                    iced::widget::rule::Style {
+                        color,
+                        width: 3,
+                        radius: Default::default(),
+                        fill_mode: iced::widget::rule::FillMode::Full,
+                    }
+                }),
+                Space::with_width(Length::FillPortion(5)),
+            ]
+        ]
+    } else {
+        column![]
+    };
 
     let data: Element<_> = column(
         displayed_configs_list_cache
@@ -1890,23 +2114,6 @@ fn produce_script_list_content<'a>(
 
                 let will_run_on_click =
                     edit_data.window_edit_data.is_none() && window_state.is_command_key_down;
-
-                let edit_buttons = if edit_data.window_edit_data.is_some() {
-                    row![
-                        inline_icon_button(
-                            visual_caches.icons.themed.up.clone(),
-                            WindowMessage::MoveConfigScriptUp(i)
-                        ),
-                        Space::with_width(5),
-                        inline_icon_button(
-                            visual_caches.icons.themed.down.clone(),
-                            WindowMessage::MoveConfigScriptDown(i)
-                        ),
-                        Space::with_width(5),
-                    ]
-                } else {
-                    row![]
-                };
 
                 let icon = if will_run_on_click {
                     row![
@@ -1936,18 +2143,21 @@ fn produce_script_list_content<'a>(
                     _ => false,
                 };
 
+                let is_dragged = dragged_element_index == Some(i);
+
                 let item_button = button(
                     row![
                         icon,
                         Space::with_width(6),
                         text(name_text).height(22),
-                        horizontal_space(),
-                        edit_buttons,
+                        horizontal_space()
                     ]
                     .height(22),
                 )
                 .padding(4)
-                .style(if is_selected {
+                .style(if is_dragged {
+                    button::success
+                } else if is_selected {
                     button::primary
                 } else {
                     button::secondary
@@ -2031,7 +2241,7 @@ fn produce_script_list_content<'a>(
     };
 
     let filter_field =
-        if main_config.enable_script_filtering && edit_data.window_edit_data.is_none() {
+        if visual_caches.enable_script_filtering && edit_data.window_edit_data.is_none() {
             row![
                 Space::with_width(5),
                 if window_state.is_command_key_down {
@@ -2095,7 +2305,9 @@ fn produce_script_list_content<'a>(
     column![
         edit_controls,
         filter_field,
-        scrollable(data).height(Length::Fill),
+        scrollable(stack![data, drop_marker])
+            .height(Length::Fill)
+            .on_scroll(move |viewport| WindowMessage::OnScriptListScroll(viewport)),
         quick_launch_buttons,
     ]
     .width(Length::Fill)
@@ -2110,10 +2322,40 @@ fn produce_execution_list_content<'a>(
     config: &config::AppConfig,
     visual_caches: &VisualCaches,
     edit_data: &EditData,
-    main_config: &config::RewritableConfig,
     window_state: &WindowState,
 ) -> Column<'a, WindowMessage> {
     let icons = &visual_caches.icons;
+
+    let drop_area_stata = window_state
+        .execution_edit_lists_drop_area
+        .get_drop_area_state();
+
+    let drop_area = match drop_area_stata {
+        DropAreaState::Inactive => column![],
+        DropAreaState::VisibleIdle => column![button(
+            text("Drop here to schedule")
+                .color(theme.extended_palette().primary.strong.text)
+                .center()
+                .width(Length::Fill),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(style::drop_area_button_style),]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(Alignment::Center),
+        DropAreaState::HoveredByItem => column![button(
+            text("Release to schedule")
+                .color(theme.extended_palette().primary.strong.text)
+                .center()
+                .width(Length::Fill),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill),]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(Alignment::Center),
+    };
 
     let title_widget = if visual_caches.is_custom_title_editing {
         row![text_input(
@@ -2124,7 +2366,7 @@ fn produce_execution_list_content<'a>(
         .on_submit(WindowMessage::SetExecutionListTitleEditing(false))
         .size(16)
         .width(Length::Fill),]
-    } else if main_config.enable_title_editing && edit_data.window_edit_data.is_none() {
+    } else if visual_caches.enable_title_editing && edit_data.window_edit_data.is_none() {
         row![
             horizontal_space(),
             text(
@@ -2234,7 +2476,7 @@ fn produce_execution_list_content<'a>(
             let status_tooltip: &'static str;
             let progress;
             let color = if script_status.has_script_failed() {
-                if let Some(custom_theme) = &main_config.custom_theme {
+                if let Some(custom_theme) = &visual_caches.custom_theme {
                     iced::Color::from_rgb(
                         custom_theme.error_text[0],
                         custom_theme.error_text[1],
@@ -2703,27 +2945,30 @@ fn produce_execution_list_content<'a>(
         Space::with_height(8),
     ];
 
-    column![
-        title,
-        scrollable(column![
-            if !execution_lists.get_started_executions().is_empty() {
-                scheduled_block
-            } else {
-                column![]
-            },
-            if !execution_lists.get_edited_scripts().is_empty()
-                || edit_data.window_edit_data.is_some()
-            {
-                edited_block
-            } else {
-                column![]
-            },
-        ])
-    ]
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .spacing(10)
-    .align_x(Alignment::Center)
+    column![stack![
+        column![
+            title,
+            scrollable(column![
+                if !execution_lists.get_started_executions().is_empty() {
+                    scheduled_block
+                } else {
+                    column![]
+                },
+                if !execution_lists.get_edited_scripts().is_empty()
+                    || edit_data.window_edit_data.is_some()
+                {
+                    edited_block
+                } else {
+                    column![]
+                },
+            ]),
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .spacing(10)
+        .align_x(Alignment::Center),
+        drop_area,
+    ]]
 }
 
 fn produce_log_output_content<'a>(
@@ -3670,7 +3915,6 @@ fn view_content<'a>(
         PaneVariant::ScriptList => produce_script_list_content(
             execution_lists,
             config,
-            config::get_main_rewritable_config(&config),
             displayed_configs_list_cache,
             edit_data,
             &visual_caches,
@@ -3684,7 +3928,6 @@ fn view_content<'a>(
             config,
             &visual_caches,
             edit_data,
-            config::get_main_rewritable_config(&config),
             window_state,
         ),
         PaneVariant::LogOutput => produce_log_output_content(
@@ -3829,4 +4072,14 @@ fn update_autorerun_count_text(
         }
     }
     new_autorerun_count
+}
+
+fn for_each_drag_area(app: &mut MainWindow, mut f: impl FnMut(&mut DragAndDropList)) {
+    if !app.edit_data.window_edit_data.is_some() {
+        f(&mut app.window_state.drag_and_drop_lists.script_list);
+    } else {
+        f(&mut app.window_state.drag_and_drop_lists.edit_script_list);
+    }
+
+    f(&mut app.window_state.drag_and_drop_lists.execution_edit_list);
 }

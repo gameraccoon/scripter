@@ -14,8 +14,6 @@ use iced::widget::{
 };
 use iced::{alignment, Alignment, Element, Length, Theme};
 
-const SEPARATOR_HEIGHT: u16 = 8;
-
 pub(crate) const PATH_TYPE_PICK_LIST: &[config::PathType] = &[
     config::PathType::WorkingDirRelative,
     config::PathType::ScripterExecutableRelative,
