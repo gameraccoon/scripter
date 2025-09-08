@@ -1942,20 +1942,20 @@ impl MainWindow {
             .height(Length::Fill)
             .padding(1);
 
-        if self.window_state.dragged_script.is_some() {
-            stack![
-                outer_container,
-                opaque(
+        stack![
+            outer_container,
+            if self.window_state.dragged_script.is_some() {
+                row![opaque(
                     iced::widget::mouse_area(
                         vertical_space().width(Length::Fill).height(Length::Fill)
                     )
                     .interaction(mouse::Interaction::Grabbing)
-                )
-            ]
-            .into()
-        } else {
-            outer_container.into()
-        }
+                )]
+            } else {
+                row![]
+            }
+        ]
+        .into()
     }
 
     pub(crate) fn theme(&self) -> Theme {
