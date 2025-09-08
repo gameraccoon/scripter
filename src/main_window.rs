@@ -2298,6 +2298,8 @@ fn produce_execution_list_content<'a>(
 ) -> Column<'a, WindowMessage> {
     let icons = &visual_caches.icons;
 
+    let rewritable_config = config::get_main_rewritable_config(&config);
+
     let drop_area_stata = window_state
         .execution_edit_lists_drop_area
         .get_drop_area_state();
@@ -2386,7 +2388,7 @@ fn produce_execution_list_content<'a>(
 
     let mut title = Column::new();
 
-    if config.rewritable.show_working_directory {
+    if rewritable_config.show_working_directory {
         title = title.push(
             text(
                 path_caches
