@@ -2249,8 +2249,10 @@ fn produce_script_list_content<'a>(
                                 .remove
                                 .clone()
                         ))
+                        .padding(4)
                         .style(button::danger)
-                        .height(Length::Fixed(22.0))
+                        .width(Length::Shrink)
+                        .height(Length::Shrink)
                         .on_press(WindowMessage::ScriptFilterChanged("".to_string())),
                     ]
                 } else {
