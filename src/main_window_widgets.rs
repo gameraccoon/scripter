@@ -544,17 +544,20 @@ pub(crate) fn drop_marker<'a>(
     insert_position_index: Option<usize>,
     element_height: f32,
 ) -> Column<'a, WindowMessage> {
+    const MARKER_WIDTH: u16 = 3;
+    const MARKER_OFFSET_Y: f32 = -(MARKER_WIDTH as f32);
+    const MARKER_OFFSET_X: f32 = 10.0;
 
     if let Some(insert_position_index) = insert_position_index {
         iced::widget::column![
-            Space::with_height(element_height * insert_position_index as f32),
+            Space::with_height(element_height * insert_position_index as f32 + MARKER_OFFSET_Y),
             row![
-                Space::with_width(10.0),
+                Space::with_width(MARKER_OFFSET_X),
                 horizontal_rule(SEPARATOR_HEIGHT).style(|theme: &Theme| {
                     let color = theme.extended_palette().secondary.strong.text;
                     iced::widget::rule::Style {
                         color,
-                        width: 3,
+                        width: MARKER_WIDTH,
                         radius: Default::default(),
                         fill_mode: iced::widget::rule::FillMode::Full,
                     }
