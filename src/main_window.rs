@@ -1100,11 +1100,10 @@ impl MainWindow {
                 );
             }
             WindowMessage::ToggleConfigEditing => {
-                if let Some(window_edit_data) = &mut self.edit_data.window_edit_data {
-                    window_edit_data.settings_edit_mode =
-                        Some(config::get_main_edit_mode(&self.app_config));
-                    clean_script_selection(&mut self.window_state.cursor_script);
-                }
+                switch_to_editing_settings_config(
+                    self,
+                    config::get_main_edit_mode(&self.app_config),
+                );
             }
             WindowMessage::SettingsToggleWindowStatusReactions(edit_mode, is_checked) => {
                 config::get_rewritable_config_mut(&mut self.app_config, edit_mode)
