@@ -2245,7 +2245,7 @@ fn produce_script_list_content<'a>(
                         button(image(
                             visual_caches
                                 .icons
-                                .get_theme_for_color(theme.extended_palette().danger.base.text)
+                                .get_theme_for_color(theme.extended_palette().danger.base.color)
                                 .remove
                                 .clone()
                         ))
@@ -2739,7 +2739,7 @@ fn produce_execution_list_content<'a>(
                         tooltip(
                             inline_icon_button(
                                 icons
-                                    .get_theme_for_color(theme.extended_palette().danger.base.text)
+                                    .get_theme_for_color(theme.extended_palette().danger.base.color)
                                     .remove
                                     .clone(),
                                 WindowMessage::RemoveExecutionListScript(i),
