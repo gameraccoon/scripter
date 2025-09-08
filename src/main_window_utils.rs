@@ -1486,6 +1486,8 @@ pub(crate) fn update_drag_and_drop_area_bounds(app: &mut MainWindow) {
         .layout()
         .pane_regions(PANE_SPACING, app.window_state.full_window_size);
 
+    const SCROLL_BAR_WIDTH: f32 = 15.0;
+
     let script_list_pane = app.pane_by_pane_type[&PaneVariant::ScriptList];
 
     if let Some(script_list_pane_region) = regions.get(&script_list_pane) {
@@ -1494,6 +1496,7 @@ pub(crate) fn update_drag_and_drop_area_bounds(app: &mut MainWindow) {
             let mut content_region = script_list_pane_region.clone();
             content_region.y += header_height;
             content_region.height -= header_height;
+            content_region.width -= SCROLL_BAR_WIDTH;
             app.window_state
                 .drag_and_drop_lists
                 .script_list
@@ -1503,6 +1506,7 @@ pub(crate) fn update_drag_and_drop_area_bounds(app: &mut MainWindow) {
             let mut content_region = script_list_pane_region.clone();
             content_region.y += header_height;
             content_region.height -= header_height;
+            content_region.width -= SCROLL_BAR_WIDTH;
             app.window_state
                 .drag_and_drop_lists
                 .edit_script_list
@@ -1519,6 +1523,7 @@ pub(crate) fn update_drag_and_drop_area_bounds(app: &mut MainWindow) {
             let mut content_region = execution_list_pane_region.clone();
             content_region.y += content_offset_y;
             content_region.height -= content_offset_y;
+            content_region.width -= SCROLL_BAR_WIDTH;
             app.window_state
                 .drag_and_drop_lists
                 .execution_edit_list
