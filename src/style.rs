@@ -140,7 +140,7 @@ pub(crate) fn drop_area_button_style(theme: &Theme, status: button::Status) -> b
 
     button::Style {
         border: Border {
-            color: palette.primary.strong.text,
+            color: palette.secondary.strong.text,
             width: 2.0,
             ..default_style.border
         },

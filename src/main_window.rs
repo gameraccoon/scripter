@@ -2313,7 +2313,7 @@ fn produce_execution_list_content<'a>(
         DropAreaState::Inactive => column![],
         DropAreaState::VisibleIdle => column![button(
             text("Drop here to schedule")
-                .color(theme.extended_palette().primary.strong.text)
+                .color(theme.extended_palette().secondary.strong.text)
                 .center()
                 .width(Length::Fill),
         )
@@ -3020,7 +3020,7 @@ fn produce_log_output_content<'a>(
                     ))
                     .color(match element.output_type {
                         execution_thread::OutputType::StdOut => {
-                            theme.extended_palette().primary.weak.text
+                            theme.extended_palette().secondary.base.text
                         }
                         execution_thread::OutputType::StdErr => error_color,
                         execution_thread::OutputType::Error => error_color,
