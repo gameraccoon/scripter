@@ -20,13 +20,13 @@ enum DragOperation {
 
 pub(crate) enum DragResult {
     None,
-    JustStartedDragging,
+    JustStartedDragging(usize),
     Dragging,
 }
 
 pub(crate) enum DropResult {
     None,
-    ItemTaken(usize),
+    ItemTaken,
     ItemChangedPosition(usize, usize),
 }
 
@@ -94,7 +94,7 @@ impl DragAndDropList {
                     && !self.is_mouse_in_bounds(position)
                 {
                     self.current_operation = Some(DragOperation::DraggingFrom(index));
-                    DragResult::JustStartedDragging
+                    DragResult::JustStartedDragging(index)
                 } else {
                     if std::time::Instant::now()
                         .duration_since(start_time)
@@ -111,13 +111,13 @@ impl DragAndDropList {
                         } else {
                             eprintln!("We can't be in PreparingForDragging with both dragging out and reordering disabled");
                         }
-                        DragResult::JustStartedDragging
+                        DragResult::JustStartedDragging(index)
                     } else if self.static_parameters.is_reordering_allowed {
                         if let Some(hovered_index) = self.get_hovered_index(position) {
                             if hovered_index != index {
                                 self.current_operation =
                                     Some(DragOperation::Reordering(index, hovered_index));
-                                DragResult::JustStartedDragging
+                                DragResult::JustStartedDragging(index)
                             } else {
                                 DragResult::None
                             }
@@ -168,7 +168,7 @@ impl DragAndDropList {
             Some(DragOperation::Reordering(index, hovered_index)) => {
                 DropResult::ItemChangedPosition(index, hovered_index)
             }
-            Some(DragOperation::DraggingFrom(index)) => DropResult::ItemTaken(index),
+            Some(DragOperation::DraggingFrom(_index)) => DropResult::ItemTaken,
             None => DropResult::None,
         }
     }

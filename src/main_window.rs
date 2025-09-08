@@ -15,7 +15,6 @@ use crate::parallel_execution_manager;
 use crate::style;
 use crate::ui_icons;
 
-use crate::config::{get_main_script_definition_list, get_script_uid};
 use crate::drag_and_drop_list::{DragAndDropList, DragResult, DropArea};
 use drag_and_drop_list::DropAreaState;
 use iced::alignment::{self, Alignment};
@@ -183,7 +182,7 @@ pub(crate) struct WindowState {
     pub(crate) has_maximized_pane: bool,
     pub(crate) drag_and_drop_lists: DragAndDropLists,
     pub(crate) execution_edit_lists_drop_area: DropArea,
-    is_dragging: bool,
+    dragged_script: Option<config::Guid>,
 }
 
 #[derive(Debug, Clone)]
@@ -412,7 +411,7 @@ impl MainWindow {
                     ),
                 },
                 execution_edit_lists_drop_area: DropArea::new(),
-                is_dragging: false,
+                dragged_script: None,
             },
             keybinds: custom_keybinds::CustomKeybinds::new(),
             displayed_configs_list_cache: Vec::new(),
@@ -462,23 +461,14 @@ impl MainWindow {
                 for_each_drag_area(self, |area| area.on_mouse_down(mouse_pos));
             }
             WindowMessage::WindowOnMouseUp => {
-                self.window_state.is_dragging = false;
+                let dragged_script = self.window_state.dragged_script.take();
                 let mouse_pos = self.window_state.mouse_position;
 
-                let mut taken_script_to_schedule = None;
-
                 if !self.edit_data.window_edit_data.is_some() {
-                    let drop_result = self
-                        .window_state
+                    self.window_state
                         .drag_and_drop_lists
                         .script_list
                         .on_mouse_up(mouse_pos);
-                    match drop_result {
-                        drag_and_drop_list::DropResult::ItemTaken(index) => {
-                            taken_script_to_schedule = Some(index);
-                        }
-                        _ => {}
-                    }
                 } else {
                     let drop_result = self
                         .window_state
@@ -516,12 +506,8 @@ impl MainWindow {
                     .on_mouse_up(mouse_pos);
 
                 if execution_edit_list_got_item_dropped {
-                    if let Some(taken_script_to_schedule) = taken_script_to_schedule {
-                        if let Some(script) = get_main_script_definition_list(&self.app_config)
-                            .get(taken_script_to_schedule)
-                        {
-                            add_script_to_execution(self, get_script_uid(script).clone(), false);
-                        }
+                    if let Some(dragged_script) = dragged_script {
+                        add_script_to_execution(self, dragged_script, false);
                     }
                 }
             }
@@ -535,11 +521,15 @@ impl MainWindow {
                         .script_list
                         .on_mouse_move(position);
                     match move_result {
-                        DragResult::JustStartedDragging => {
-                            self.window_state
-                                .execution_edit_lists_drop_area
-                                .on_started_dragging_compatible_element();
-                            self.window_state.is_dragging = true;
+                        DragResult::JustStartedDragging(script_idx) => {
+                            if let Some(script) = self.displayed_configs_list_cache.get(script_idx)
+                            {
+                                self.window_state
+                                    .execution_edit_lists_drop_area
+                                    .on_started_dragging_compatible_element();
+                                self.window_state.dragged_script =
+                                    Some(script.original_script_uid.clone());
+                            }
                         }
                         _ => {}
                     }
@@ -550,8 +540,9 @@ impl MainWindow {
                         .edit_script_list
                         .on_mouse_move(position);
                     match move_result {
-                        DragResult::JustStartedDragging => {
-                            self.window_state.is_dragging = true;
+                        DragResult::JustStartedDragging(_script_idx) => {
+                            // we don't really care about the guid, we rely on the reordering code
+                            self.window_state.dragged_script = Some(config::GUID_NULL)
                         }
                         _ => {}
                     }
@@ -563,8 +554,9 @@ impl MainWindow {
                     .execution_edit_list
                     .on_mouse_move(position);
                 match move_result {
-                    DragResult::JustStartedDragging => {
-                        self.window_state.is_dragging = true;
+                    DragResult::JustStartedDragging(_script_idx) => {
+                        // we don't really care about the guid, we rely on the reordering code
+                        self.window_state.dragged_script = Some(config::GUID_NULL);
                     }
                     _ => {}
                 }
@@ -1951,7 +1943,7 @@ impl MainWindow {
             .height(Length::Fill)
             .padding(1);
 
-        if self.window_state.is_dragging {
+        if self.window_state.dragged_script.is_some() {
             stack![
                 outer_container,
                 opaque(
