@@ -626,6 +626,11 @@ impl MainWindow {
                 }
             }
             WindowMessage::AddScriptToExecutionOrRun(script_uid) => {
+                // ignore if a script is being dropped on itself
+                if self.window_state.dragged_script.is_some() {
+                    return Task::none();
+                }
+
                 if self.window_state.is_command_key_down {
                     if self.window_state.is_alt_key_down {
                         let scripts = get_resulting_scripts_from_guid(&self.app_config, script_uid);
