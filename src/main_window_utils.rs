@@ -1279,6 +1279,10 @@ pub fn move_vec_element_to_index<T>(vec: &mut Vec<T>, index: usize, new_index: u
 }
 
 pub fn move_config_script_to_index(app: &mut MainWindow, index: usize, new_index: usize) {
+    if index == new_index {
+        return;
+    }
+
     if app.edit_data.window_edit_data.is_some() {
         match config::get_main_edit_mode(&app.app_config) {
             config::ConfigEditMode::Shared => {
