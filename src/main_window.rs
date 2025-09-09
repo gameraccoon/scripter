@@ -1553,7 +1553,7 @@ impl MainWindow {
                 update_config_cache(self);
                 clean_script_selection(&mut self.window_state.cursor_script);
 
-                // HACK:
+                // HACK: (see https://discord.com/channels/628993209984614400/1415013655791272076/1415013655791272076)
                 // there is some issue with iced when it doesn't call the update the scroll offset
                 // when it gets to zero, so we just always assume it is zero, and get it set
                 // to the correct value if we get the actual scroll offset
