@@ -1552,6 +1552,12 @@ impl MainWindow {
                 self.edit_data.script_filter = new_filter_value;
                 update_config_cache(self);
                 clean_script_selection(&mut self.window_state.cursor_script);
+
+                // HACK:
+                // there is some issue with iced when it doesn't call the update the scroll offset
+                // when it gets to zero, so we just always assume it is zero, and get it set
+                // to the correct value if we get the actual scroll offset
+                get_current_script_list_drag_and_drop(self).set_scroll_offset(0.0);
             }
             WindowMessage::RequestCloseApp => {
                 let exit_thread_command = || {
