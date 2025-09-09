@@ -195,6 +195,7 @@ pub(crate) enum WindowMessage {
     PaneHeaderDragged(pane_grid::DragEvent),
     PaneResized(pane_grid::ResizeEvent),
     OnScriptListScroll(scrollable::Viewport),
+    OnExecutionListScroll(scrollable::Viewport),
     EnterFocusMode(pane_grid::Pane, Size),
     ExitFocusMode,
     MaximizeOrRestoreExecutionPane,
@@ -577,9 +578,14 @@ impl MainWindow {
             }
             WindowMessage::OnScriptListScroll(viewport) => {
                 let scroll_offset_y = viewport.absolute_offset().y;
-                for_each_drag_area(self, |area| {
-                    area.set_scroll_offset(scroll_offset_y);
-                });
+                get_current_script_list_drag_and_drop(self).set_scroll_offset(scroll_offset_y);
+            }
+            WindowMessage::OnExecutionListScroll(viewport) => {
+                let scroll_offset_y = viewport.absolute_offset().y;
+                self.window_state
+                    .drag_and_drop_lists
+                    .execution_edit_list
+                    .set_scroll_offset(scroll_offset_y);
             }
             WindowMessage::PaneHeaderDragged(drag_event) => {
                 match drag_event {
@@ -2931,7 +2937,8 @@ fn produce_execution_list_content<'a>(
                 } else {
                     stack![]
                 },
-            ]),
+            ])
+            .on_scroll(move |viewport| WindowMessage::OnExecutionListScroll(viewport)),
         ]
         .width(Length::Fill)
         .height(Length::Fill)

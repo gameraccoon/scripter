@@ -8,6 +8,7 @@ use iced::{keyboard, window, Size, Task, Theme};
 
 use crate::color_utils;
 use crate::config;
+use crate::drag_and_drop_list;
 use crate::git_support;
 use crate::keybind_editing;
 use crate::main_window::*;
@@ -1541,6 +1542,16 @@ fn update_edited_execution_list_script_number(app: &mut MainWindow) {
         .drag_and_drop_lists
         .execution_edit_list
         .change_number_of_elements(app.execution_manager.get_edited_scripts().len());
+}
+
+pub(crate) fn get_current_script_list_drag_and_drop(
+    app: &mut MainWindow,
+) -> &mut drag_and_drop_list::DragAndDropList {
+    if app.edit_data.window_edit_data.is_some() {
+        &mut app.window_state.drag_and_drop_lists.edit_script_list
+    } else {
+        &mut app.window_state.drag_and_drop_lists.script_list
+    }
 }
 
 pub(crate) fn get_script_list_content_offset_y(app: &MainWindow) -> f32 {
