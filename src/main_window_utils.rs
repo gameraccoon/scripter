@@ -1314,7 +1314,7 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
 }
 
 pub fn move_vec_element_to_index<T>(vec: &mut Vec<T>, index: usize, new_index: usize) {
-    if index >= vec.len() || new_index >= vec.len() {
+    if index >= vec.len() || new_index > vec.len() {
         return;
     }
 
