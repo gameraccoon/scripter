@@ -34,6 +34,7 @@ pub(crate) struct StaticDragAreaParameters {
     pub(crate) element_height: f32,
     pub(crate) is_dragging_outside_allowed: bool,
     pub(crate) is_reordering_allowed: bool,
+    pub(crate) are_bounds_dynamic: bool,
 }
 
 pub(crate) struct DragAndDropList {
@@ -67,7 +68,7 @@ impl DragAndDropList {
             return;
         }
 
-        if !self.is_mouse_in_bounds(position) {
+        if !self.is_position_in_bounds(position) {
             return;
         }
 
@@ -91,7 +92,7 @@ impl DragAndDropList {
         match self.current_operation.clone() {
             Some(DragOperation::PreparingForDragging(index, start_time)) => {
                 if self.static_parameters.is_dragging_outside_allowed
-                    && !self.is_mouse_in_bounds(position)
+                    && !self.is_position_in_bounds(position)
                 {
                     self.current_operation = Some(DragOperation::DraggingFrom(index));
                     DragResult::JustStartedDragging(index)
@@ -131,7 +132,7 @@ impl DragAndDropList {
             }
             Some(DragOperation::Reordering(index, _hovered_index)) => {
                 if self.static_parameters.is_dragging_outside_allowed
-                    && !self.is_mouse_in_bounds(position)
+                    && !self.is_position_in_bounds(position)
                 {
                     self.current_operation = Some(DragOperation::DraggingFrom(index));
                 } else {
@@ -148,7 +149,8 @@ impl DragAndDropList {
                 DragResult::Dragging
             }
             Some(DragOperation::DraggingFrom(index)) => {
-                if self.is_mouse_in_bounds(position) && self.static_parameters.is_reordering_allowed
+                if self.is_position_in_bounds(position)
+                    && self.static_parameters.is_reordering_allowed
                 {
                     if let Some(hovered_index) = self.get_hovered_index(position) {
                         self.current_operation =
@@ -175,6 +177,10 @@ impl DragAndDropList {
 
     pub(crate) fn set_bounds(&mut self, bounds: iced::Rectangle) {
         self.bounds = bounds;
+        if self.static_parameters.are_bounds_dynamic {
+            self.bounds.height =
+                self.static_parameters.element_height * self.number_of_elements as f32;
+        }
     }
 
     pub(crate) fn set_scroll_offset(&mut self, offset: f32) {
@@ -205,8 +211,13 @@ impl DragAndDropList {
         }
     }
 
-    fn is_mouse_in_bounds(&self, position: iced::Point) -> bool {
-        self.bounds.contains(position)
+    fn is_position_in_bounds(&self, position: iced::Point) -> bool {
+        if self.static_parameters.are_bounds_dynamic {
+            self.bounds
+                .contains(position + iced::Vector::new(0.0, self.scrolling_offset))
+        } else {
+            self.bounds.contains(position)
+        }
     }
 
     fn get_hovered_index(&self, position: iced::Point) -> Option<usize> {
@@ -214,16 +225,17 @@ impl DragAndDropList {
             return None;
         }
 
-        if position.y < self.bounds.y || position.y > self.bounds.y + self.bounds.height {
+        if !self.is_position_in_bounds(position) {
             return None;
-        }
-
-        if position.y < self.bounds.y {
-            return Some(0);
         }
 
         let index = (position.y + self.scrolling_offset - self.bounds.y)
             / self.static_parameters.element_height;
+
+        if index < 0.0 {
+            return None;
+        }
+
         let index = index.floor() as usize;
 
         if index >= self.number_of_elements {
@@ -244,6 +256,7 @@ enum DropOperation {
     HoveredByItem,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum DropAreaState {
     Inactive,
     VisibleIdle,
@@ -253,6 +266,7 @@ pub(crate) enum DropAreaState {
 pub(crate) struct DropArea {
     current_operation: Option<DropOperation>,
     bounds: iced::Rectangle,
+    scrolling_offset: f32,
 }
 
 impl DropArea {
@@ -260,6 +274,7 @@ impl DropArea {
         Self {
             current_operation: None,
             bounds: iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(0.0, 0.0)),
+            scrolling_offset: 0.0,
         }
     }
 
@@ -296,6 +311,14 @@ impl DropArea {
         self.bounds = bounds;
     }
 
+    pub(crate) fn set_scroll_offset(&mut self, offset: f32) {
+        self.scrolling_offset = offset;
+    }
+
+    pub(crate) fn cancel_operations(&mut self) {
+        self.current_operation = None;
+    }
+
     pub(crate) fn get_drop_area_state(&self) -> DropAreaState {
         match &self.current_operation {
             Some(DropOperation::IdleWaitingForDrop) => DropAreaState::VisibleIdle,
@@ -304,7 +327,12 @@ impl DropArea {
         }
     }
 
+    pub(crate) fn get_bounds_scrolled(&self) -> iced::Rectangle {
+        self.bounds - iced::Vector::new(0.0, self.scrolling_offset)
+    }
+
     fn is_mouse_in_bounds(&self, position: iced::Point) -> bool {
-        self.bounds.contains(position)
+        self.bounds
+            .contains(position + iced::Vector::new(0.0, self.scrolling_offset))
     }
 }

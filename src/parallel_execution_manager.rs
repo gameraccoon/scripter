@@ -462,6 +462,11 @@ impl Execution {
     }
 }
 
+pub struct TickResult {
+    pub just_finished_executions: Vec<ExecutionId>,
+    pub has_just_disconnected_executions: bool,
+}
+
 impl ParallelExecutionManager {
     pub fn new() -> Self {
         Self {
@@ -531,7 +536,7 @@ impl ParallelExecutionManager {
         }
     }
 
-    pub fn tick(&mut self, app_config: &config::AppConfig) -> Option<Vec<ExecutionId>> {
+    pub fn tick(&mut self, app_config: &config::AppConfig) -> TickResult {
         let mut just_finished_executions = Vec::new();
         let mut just_disconnected_executions = Vec::new();
 
@@ -552,15 +557,15 @@ impl ParallelExecutionManager {
             }
         }
 
+        let has_just_disconnected_executions = !just_disconnected_executions.is_empty();
         for execution_id in just_disconnected_executions {
             self.move_not_started_execution_lists_to_edited_list(execution_id);
         }
 
-        if just_finished_executions.is_empty() {
-            return None;
+        TickResult {
+            just_finished_executions,
+            has_just_disconnected_executions,
         }
-
-        Some(just_finished_executions)
     }
 
     pub fn has_any_execution_started(&self) -> bool {

@@ -14,6 +14,7 @@ use crate::main_window_widgets::*;
 use crate::parallel_execution_manager;
 use crate::style;
 use crate::ui_icons;
+use std::cmp::PartialEq;
 
 use crate::drag_and_drop_list::{DragAndDropList, DragResult, DropArea};
 use drag_and_drop_list::DropAreaState;
@@ -172,6 +173,12 @@ pub(crate) struct DragAndDropLists {
     pub(crate) execution_edit_list: DragAndDropList,
 }
 
+pub(crate) struct DropAreas {
+    pub(crate) execution_pane: DropArea,
+    // indexed by the execution index
+    pub(crate) running_executions: Vec<DropArea>,
+}
+
 pub(crate) struct WindowState {
     pub(crate) pane_focus: Option<pane_grid::Pane>,
     pub(crate) cursor_script: Option<EditScriptId>,
@@ -181,8 +188,8 @@ pub(crate) struct WindowState {
     mouse_position: iced::Point,
     pub(crate) has_maximized_pane: bool,
     pub(crate) drag_and_drop_lists: DragAndDropLists,
-    pub(crate) execution_edit_lists_drop_area: DropArea,
-    dragged_script: Option<config::Guid>,
+    pub(crate) drop_areas: DropAreas,
+    pub(crate) dragged_script: Option<config::Guid>,
 }
 
 #[derive(Debug, Clone)]
@@ -392,6 +399,7 @@ impl MainWindow {
                             element_height: ONE_SCRIPT_LIST_ELEMENT_HEIGHT,
                             is_dragging_outside_allowed: true,
                             is_reordering_allowed: false,
+                            are_bounds_dynamic: false,
                         },
                     ),
                     edit_script_list: DragAndDropList::new(
@@ -400,18 +408,23 @@ impl MainWindow {
                             element_height: ONE_SCRIPT_LIST_ELEMENT_HEIGHT,
                             is_dragging_outside_allowed: false,
                             is_reordering_allowed: true,
+                            are_bounds_dynamic: false,
                         },
                     ),
                     execution_edit_list: DragAndDropList::new(
                         0,
                         drag_and_drop_list::StaticDragAreaParameters {
                             element_height: ONE_EXECUTION_LIST_ELEMENT_HEIGHT,
-                            is_dragging_outside_allowed: false,
+                            is_dragging_outside_allowed: true,
                             is_reordering_allowed: true,
+                            are_bounds_dynamic: true,
                         },
                     ),
                 },
-                execution_edit_lists_drop_area: DropArea::new(),
+                drop_areas: DropAreas {
+                    execution_pane: DropArea::new(),
+                    running_executions: Vec::new(),
+                },
                 dragged_script: None,
             },
             keybinds: custom_keybinds::CustomKeybinds::new(),
@@ -456,6 +469,7 @@ impl MainWindow {
                     self.window_state.full_window_size = size;
                 }
                 update_drag_and_drop_area_bounds(self);
+                cancel_all_drag_and_drop_operations(self);
             }
             WindowMessage::WindowOnMouseDown => {
                 let mouse_pos = self.window_state.mouse_position;
@@ -503,13 +517,18 @@ impl MainWindow {
 
                 let execution_edit_list_got_item_dropped = self
                     .window_state
-                    .execution_edit_lists_drop_area
+                    .drop_areas
+                    .execution_pane
                     .on_mouse_up(mouse_pos);
 
                 if execution_edit_list_got_item_dropped {
                     if let Some(dragged_script) = dragged_script {
                         add_script_to_execution(self, dragged_script, false);
                     }
+                }
+
+                for drop_area in &mut self.window_state.drop_areas.running_executions {
+                    drop_area.on_mouse_up(mouse_pos);
                 }
             }
             WindowMessage::WindowOnMouseMove(position) => {
@@ -526,7 +545,8 @@ impl MainWindow {
                             if let Some(script) = self.displayed_configs_list_cache.get(script_idx)
                             {
                                 self.window_state
-                                    .execution_edit_lists_drop_area
+                                    .drop_areas
+                                    .execution_pane
                                     .on_started_dragging_compatible_element();
                                 self.window_state.dragged_script =
                                     Some(script.original_script_uid.clone());
@@ -556,6 +576,9 @@ impl MainWindow {
                     .on_mouse_move(position);
                 match move_result {
                     DragResult::JustStartedDragging(_script_idx) => {
+                        for drop_area in &mut self.window_state.drop_areas.running_executions {
+                            drop_area.on_started_dragging_compatible_element();
+                        }
                         // we don't really care about the guid, we rely on the reordering code
                         self.window_state.dragged_script = Some(config::GUID_NULL);
                     }
@@ -563,8 +586,13 @@ impl MainWindow {
                 }
 
                 self.window_state
-                    .execution_edit_lists_drop_area
+                    .drop_areas
+                    .execution_pane
                     .on_mouse_move(position);
+
+                for drop_area in &mut self.window_state.drop_areas.running_executions {
+                    drop_area.on_mouse_move(position);
+                }
             }
             WindowMessage::PaneHeaderClicked(pane) => {
                 self.window_state.pane_focus = Some(pane);
@@ -572,9 +600,7 @@ impl MainWindow {
             WindowMessage::PaneResized(pane_grid::ResizeEvent { split, ratio }) => {
                 self.panes.resize(split, ratio);
                 update_drag_and_drop_area_bounds(self);
-                for_each_drag_area(self, |area| {
-                    area.cancel_operations();
-                });
+                cancel_all_drag_and_drop_operations(self);
             }
             WindowMessage::OnScriptListScroll(viewport) => {
                 let scroll_offset_y = viewport.absolute_offset().y;
@@ -582,10 +608,8 @@ impl MainWindow {
             }
             WindowMessage::OnExecutionListScroll(viewport) => {
                 let scroll_offset_y = viewport.absolute_offset().y;
-                self.window_state
-                    .drag_and_drop_lists
-                    .execution_edit_list
-                    .set_scroll_offset(scroll_offset_y);
+                set_execution_lists_scroll_offset(self, scroll_offset_y);
+                update_drag_and_drop_area_bounds(self);
             }
             WindowMessage::PaneHeaderDragged(drag_event) => {
                 match drag_event {
@@ -675,8 +699,7 @@ impl MainWindow {
             }
             WindowMessage::ClearEditedExecutionScripts => clear_edited_scripts(self),
             WindowMessage::ClearFinishedExecutionScripts(execution_id) => {
-                self.execution_manager.remove_execution(execution_id);
-                on_execution_removed(self, execution_id);
+                remove_execution(self, execution_id);
             }
             WindowMessage::ClearExecutionScriptsHotkey => {
                 if !self.execution_manager.get_edited_scripts().is_empty() {
@@ -686,7 +709,7 @@ impl MainWindow {
                 }
             }
             WindowMessage::RescheduleScripts(execution_id) => {
-                let mut execution = self.execution_manager.remove_execution(execution_id);
+                let mut execution = remove_execution(self, execution_id);
                 if let Some(execution) = &mut execution {
                     execution
                         .get_scheduled_scripts_cache_mut()
@@ -697,7 +720,7 @@ impl MainWindow {
                                 .push(record.script);
                         });
                 }
-                on_execution_removed(self, execution_id);
+                update_edited_execution_list_script_number(self);
             }
             WindowMessage::RescheduleScriptsHotkey => {
                 // use the same script that we hinted visually
@@ -714,9 +737,7 @@ impl MainWindow {
                     });
 
                 if let Some(execution_to_reschedule) = execution_to_reschedule {
-                    let mut execution = self
-                        .execution_manager
-                        .remove_execution(execution_to_reschedule);
+                    let mut execution = remove_execution(self, execution_to_reschedule);
                     if let Some(execution) = &mut execution {
                         execution
                             .get_scheduled_scripts_cache_mut()
@@ -727,15 +748,14 @@ impl MainWindow {
                                     .push(record.script);
                             });
                     }
-                    on_execution_removed(self, execution_to_reschedule);
                 }
             }
             WindowMessage::Tick(_now) => {
-                let just_finished_executions = self.execution_manager.tick(&self.app_config);
-                if let Some(just_finished_executions) = just_finished_executions {
-                    for execution_id in just_finished_executions {
+                let tick_result = self.execution_manager.tick(&self.app_config);
+                if !tick_result.just_finished_executions.is_empty() {
+                    for execution_id in tick_result.just_finished_executions {
                         if should_autoclean_on_success(self, execution_id) {
-                            self.execution_manager.remove_execution(execution_id);
+                            remove_execution(self, execution_id);
                         }
                     }
 
@@ -754,6 +774,12 @@ impl MainWindow {
 
                 if let Some(git_branch_requester) = &mut self.visual_caches.git_branch_requester {
                     git_branch_requester.update();
+                }
+
+                if tick_result.has_just_disconnected_executions {
+                    set_execution_lists_scroll_offset(self, 0.0);
+                    update_edited_execution_list_script_number(self);
+                    update_drag_and_drop_area_bounds(self);
                 }
             }
             WindowMessage::OpenScriptEditing(script_idx) => {
@@ -795,7 +821,8 @@ impl MainWindow {
                 remove_config_script(self, config_script_id)
             }
             WindowMessage::RemoveExecutionListScript(script_idx) => {
-                remove_execution_list_script(self, script_idx)
+                remove_execution_list_script(self, script_idx);
+                set_execution_lists_scroll_offset(self, 0.0);
             }
             WindowMessage::AddScriptToConfig => {
                 let script = config::OriginalScriptDefinition {
@@ -2317,11 +2344,9 @@ fn produce_execution_list_content<'a>(
 
     let rewritable_config = config::get_main_rewritable_config(&config);
 
-    let drop_area_stata = window_state
-        .execution_edit_lists_drop_area
-        .get_drop_area_state();
+    let drop_area_stata = window_state.drop_areas.execution_pane.get_drop_area_state();
 
-    let drop_area = match drop_area_stata {
+    let main_drop_area = match drop_area_stata {
         DropAreaState::Inactive => column![],
         DropAreaState::VisibleIdle => column![button(
             text("Drop here to schedule")
@@ -2347,6 +2372,50 @@ fn produce_execution_list_content<'a>(
         .height(Length::Fill)
         .align_x(Alignment::Center),
     };
+
+    let mut last_offset_y = PANE_HEADER_HEIGHT;
+    let script_drop_areas = window_state
+        .drop_areas
+        .running_executions
+        .iter()
+        .filter_map(|drop_area| {
+            let state = drop_area.get_drop_area_state();
+            if state == DropAreaState::Inactive {
+                return None;
+            }
+            let mut bounds = drop_area.get_bounds_scrolled();
+            let is_hovered = state == DropAreaState::HoveredByItem;
+            let mut spacing_y = bounds.y - last_offset_y;
+            let original_bounds_height = bounds.height;
+            if spacing_y < 0.0 {
+                bounds.height += spacing_y;
+                spacing_y = 0.0;
+            }
+            if bounds.height < 0.0 {
+                return None;
+            }
+            last_offset_y = bounds.y + original_bounds_height;
+            Some(
+                column![
+                    vertical_space().height(spacing_y),
+                    button(
+                        text("Drop here to run after")
+                            .color(theme.extended_palette().secondary.strong.text)
+                            .center()
+                            .width(bounds.width),
+                    )
+                    .width(bounds.width)
+                    .height(bounds.height)
+                    .style(if is_hovered {
+                        button::primary
+                    } else {
+                        style::drop_area_button_style
+                    })
+                ]
+                .into(),
+            )
+        })
+        .collect::<Vec<_>>();
 
     let title_widget = if visual_caches.is_custom_title_editing {
         row![text_input(
@@ -2955,7 +3024,11 @@ fn produce_execution_list_content<'a>(
         .height(Length::Fill)
         .spacing(10)
         .align_x(Alignment::Center),
-        drop_area,
+        if script_drop_areas.is_empty() {
+            main_drop_area
+        } else {
+            column(script_drop_areas)
+        }
     ]]
 }
 
@@ -4060,14 +4133,4 @@ fn update_autorerun_count_text(
         }
     }
     new_autorerun_count
-}
-
-fn for_each_drag_area(app: &mut MainWindow, mut f: impl FnMut(&mut DragAndDropList)) {
-    if !app.edit_data.window_edit_data.is_some() {
-        f(&mut app.window_state.drag_and_drop_lists.script_list);
-    } else {
-        f(&mut app.window_state.drag_and_drop_lists.edit_script_list);
-    }
-
-    f(&mut app.window_state.drag_and_drop_lists.execution_edit_list);
 }

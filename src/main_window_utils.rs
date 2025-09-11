@@ -9,6 +9,7 @@ use iced::{keyboard, window, Size, Task, Theme};
 use crate::color_utils;
 use crate::config;
 use crate::drag_and_drop_list;
+use crate::drag_and_drop_list::{DragAndDropList, DropArea};
 use crate::git_support;
 use crate::keybind_editing;
 use crate::main_window::*;
@@ -28,6 +29,7 @@ pub(crate) const PANE_HEADER_HEIGHT: f32 = 47.0;
 const SCRIPT_FILTER_HEIGHT: f32 = 30.0;
 const CONFIG_EDIT_HEADER_HEIGHT: f32 = 100.0;
 const FIRST_EXECUTION_ELEMENT_OFFSET_Y: f32 = 10.0;
+const SCROLL_BAR_WIDTH: f32 = 15.0;
 
 #[derive(Clone, Debug, Copy)]
 pub(crate) struct ConfigScriptId {
@@ -412,6 +414,7 @@ pub fn try_add_edited_scripts_to_execution_or_start_new(app: &mut MainWindow) {
 }
 
 pub fn try_add_script_to_execution_or_start_new(app: &mut MainWindow, script_uid: config::Guid) {
+    set_execution_lists_scroll_offset(app, 0.0);
     // we can accept this hotkey only if we definitely know what execution we
     // supposed to add it to
     let executions_number = app.execution_manager.get_started_executions().size();
@@ -696,10 +699,32 @@ pub fn update_theme_icons(app: &mut MainWindow) {
         .clone()
 }
 
-pub fn on_execution_removed(
+pub(crate) fn set_execution_lists_scroll_offset(app: &mut MainWindow, new_offset: f32) {
+    app.window_state
+        .drag_and_drop_lists
+        .execution_edit_list
+        .set_scroll_offset(new_offset);
+
+    for drop_area in &mut app.window_state.drop_areas.running_executions {
+        drop_area.set_scroll_offset(new_offset);
+    }
+}
+
+pub fn remove_execution(
     app: &mut MainWindow,
     execution_id: parallel_execution_manager::ExecutionId,
-) {
+) -> Option<parallel_execution_manager::Execution> {
+    set_execution_lists_scroll_offset(app, 0.0);
+
+    // not the most efficient way to do this, but will do for now: https://github.com/gameraccoon/sparse_set_container/issues/1
+    let idx = app
+        .execution_manager
+        .get_started_executions()
+        .keys()
+        .position(|key| key == execution_id);
+
+    let removed_execution = app.execution_manager.remove_execution(execution_id);
+
     // switch current log tab if the removed execution was selected
     if let Some(selected_execution) = app.visual_caches.selected_execution_log {
         if selected_execution == execution_id {
@@ -719,6 +744,16 @@ pub fn on_execution_removed(
     }
 
     update_button_key_hint_caches(app);
+
+    if let Some(idx) = idx {
+        if idx < app.window_state.drop_areas.running_executions.len() {
+            app.window_state.drop_areas.running_executions.remove(idx);
+        }
+    }
+
+    update_drag_and_drop_area_bounds(app);
+
+    removed_execution
 }
 
 pub fn switch_to_editing_settings_config(app: &mut MainWindow, edit_mode: config::ConfigEditMode) {
@@ -899,9 +934,15 @@ pub fn start_new_execution_from_provided_scripts(
         .execution_manager
         .start_new_execution(&app.app_config, scripts);
 
+    app.window_state
+        .drop_areas
+        .running_executions
+        .push(DropArea::new());
+
     app.visual_caches.selected_execution_log = Some(new_execution_id);
     update_button_key_hint_caches(app);
     update_drag_and_drop_area_bounds(app);
+    cancel_all_drag_and_drop_operations(app);
 }
 
 pub fn add_edited_scripts_to_started_execution(
@@ -929,6 +970,8 @@ pub fn add_edited_scripts_to_started_execution(
         execution_id,
         scripts_to_execute,
     );
+
+    cancel_all_drag_and_drop_operations(app);
 }
 
 pub fn add_script_to_execution(
@@ -1271,6 +1314,10 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
 }
 
 pub fn move_vec_element_to_index<T>(vec: &mut Vec<T>, index: usize, new_index: usize) {
+    if index >= vec.len() || new_index >= vec.len() {
+        return;
+    }
+
     if index < new_index {
         vec[index..new_index].rotate_left(1);
     } else {
@@ -1361,6 +1408,8 @@ pub fn apply_execution_script_edit(
 pub fn clear_edited_scripts(app: &mut MainWindow) {
     app.execution_manager.clear_edited_scripts();
     clean_script_selection(&mut app.window_state.cursor_script);
+    // we could be dragging a script from the list
+    cancel_all_drag_and_drop_operations(app);
 }
 
 pub fn clear_execution_scripts(app: &mut MainWindow) {
@@ -1384,9 +1433,8 @@ pub fn clear_execution_scripts(app: &mut MainWindow) {
         return;
     };
 
-    app.execution_manager.remove_execution(execution_id);
+    remove_execution(app, execution_id);
     clean_script_selection(&mut app.window_state.cursor_script);
-    on_execution_removed(app, execution_id);
 }
 
 pub fn enter_window_edit_mode(app: &mut MainWindow) {
@@ -1400,6 +1448,7 @@ pub fn enter_window_edit_mode(app: &mut MainWindow) {
     update_config_cache(app);
     app.visual_caches.is_custom_title_editing = false;
     update_drag_and_drop_area_bounds(app);
+    cancel_all_drag_and_drop_operations(app);
 }
 
 pub fn exit_window_edit_mode(app: &mut MainWindow) {
@@ -1410,6 +1459,7 @@ pub fn exit_window_edit_mode(app: &mut MainWindow) {
     update_config_cache(app);
     update_git_branch_visibility(app);
     update_drag_and_drop_area_bounds(app);
+    cancel_all_drag_and_drop_operations(app);
 }
 
 pub fn apply_theme_color_from_string(
@@ -1485,13 +1535,40 @@ pub fn should_autoclean_on_success(
     false
 }
 
+pub(crate) fn for_each_drag_area(app: &mut MainWindow, mut f: impl FnMut(&mut DragAndDropList)) {
+    if !app.edit_data.window_edit_data.is_some() {
+        f(&mut app.window_state.drag_and_drop_lists.script_list);
+    } else {
+        f(&mut app.window_state.drag_and_drop_lists.edit_script_list);
+    }
+
+    f(&mut app.window_state.drag_and_drop_lists.execution_edit_list);
+}
+
+pub(crate) fn for_each_drop_area(app: &mut MainWindow, mut f: impl FnMut(&mut DropArea)) {
+    f(&mut app.window_state.drop_areas.execution_pane);
+    for drop_area in &mut app.window_state.drop_areas.running_executions {
+        f(drop_area);
+    }
+}
+
+pub(crate) fn cancel_all_drag_and_drop_operations(app: &mut MainWindow) {
+    for_each_drag_area(app, |area| {
+        area.cancel_operations();
+    });
+
+    for_each_drop_area(app, |area| {
+        area.cancel_operations();
+    });
+
+    app.window_state.dragged_script = None;
+}
+
 pub(crate) fn update_drag_and_drop_area_bounds(app: &mut MainWindow) {
     let regions = app
         .panes
         .layout()
         .pane_regions(PANE_SPACING, app.window_state.full_window_size);
-
-    const SCROLL_BAR_WIDTH: f32 = 15.0;
 
     let script_list_pane = app.pane_by_pane_type[&PaneVariant::ScriptList];
 
@@ -1519,6 +1596,16 @@ pub(crate) fn update_drag_and_drop_area_bounds(app: &mut MainWindow) {
         }
     }
 
+    update_execution_list_drag_and_drop_list_bounds(app);
+
+    update_execution_list_drop_area_bounds(app);
+}
+
+fn update_execution_list_drag_and_drop_list_bounds(app: &mut MainWindow) {
+    let regions = app
+        .panes
+        .layout()
+        .pane_regions(PANE_SPACING, app.window_state.full_window_size);
     let execution_list_pane = app.pane_by_pane_type[&PaneVariant::ExecutionList];
     if let Some(execution_list_pane_region) = regions.get(&execution_list_pane) {
         {
@@ -1536,16 +1623,71 @@ pub(crate) fn update_drag_and_drop_area_bounds(app: &mut MainWindow) {
         }
 
         app.window_state
-            .execution_edit_lists_drop_area
+            .drop_areas
+            .execution_pane
             .set_bounds(execution_list_pane_region.clone());
     }
 }
 
-fn update_edited_execution_list_script_number(app: &mut MainWindow) {
+fn update_execution_list_drop_area_bounds(app: &mut MainWindow) {
+    if app.execution_manager.get_started_executions().size()
+        != app.window_state.drop_areas.running_executions.len()
+    {
+        eprintln!(
+            "The number of running executions got desynchronized with the number of drop areas {}, {}",
+            app.execution_manager.get_started_executions().size(),
+            app.window_state.drop_areas.running_executions.len()
+        );
+        return;
+    }
+
+    let regions = app
+        .panes
+        .layout()
+        .pane_regions(PANE_SPACING, app.window_state.full_window_size);
+
+    let execution_list_pane = app.pane_by_pane_type[&PaneVariant::ExecutionList];
+    let Some(script_list_pane_region) = regions.get(&execution_list_pane) else {
+        return;
+    };
+
+    let executions_count = app.execution_manager.get_started_executions().size();
+
+    let should_show_execution_names = executions_count > 1;
+
+    let mut accumulated_height = PANE_HEADER_HEIGHT
+        + get_execution_list_title_size_y(app)
+        + if should_show_execution_names {
+            ONE_EXECUTION_NAME_HEIGHT
+        } else {
+            0.0
+        };
+
+    for (idx, execution) in app
+        .execution_manager
+        .get_started_executions()
+        .values()
+        .enumerate()
+    {
+        let drop_area = &mut app.window_state.drop_areas.running_executions[idx];
+        let mut content_region = script_list_pane_region.clone();
+        content_region.y += accumulated_height;
+        content_region.height = ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+            * execution.get_scheduled_scripts_cache().len() as f32;
+        content_region.width -= SCROLL_BAR_WIDTH;
+        accumulated_height +=
+            content_region.height + EXECUTION_EDIT_BUTTONS_HEIGHT + ONE_EXECUTION_NAME_HEIGHT;
+        drop_area.set_bounds(content_region);
+    }
+}
+
+pub(crate) fn update_edited_execution_list_script_number(app: &mut MainWindow) {
     app.window_state
         .drag_and_drop_lists
         .execution_edit_list
         .change_number_of_elements(app.execution_manager.get_edited_scripts().len());
+
+    update_execution_list_drag_and_drop_list_bounds(app);
 }
 
 pub(crate) fn get_current_script_list_drag_and_drop(
