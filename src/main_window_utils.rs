@@ -1000,6 +1000,18 @@ pub fn add_script_to_execution(
     true
 }
 
+pub fn take_edited_execution_script(
+    execution_manager: &mut parallel_execution_manager::ParallelExecutionManager,
+    uid: config::Guid,
+    predicate: impl Fn(&config::OriginalScriptDefinition) -> bool,
+) -> Option<config::OriginalScriptDefinition> {
+    execution_manager
+        .get_edited_scripts()
+        .iter()
+        .position(|script| script.uid == uid && predicate(script))
+        .and_then(|idx| Some(execution_manager.get_edited_scripts_mut().remove(idx)))
+}
+
 pub fn add_script_to_config(
     app: &mut MainWindow,
     edit_mode: config::ConfigEditMode,

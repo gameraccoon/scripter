@@ -476,7 +476,7 @@ impl MainWindow {
                 for_each_drag_area(self, |area| area.on_mouse_down(mouse_pos));
             }
             WindowMessage::WindowOnMouseUp => {
-                let dragged_script = self.window_state.dragged_script.take();
+                let mut dragged_script = self.window_state.dragged_script.take();
                 let mouse_pos = self.window_state.mouse_position;
 
                 if !self.edit_data.window_edit_data.is_some() {
@@ -522,13 +522,49 @@ impl MainWindow {
                     .on_mouse_up(mouse_pos);
 
                 if execution_edit_list_got_item_dropped {
-                    if let Some(dragged_script) = dragged_script {
+                    if let Some(dragged_script) = dragged_script.take() {
                         add_script_to_execution(self, dragged_script, false);
                     }
                 }
 
-                for drop_area in &mut self.window_state.drop_areas.running_executions {
-                    drop_area.on_mouse_up(mouse_pos);
+                let mut has_scheduled_new_script = false;
+                for (i, drop_area) in &mut self
+                    .window_state
+                    .drop_areas
+                    .running_executions
+                    .iter_mut()
+                    .enumerate()
+                {
+                    let just_dropped = drop_area.on_mouse_up(mouse_pos);
+                    if just_dropped {
+                        if let Some(dragged_script) = dragged_script.take() {
+                            if let Some(script) = take_edited_execution_script(
+                                &mut self.execution_manager,
+                                dragged_script,
+                                |script| !is_original_script_missing_arguments(script),
+                            ) {
+                                let execution_id = self
+                                    .execution_manager
+                                    .get_started_executions()
+                                    .keys()
+                                    .nth(i);
+
+                                if let Some(execution_id) = execution_id {
+                                    self.execution_manager.add_script_to_running_execution(
+                                        &mut self.app_config,
+                                        execution_id,
+                                        vec![script],
+                                    );
+                                    has_scheduled_new_script = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if has_scheduled_new_script {
+                    update_edited_execution_list_script_number(self);
+                    update_drag_and_drop_area_bounds(self);
                 }
             }
             WindowMessage::WindowOnMouseMove(position) => {
@@ -561,9 +597,12 @@ impl MainWindow {
                         .edit_script_list
                         .on_mouse_move(position);
                     match move_result {
-                        DragResult::JustStartedDragging(_script_idx) => {
-                            // we don't really care about the guid, we rely on the reordering code
-                            self.window_state.dragged_script = Some(config::GUID_NULL)
+                        DragResult::JustStartedDragging(script_idx) => {
+                            if let Some(script) = self.displayed_configs_list_cache.get(script_idx)
+                            {
+                                self.window_state.dragged_script =
+                                    Some(script.original_script_uid.clone());
+                            }
                         }
                         _ => {}
                     }
@@ -575,12 +614,15 @@ impl MainWindow {
                     .execution_edit_list
                     .on_mouse_move(position);
                 match move_result {
-                    DragResult::JustStartedDragging(_script_idx) => {
-                        for drop_area in &mut self.window_state.drop_areas.running_executions {
-                            drop_area.on_started_dragging_compatible_element();
+                    DragResult::JustStartedDragging(script_idx) => {
+                        if let Some(script_idx) =
+                            self.execution_manager.get_edited_scripts().get(script_idx)
+                        {
+                            for drop_area in &mut self.window_state.drop_areas.running_executions {
+                                drop_area.on_started_dragging_compatible_element();
+                            }
+                            self.window_state.dragged_script = Some(script_idx.uid.clone());
                         }
-                        // we don't really care about the guid, we rely on the reordering code
-                        self.window_state.dragged_script = Some(config::GUID_NULL);
                     }
                     _ => {}
                 }
@@ -716,8 +758,7 @@ impl MainWindow {
                         .drain(..)
                         .for_each(|record| {
                             self.execution_manager
-                                .get_edited_scripts_mut()
-                                .push(record.script);
+                                .add_script_to_edited_list(record.script);
                         });
                 }
                 update_edited_execution_list_script_number(self);
@@ -744,8 +785,7 @@ impl MainWindow {
                             .drain(..)
                             .for_each(|record| {
                                 self.execution_manager
-                                    .get_edited_scripts_mut()
-                                    .push(record.script);
+                                    .add_script_to_edited_list(record.script);
                             });
                     }
                 }

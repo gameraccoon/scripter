@@ -106,20 +106,6 @@ impl ScriptExecutionStatus {
     }
 }
 
-pub fn add_script_to_execution(
-    scripts_to_run: &mut Vec<config::OriginalScriptDefinition>,
-    script: config::OriginalScriptDefinition,
-) {
-    scripts_to_run.push(script.clone());
-}
-
-pub fn remove_script_from_execution(
-    scripts_to_run: &mut Vec<config::OriginalScriptDefinition>,
-    index: usize,
-) {
-    scripts_to_run.remove(index);
-}
-
 pub fn run_scripts(
     execution_data: &mut ScriptExecutionData,
     log_directory: &std::path::PathBuf,

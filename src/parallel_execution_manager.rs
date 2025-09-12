@@ -475,12 +475,13 @@ impl ParallelExecutionManager {
         }
     }
 
-    pub fn add_script_to_edited_list(&mut self, script: config::OriginalScriptDefinition) {
-        execution_thread::add_script_to_execution(&mut self.get_edited_scripts_mut(), script);
+    pub fn add_script_to_edited_list(&mut self, mut script: config::OriginalScriptDefinition) {
+        script.uid = config::Guid::new();
+        self.get_edited_scripts_mut().push(script);
     }
 
     pub fn remove_script_from_edited_list(&mut self, idx: usize) {
-        execution_thread::remove_script_from_execution(&mut self.get_edited_scripts_mut(), idx);
+        self.get_edited_scripts_mut().remove(idx);
     }
 
     pub fn get_edited_scripts(&self) -> &Vec<config::OriginalScriptDefinition> {
