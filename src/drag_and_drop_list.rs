@@ -1,3 +1,6 @@
+// Copyright (C) Pavel Grebnev 2025
+// Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
+
 use std::cmp::PartialEq;
 
 const DRAG_START_TIMEOUT_SECONDS: f32 = 0.2;

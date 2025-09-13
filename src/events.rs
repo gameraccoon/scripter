@@ -1,3 +1,6 @@
+// Copyright (C) Pavel Grebnev 2025
+// Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
+
 use crate::main_window::MainWindow;
 use crate::main_window_utils::{
     get_current_script_list_drag_and_drop, set_execution_lists_scroll_offset,
