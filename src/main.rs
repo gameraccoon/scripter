@@ -9,6 +9,7 @@ mod config;
 mod config_updaters;
 mod custom_keybinds;
 mod drag_and_drop_list;
+mod events;
 mod execution_thread;
 mod file_utils;
 mod git_support;

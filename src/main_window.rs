@@ -5,6 +5,7 @@ use crate::color_utils;
 use crate::config;
 use crate::custom_keybinds;
 use crate::drag_and_drop_list;
+use crate::events;
 use crate::execution_thread;
 use crate::file_utils;
 use crate::git_support;
@@ -814,7 +815,7 @@ impl MainWindow {
                 }
 
                 if tick_result.has_just_disconnected_executions {
-                    set_execution_lists_scroll_offset(self, 0.0);
+                    events::on_execution_pane_content_height_decreased(self);
                     update_edited_execution_list_script_number(self);
                     update_drag_and_drop_area_bounds(self);
                 }
@@ -859,7 +860,7 @@ impl MainWindow {
             }
             WindowMessage::RemoveExecutionListScript(script_idx) => {
                 remove_execution_list_script(self, script_idx);
-                set_execution_lists_scroll_offset(self, 0.0);
+                events::on_execution_pane_content_height_decreased(self);
             }
             WindowMessage::AddScriptToConfig => {
                 let script = config::OriginalScriptDefinition {
@@ -1616,12 +1617,7 @@ impl MainWindow {
                 self.edit_data.script_filter = new_filter_value;
                 update_config_cache(self);
                 clean_script_selection(&mut self.window_state.cursor_script);
-
-                // HACK: (see https://discord.com/channels/628993209984614400/1415013655791272076/1415013655791272076)
-                // there is some issue with iced when it doesn't call the update the scroll offset
-                // when it gets to zero, so we just always assume it is zero, and get it set
-                // to the correct value if we get the actual scroll offset
-                get_current_script_list_drag_and_drop(self).set_scroll_offset(0.0);
+                events::on_script_list_pane_content_height_decreased(self);
             }
             WindowMessage::RequestCloseApp => {
                 let exit_thread_command = || {

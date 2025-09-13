@@ -10,6 +10,7 @@ use crate::color_utils;
 use crate::config;
 use crate::drag_and_drop_list;
 use crate::drag_and_drop_list::{DragAndDropList, DropArea};
+use crate::events;
 use crate::git_support;
 use crate::keybind_editing;
 use crate::main_window::*;
@@ -414,7 +415,6 @@ pub fn try_add_edited_scripts_to_execution_or_start_new(app: &mut MainWindow) {
 }
 
 pub fn try_add_script_to_execution_or_start_new(app: &mut MainWindow, script_uid: config::Guid) {
-    set_execution_lists_scroll_offset(app, 0.0);
     // we can accept this hotkey only if we definitely know what execution we
     // supposed to add it to
     let executions_number = app.execution_manager.get_started_executions().len();
@@ -439,6 +439,8 @@ pub fn try_add_script_to_execution_or_start_new(app: &mut MainWindow, script_uid
         // if there are no executions, then we can start a new one
         start_new_execution_from_provided_scripts(app, scripts_to_add);
     }
+
+    events::on_execution_pane_content_height_decreased(app);
 }
 
 pub fn update_config_cache(app: &mut MainWindow) {
@@ -714,8 +716,6 @@ pub fn remove_execution(
     app: &mut MainWindow,
     execution_id: parallel_execution_manager::ExecutionId,
 ) -> Option<parallel_execution_manager::Execution> {
-    set_execution_lists_scroll_offset(app, 0.0);
-
     let idx = app
         .execution_manager
         .get_started_executions()
@@ -750,6 +750,7 @@ pub fn remove_execution(
     }
 
     update_drag_and_drop_area_bounds(app);
+    events::on_execution_pane_content_height_decreased(app);
 
     removed_execution
 }
