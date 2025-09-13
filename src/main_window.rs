@@ -543,11 +543,8 @@ impl MainWindow {
                                 dragged_script,
                                 |script| !is_original_script_missing_arguments(script),
                             ) {
-                                let execution_id = self
-                                    .execution_manager
-                                    .get_started_executions()
-                                    .keys()
-                                    .nth(i);
+                                let execution_id =
+                                    self.execution_manager.get_started_executions().get_key(i);
 
                                 if let Some(execution_id) = execution_id {
                                     self.execution_manager.add_script_to_running_execution(
@@ -2540,7 +2537,7 @@ fn produce_execution_list_content<'a>(
 
     title = title.push(title_widget);
 
-    let started_execution_count = execution_lists.get_started_executions().size();
+    let started_execution_count = execution_lists.get_started_executions().len();
     let should_show_execution_names = started_execution_count > 1;
 
     let mut data_lines: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
@@ -3082,7 +3079,7 @@ fn produce_log_output_content<'a>(
         return Column::new();
     }
 
-    let tabs = if execution_lists.get_started_executions().size() > 1 {
+    let tabs = if execution_lists.get_started_executions().len() > 1 {
         let tabs = row(execution_lists
             .get_started_executions()
             .values()

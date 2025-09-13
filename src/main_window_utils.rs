@@ -398,7 +398,7 @@ pub fn get_run_script_window_message_from_guid(
 pub fn try_add_edited_scripts_to_execution_or_start_new(app: &mut MainWindow) {
     // we can accept this hotkey only if we definitely know what execution we
     // supposed to add it to
-    let executions_number = app.execution_manager.get_started_executions().size();
+    let executions_number = app.execution_manager.get_started_executions().len();
     if executions_number == 1 {
         let execution_id = app
             .execution_manager
@@ -417,7 +417,7 @@ pub fn try_add_script_to_execution_or_start_new(app: &mut MainWindow, script_uid
     set_execution_lists_scroll_offset(app, 0.0);
     // we can accept this hotkey only if we definitely know what execution we
     // supposed to add it to
-    let executions_number = app.execution_manager.get_started_executions().size();
+    let executions_number = app.execution_manager.get_started_executions().len();
     let scripts_to_add = get_resulting_scripts_from_guid(&app.app_config, script_uid);
 
     if executions_number == 1 {
@@ -716,12 +716,10 @@ pub fn remove_execution(
 ) -> Option<parallel_execution_manager::Execution> {
     set_execution_lists_scroll_offset(app, 0.0);
 
-    // not the most efficient way to do this, but will do for now: https://github.com/gameraccoon/sparse_set_container/issues/1
     let idx = app
         .execution_manager
         .get_started_executions()
-        .keys()
-        .position(|key| key == execution_id);
+        .index(execution_id);
 
     let removed_execution = app.execution_manager.remove_execution(execution_id);
 
@@ -1642,12 +1640,12 @@ fn update_execution_list_drag_and_drop_list_bounds(app: &mut MainWindow) {
 }
 
 fn update_execution_list_drop_area_bounds(app: &mut MainWindow) {
-    if app.execution_manager.get_started_executions().size()
+    if app.execution_manager.get_started_executions().len()
         != app.window_state.drop_areas.running_executions.len()
     {
         eprintln!(
             "The number of running executions got desynchronized with the number of drop areas {}, {}",
-            app.execution_manager.get_started_executions().size(),
+            app.execution_manager.get_started_executions().len(),
             app.window_state.drop_areas.running_executions.len()
         );
         return;
@@ -1663,7 +1661,7 @@ fn update_execution_list_drop_area_bounds(app: &mut MainWindow) {
         return;
     };
 
-    let executions_count = app.execution_manager.get_started_executions().size();
+    let executions_count = app.execution_manager.get_started_executions().len();
 
     let should_show_execution_names = executions_count > 1;
 
@@ -1755,7 +1753,7 @@ pub(crate) fn get_execution_list_title_size_y(app: &MainWindow) -> f32 {
 }
 
 pub(crate) fn get_started_execution_list_size_y(app: &MainWindow) -> f32 {
-    let executions_count = app.execution_manager.get_started_executions().size() as u32;
+    let executions_count = app.execution_manager.get_started_executions().len() as u32;
     let should_show_execution_names = executions_count > 1;
 
     let scheduled_elements_count = app
