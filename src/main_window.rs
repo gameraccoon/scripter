@@ -565,6 +565,7 @@ impl MainWindow {
                 if has_scheduled_new_script {
                     update_edited_execution_list_script_number(self);
                     update_drag_and_drop_area_bounds(self);
+                    clean_script_selection(&mut self.window_state.cursor_script);
                 }
             }
             WindowMessage::WindowOnMouseMove(position) => {
