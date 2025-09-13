@@ -21,7 +21,7 @@ pub(crate) const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
 pub(crate) const ONE_SCRIPT_LIST_ELEMENT_HEIGHT: f32 = 30.0;
 const ONE_TITLE_LINE_HEIGHT: f32 = 20.0;
 const ONE_EXECUTION_NAME_HEIGHT: f32 = 32.0;
-const EMPTY_EXECUTION_LIST_HEIGHT: f32 = 90.0;
+const EMPTY_EXECUTION_LIST_HEIGHT: f32 = 70.0;
 const EXECUTION_EDIT_BUTTONS_HEIGHT: f32 = 50.0;
 const DIRTY_CONFIG_BUTTONS_HEIGHT: f32 = 34.0;
 pub(crate) const PANE_SPACING: f32 = 1.0;
@@ -1738,14 +1738,18 @@ pub(crate) fn get_execution_list_title_size_y(app: &MainWindow) -> f32 {
         0
     };
 
+    let config = config::get_current_rewritable_config(&app.app_config);
+
     // if title editing enabled, we can't have less than 1 line
-    if title_lines == 0
-        && config::get_current_rewritable_config(&app.app_config).enable_title_editing
-    {
+    if title_lines == 0 && config.enable_title_editing {
         title_lines = 1;
     }
 
     if app.visual_caches.git_branch_requester.is_some() {
+        title_lines += 1;
+    }
+
+    if config.show_working_directory {
         title_lines += 1;
     }
 
