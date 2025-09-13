@@ -3216,6 +3216,7 @@ fn produce_script_edit_content<'a>(
     edit_data: &EditData,
     app_config: &config::AppConfig,
     window_state: &WindowState,
+    theme: &Theme,
 ) -> Column<'a, WindowMessage> {
     let Some(edited_script) = &window_state.cursor_script else {
         return Column::new();
@@ -3236,6 +3237,7 @@ fn produce_script_edit_content<'a>(
                 config::get_main_edit_mode(app_config),
                 edited_script.idx,
             ),
+            theme,
         )
     } else {
         match execution_lists.get_edited_scripts().get(edited_script.idx) {
@@ -3256,6 +3258,7 @@ fn produce_script_config_edit_content<'a>(
     app_config: &config::AppConfig,
     edited_script_idx: usize,
     script: &config::ScriptDefinition,
+    theme: &Theme,
 ) -> Column<'a, WindowMessage> {
     let mut parameters: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
         Vec::with_capacity(40);
@@ -3276,6 +3279,7 @@ fn produce_script_config_edit_content<'a>(
                 config_script_id,
                 script,
                 visual_caches,
+                theme,
             );
 
             parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -3342,6 +3346,7 @@ fn produce_script_config_edit_content<'a>(
                         original_script_id,
                         original_script,
                         visual_caches,
+                        theme,
                     );
                 }
                 config::ScriptDefinition::Preset(preset) => {
@@ -3558,6 +3563,7 @@ fn populate_original_script_config_edit_content<'a>(
     config_script_id: ConfigScriptId,
     script: &config::OriginalScriptDefinition,
     visual_caches: &VisualCaches,
+    theme: &Theme,
 ) {
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     parameters.push(text("Name:").into());
@@ -3571,8 +3577,15 @@ fn populate_original_script_config_edit_content<'a>(
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(
+        row![
+            text("Command:"),
+            Space::with_width(4),
+            help_icon(COMMAND_HELP_TEXT, visual_caches, theme),
+        ]
+        .into(),
+    );
     populate_path_editing_content(
-        "Command:",
         "command",
         &script.command,
         parameters,
@@ -3581,8 +3594,8 @@ fn populate_original_script_config_edit_content<'a>(
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(text("Working directory override:").into());
     populate_path_editing_content(
-        "Working directory override:",
         "path/to/directory",
         &script.working_directory,
         parameters,
@@ -3591,8 +3604,8 @@ fn populate_original_script_config_edit_content<'a>(
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(text("Path to the icon:").into());
     populate_path_editing_content(
-        "Path to the icon:",
         "path/to/icon.png",
         &script.icon,
         parameters,
@@ -3615,9 +3628,14 @@ fn populate_original_script_config_edit_content<'a>(
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     parameters.push(
-        checkbox("Use advanced arguments", script.use_advanced_arguments)
-            .on_toggle(move |val| WindowMessage::ToggleUseAdvancedArguments(config_script_id, val))
-            .into(),
+        row![
+            checkbox("Use advanced arguments", script.use_advanced_arguments).on_toggle(
+                move |val| WindowMessage::ToggleUseAdvancedArguments(config_script_id, val)
+            ),
+            Space::with_width(4),
+            help_icon(ADVANCED_ARGUMENTS_HELP_TEXT, visual_caches, theme),
+        ]
+        .into(),
     );
 
     if script.use_advanced_arguments {
@@ -3643,7 +3661,15 @@ fn populate_original_script_config_edit_content<'a>(
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-    parameters.push(text("Argument placeholders:").into());
+    parameters.push(
+        row![
+            text("Argument placeholders:"),
+            Space::with_width(4),
+            help_icon(ARGUMENT_PLACEHOLDERS_HELP_TEXT, visual_caches, theme),
+        ]
+        .into(),
+    );
+
     populate_argument_placeholders_config_content(
         parameters,
         &script.argument_placeholders,
@@ -3662,7 +3688,14 @@ fn populate_original_script_config_edit_content<'a>(
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-    parameters.push(text("Retry count:").into());
+    parameters.push(
+        row![
+            text("Retry count:"),
+            Space::with_width(4),
+            help_icon(RETRY_COUNT_HELP_TEXT, visual_caches, theme),
+        ]
+        .into(),
+    );
     parameters.push(
         text_input("0", &visual_caches.autorerun_count)
             .on_input(move |new_value| {
@@ -3674,9 +3707,14 @@ fn populate_original_script_config_edit_content<'a>(
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     parameters.push(
-        checkbox("Set custom executor", script.custom_executor.is_some())
-            .on_toggle(move |val| WindowMessage::ToggleUseCustomExecutor(config_script_id, val))
-            .into(),
+        row![
+            checkbox("Set custom executor", script.custom_executor.is_some()).on_toggle(
+                move |val| WindowMessage::ToggleUseCustomExecutor(config_script_id, val)
+            ),
+            Space::with_width(4),
+            help_icon(CUSTOM_EXECUTOR_HELP_TEXT, visual_caches, theme),
+        ]
+        .into(),
     );
 
     if let Some(mut custom_executor) = script.custom_executor.clone() {
@@ -3713,9 +3751,13 @@ fn populate_original_script_config_edit_content<'a>(
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     parameters.push(
-        checkbox("Ignore output", script.ignore_output)
-            .on_toggle(move |val| WindowMessage::ToggleIgnoreOutput(config_script_id, val))
-            .into(),
+        row![
+            checkbox("Ignore output", script.ignore_output)
+                .on_toggle(move |val| WindowMessage::ToggleIgnoreOutput(config_script_id, val)),
+            Space::with_width(4),
+            help_icon(IGNORE_OUTPUT_HELP_TEXT, visual_caches, theme),
+        ]
+        .into(),
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -3742,8 +3784,8 @@ fn populate_original_preset_edit_content<'a>(
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(text("Path to the icon:").into());
     populate_path_editing_content(
-        "Path to the icon:",
         "path/to/icon.png",
         &preset.icon,
         parameters,
@@ -4029,8 +4071,8 @@ fn produce_settings_edit_content<'a>(
 
     if edit_mode == config::ConfigEditMode::Shared {
         list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+        list_elements.push(text("Local config path:").into());
         populate_path_editing_content(
-            "Local config path:",
             "path/to/config.json",
             &config.local_config_path,
             &mut list_elements,
@@ -4097,6 +4139,7 @@ fn view_content<'a>(
                 edit_data,
                 config,
                 window_state,
+                theme,
             ),
         },
     };

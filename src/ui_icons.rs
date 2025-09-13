@@ -15,6 +15,7 @@ pub struct ThemedIcons {
     pub log: Handle,
     pub edit: Handle,
     pub quick_launch: Handle,
+    pub help: Handle,
 }
 
 pub struct IconCaches {
@@ -125,6 +126,11 @@ fn get_dark_themed_icons() -> ThemedIcons {
                 .into_iter()
                 .as_slice(),
         ),
+        help: Handle::from_bytes(
+            include_bytes!("../res/icons/help-b.png")
+                .into_iter()
+                .as_slice(),
+        ),
     }
 }
 
@@ -172,6 +178,11 @@ fn get_bright_themed_icons() -> ThemedIcons {
         ),
         quick_launch: Handle::from_bytes(
             include_bytes!("../res/icons/quick_launch-w.png")
+                .into_iter()
+                .as_slice(),
+        ),
+        help: Handle::from_bytes(
+            include_bytes!("../res/icons/help-w.png")
                 .into_iter()
                 .as_slice(),
         ),

@@ -14,6 +14,14 @@ use iced::widget::{
 };
 use iced::{alignment, Alignment, Element, Length, Theme};
 
+pub(crate) const COMMAND_HELP_TEXT: &str = "This can be a relative or an absolute path to a script file, or you can use a command name directly (e.g. \"echo\").";
+pub(crate) const ADVANCED_ARGUMENTS_HELP_TEXT: &str = "Advanced arguments are passed separately to the executor. Some executors (like powershell) require the arguments to be passed this way.\nArgument placeholders can also be used in advanced arguments.";
+pub(crate) const ARGUMENT_PLACEHOLDERS_HELP_TEXT: &str = "Some scripts or commands can have massive lists of arguments, you can use argument placeholders to make it easier to edit them.";
+pub(crate) const RETRY_COUNT_HELP_TEXT: &str =
+    "If the script fails, it will be retried this many times before failing the whole execution.";
+pub(crate) const CUSTOM_EXECUTOR_HELP_TEXT: &str = "By default, the script will be run using the shell of the operating system (e.g. cmd.exe on Windows, sh on Linux), this option allows to override this behavior to run the script using python, powershell, etc.";
+pub(crate) const IGNORE_OUTPUT_HELP_TEXT: &str = "Avoid attaching to stdout/stderr of the script which is used for reading the logs. Useful in cases when you want to run a script that detaches its child when you don't want it to be blocked by io redirections.";
+
 pub(crate) const PATH_TYPE_PICK_LIST: &[config::PathType] = &[
     config::PathType::WorkingDirRelative,
     config::PathType::ScripterExecutableRelative,
@@ -114,14 +122,12 @@ pub fn populate_quick_launch_edit_button<'a>(
 }
 
 pub fn populate_path_editing_content(
-    caption: &'static str,
     hint: &str,
     path: &config::PathConfig,
     edit_content: &mut Vec<Element<'_, WindowMessage, Theme, iced::Renderer>>,
     on_path_changed: impl Fn(String) -> WindowMessage + 'static,
     on_path_type_changed: impl Fn(config::PathType) -> WindowMessage + 'static,
 ) {
-    edit_content.push(text(caption).into());
     edit_content.push(
         text_input(hint, &path.path)
             .on_input(on_path_changed)
@@ -589,4 +595,25 @@ pub(crate) fn populate_string_vec_edit_content<'a>(
             }))
         .into(),
     );
+}
+
+pub fn help_icon(
+    help_text: &'static str,
+    visual_caches: &VisualCaches,
+    theme: &Theme,
+) -> Element<'static, WindowMessage, Theme, iced::Renderer> {
+    tooltip(
+        image(
+            &visual_caches
+                .icons
+                .get_theme_for_color(theme.extended_palette().secondary.base.text)
+                .help,
+        )
+        .height(Length::Fixed(12.0))
+        .width(Length::Fixed(12.0)),
+        help_text,
+        tooltip::Position::FollowCursor,
+    )
+    .style(container::bordered_box)
+    .into()
 }
