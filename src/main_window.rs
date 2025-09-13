@@ -2407,7 +2407,7 @@ fn produce_execution_list_content<'a>(
     };
 
     let mut last_offset_y = PANE_HEADER_HEIGHT;
-    let script_drop_areas = window_state
+    let running_execution_drop_areas = window_state
         .drop_areas
         .running_executions
         .iter()
@@ -3057,10 +3057,10 @@ fn produce_execution_list_content<'a>(
         .height(Length::Fill)
         .spacing(10)
         .align_x(Alignment::Center),
-        if script_drop_areas.is_empty() {
+        if running_execution_drop_areas.is_empty() {
             main_drop_area
         } else {
-            column(script_drop_areas)
+            column(running_execution_drop_areas)
         }
     ]]
 }

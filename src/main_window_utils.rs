@@ -1666,13 +1666,7 @@ fn update_execution_list_drop_area_bounds(app: &mut MainWindow) {
 
     let should_show_execution_names = executions_count > 1;
 
-    let mut accumulated_height = PANE_HEADER_HEIGHT
-        + get_execution_list_title_size_y(app)
-        + if should_show_execution_names {
-            ONE_EXECUTION_NAME_HEIGHT
-        } else {
-            0.0
-        };
+    let mut accumulated_height = PANE_HEADER_HEIGHT + get_execution_list_title_size_y(app);
 
     for (idx, execution) in app
         .execution_manager
@@ -1684,10 +1678,15 @@ fn update_execution_list_drop_area_bounds(app: &mut MainWindow) {
         let mut content_region = script_list_pane_region.clone();
         content_region.y += accumulated_height;
         content_region.height = ONE_EXECUTION_LIST_ELEMENT_HEIGHT
-            * execution.get_scheduled_scripts_cache().len() as f32;
+            * execution.get_scheduled_scripts_cache().len() as f32
+            + if should_show_execution_names {
+                ONE_EXECUTION_NAME_HEIGHT
+            } else {
+                0.0
+            }
+            + EXECUTION_EDIT_BUTTONS_HEIGHT;
         content_region.width -= SCROLL_BAR_WIDTH;
-        accumulated_height +=
-            content_region.height + EXECUTION_EDIT_BUTTONS_HEIGHT + ONE_EXECUTION_NAME_HEIGHT;
+        accumulated_height += content_region.height;
         drop_area.set_bounds(content_region);
     }
 }
