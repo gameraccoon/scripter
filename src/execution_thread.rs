@@ -167,6 +167,14 @@ pub fn run_scripts(
                     (std::process::Stdio::null(), std::process::Stdio::null())
                 };
 
+                let advanced_arguments = {
+                    let mut advanced_arguments = script.advanced_arguments.clone();
+                    for argument in &mut advanced_arguments {
+                        replace_placeholders(argument, &script.argument_placeholders);
+                    }
+                    advanced_arguments
+                };
+
                 let executor = script
                     .custom_executor
                     .clone()
@@ -194,7 +202,7 @@ pub fn run_scripts(
 
                     recent_logs.push(OutputLine {
                         text: format!(
-                            "Running \"{}\"{}\n[{}][{}]{}",
+                            "Running \"{}\"{}\n[{}][{}]{}{}",
                             script.name,
                             if script_state.retry_count > 0 {
                                 format!(" retry #{}", script_state.retry_count)
@@ -203,6 +211,11 @@ pub fn run_scripts(
                             },
                             executor.join("]["),
                             command_line,
+                            if script.use_advanced_arguments {
+                                format!("[{}]", advanced_arguments.join("]["))
+                            } else {
+                                "".to_string()
+                            },
                             if env_vars.is_empty() {
                                 "".to_string()
                             } else {
@@ -240,6 +253,12 @@ pub fn run_scripts(
                     .stdin(std::process::Stdio::null())
                     .stdout(stdout_type)
                     .stderr(stderr_type);
+
+                if script.use_advanced_arguments {
+                    for argument in &advanced_arguments {
+                        command.arg(argument);
+                    }
+                }
 
                 match script.working_directory.path_type {
                     config::PathType::ScripterExecutableRelative => {
@@ -425,14 +444,12 @@ fn get_script_with_arguments(
 
     let escaped_path = escape_path(path);
 
-    if script.arguments.is_empty() {
+    if script.arguments_line.is_empty() {
         escaped_path
     } else {
-        format!(
-            "{} {}",
-            escaped_path,
-            replace_placeholders(script.arguments.clone(), &script.argument_placeholders)
-        )
+        let mut arguments = script.arguments_line.clone();
+        replace_placeholders(&mut arguments, &script.argument_placeholders);
+        format!("{} {}", escaped_path, arguments,)
     }
 }
 
@@ -443,9 +460,9 @@ struct PlaceholderOccurrence {
 }
 
 pub fn replace_placeholders(
-    mut arguments: String,
+    arguments: &mut String,
     placeholders: &Vec<config::ArgumentPlaceholder>,
-) -> String {
+) {
     // we need to make sure we don't replace placeholders from other placeholders
     // first find all the placeholder occurrences
     let mut placeholder_occurrences = Vec::<PlaceholderOccurrence>::new();
@@ -492,8 +509,6 @@ pub fn replace_placeholders(
             &placeholder_occurrence.replacement,
         );
     }
-
-    arguments
 }
 
 fn get_default_script_execution_status() -> ScriptExecutionStatus {

@@ -124,6 +124,12 @@ pub struct ReferenceToSharedScript {
     pub is_hidden: bool,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
+pub enum ArgumentsType {
+    SpaceSeparatedLine,
+    List,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct ArgumentPlaceholder {
     pub placeholder: String,
@@ -156,7 +162,9 @@ pub struct OriginalScriptDefinition {
     pub icon: PathConfig,
     pub command: PathConfig,
     pub working_directory: PathConfig,
-    pub arguments: String,
+    pub arguments_line: String,
+    pub use_advanced_arguments: bool,
+    pub advanced_arguments: Vec<String>,
     pub argument_placeholders: Vec<ArgumentPlaceholder>,
     pub arguments_requirement: ArgumentRequirement,
     pub autorerun_count: usize,
@@ -173,7 +181,9 @@ pub struct PresetItem {
     pub uid: Guid,
     // possible overrides
     pub name: Option<String>,
-    pub arguments: Option<String>,
+    pub arguments_line: Option<String>,
+    pub use_advanced_arguments: Option<bool>,
+    pub advanced_arguments: Option<Vec<String>>,
     pub overridden_placeholder_values: std::collections::HashMap<String, String>,
     pub autorerun_count: Option<usize>,
     pub reaction_to_previous_failures: Option<ReactionToPreviousFailures>,

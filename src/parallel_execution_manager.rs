@@ -633,20 +633,12 @@ fn get_tooltip_for_script(script: &config::OriginalScriptDefinition) -> String {
         tooltip.push_str(format!("[{}]", custom_executor.join("][")).as_str());
     }
 
-    if script.arguments.is_empty() {
+    if script.arguments_line.is_empty() {
         tooltip.push_str(format!("[{}]", script.command.path).as_str());
     } else {
-        tooltip.push_str(
-            format!(
-                "[{} {}]",
-                script.command.path,
-                execution_thread::replace_placeholders(
-                    script.arguments.clone(),
-                    &script.argument_placeholders
-                )
-            )
-            .as_str(),
-        );
+        let mut arguments_line = script.arguments_line.clone();
+        execution_thread::replace_placeholders(&mut arguments_line, &script.argument_placeholders);
+        tooltip.push_str(format!("[{} {}]", script.command.path, arguments_line).as_str());
     }
 
     tooltip

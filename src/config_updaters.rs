@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "0.18.5";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.18.5";
+pub static LATEST_CONFIG_VERSION: &str = "0.19.3";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "0.19.3";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -143,6 +143,7 @@ fn register_config_updaters() -> JsonFileUpdater {
     json_config_updater
         .add_update_function("0.18.4", v0_18_4_added_autoclean_on_success_for_presets);
     json_config_updater.add_update_function("0.18.5", v0_18_5_refined_previous_failure_choices);
+    json_config_updater.add_update_function("0.19.3", v0_19_3_add_use_advanced_arguments_fields);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -228,6 +229,7 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     json_config_updater
         .add_update_function("0.18.4", v0_18_4_added_autoclean_on_success_for_presets);
     json_config_updater.add_update_function("0.18.5", v0_18_5_refined_previous_failure_choices);
+    json_config_updater.add_update_function("0.19.3", v0_19_3_add_use_advanced_arguments_fields);
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
 
@@ -656,5 +658,25 @@ fn v0_18_5_refined_previous_failure_choices(config_json: &mut JsonValue) {
                 }
             }
         }
+    });
+}
+
+fn v0_19_3_add_use_advanced_arguments_fields(config_json: &mut JsonValue) {
+    for_each_script_original_definition_post_0_10_0(config_json, |script| {
+        script["arguments_line"] = script["arguments"].take();
+        script["use_advanced_arguments"] = json!(false);
+        script["advanced_arguments"] = json!([]);
+    });
+
+    for_each_script_preset(config_json, |preset| {
+        preset["items"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .for_each(|item| {
+                item["arguments_line"] = item["arguments"].take();
+                item["use_advanced_arguments"] = json!(false);
+                item["advanced_arguments"] = json!([]);
+            });
     });
 }

@@ -235,9 +235,11 @@ pub(crate) enum WindowMessage {
     EditScriptWorkingDirectoryPathType(ConfigScriptId, config::PathType),
     EditScriptIconPath(ConfigScriptId, String),
     EditScriptIconPathType(ConfigScriptId, config::PathType),
-    EditArgumentsForConfig(ConfigScriptId, String),
-    EditArgumentsForScriptExecution(String),
+    EditArgumentsLineForConfig(ConfigScriptId, String),
+    EditArgumentsLineForScriptExecution(String),
     EditArgumentsRequirement(ConfigScriptId, config::ArgumentRequirement),
+    ToggleUseAdvancedArguments(ConfigScriptId, bool),
+    EditAdvancedArguments(ConfigScriptId, String, usize),
     EditArgumentsHint(ConfigScriptId, String),
     AddArgumentPlaceholder(ConfigScriptId),
     RemoveArgumentPlaceholder(ConfigScriptId, usize),
@@ -872,7 +874,9 @@ impl MainWindow {
                         path: ".".to_string(),
                         path_type: config::PathType::WorkingDirRelative,
                     },
-                    arguments: "".to_string(),
+                    arguments_line: "".to_string(),
+                    use_advanced_arguments: false,
+                    advanced_arguments: Vec::new(),
                     argument_placeholders: Vec::new(),
                     autorerun_count: 0,
                     reaction_to_previous_failures:
@@ -952,21 +956,45 @@ impl MainWindow {
                     });
                 }
             }
-            WindowMessage::EditArgumentsForConfig(config_script_id, new_arguments) => {
+            WindowMessage::EditArgumentsLineForConfig(config_script_id, new_arguments) => {
                 apply_config_script_edit(self, config_script_id, move |script| {
-                    script.arguments = new_arguments;
+                    script.arguments_line = new_arguments;
                 });
             }
-            WindowMessage::EditArgumentsForScriptExecution(new_arguments) => {
+            WindowMessage::EditArgumentsLineForScriptExecution(new_arguments) => {
                 if let Some(script) = &self.window_state.cursor_script {
                     apply_execution_script_edit(self, script.idx, move |script| {
-                        script.arguments = new_arguments;
+                        script.arguments_line = new_arguments;
                     });
                 }
             }
             WindowMessage::EditArgumentsRequirement(config_script_id, new_requirement) => {
                 apply_config_script_edit(self, config_script_id, move |script| {
                     script.arguments_requirement = new_requirement
+                });
+            }
+            WindowMessage::ToggleUseAdvancedArguments(config_script_id, value) => {
+                apply_config_script_edit(self, config_script_id, move |script| {
+                    script.use_advanced_arguments = value
+                });
+            }
+            WindowMessage::EditAdvancedArguments(
+                config_script_id,
+                new_advanced_arguments,
+                index,
+            ) => {
+                apply_config_script_edit(self, config_script_id, |script| {
+                    if new_advanced_arguments.is_empty()
+                        && index + 1 == script.advanced_arguments.len()
+                    {
+                        script.advanced_arguments.pop();
+                    } else if !new_advanced_arguments.is_empty()
+                        && index == script.advanced_arguments.len()
+                    {
+                        script.advanced_arguments.push(new_advanced_arguments);
+                    } else if index < script.advanced_arguments.len() {
+                        script.advanced_arguments[index] = new_advanced_arguments;
+                    }
                 });
             }
             WindowMessage::EditArgumentsHint(config_script_id, new_arguments_hint) => {
@@ -1494,7 +1522,7 @@ impl MainWindow {
                 for script in self.execution_manager.get_edited_scripts() {
                     let original_script = config::get_original_script_definition_by_uid(
                         &self.app_config,
-                        &script.uid,
+                        &script.uid, // wrong
                     );
 
                     let original_script = if let Some(original_script_tuple) = original_script {
@@ -1530,14 +1558,34 @@ impl MainWindow {
                         Some(script.name.clone())
                     };
 
-                    let arguments = if let Some(original_script) = &original_script {
-                        if original_script.arguments == script.arguments {
+                    let arguments_line = if let Some(original_script) = &original_script {
+                        if original_script.arguments_line == script.arguments_line {
                             None
                         } else {
-                            Some(script.arguments.clone())
+                            Some(script.arguments_line.clone())
                         }
                     } else {
-                        Some(script.arguments.clone())
+                        Some(script.arguments_line.clone())
+                    };
+
+                    let show_advanced_arguments = if let Some(original_script) = &original_script {
+                        if original_script.use_advanced_arguments == script.use_advanced_arguments {
+                            None
+                        } else {
+                            Some(script.use_advanced_arguments)
+                        }
+                    } else {
+                        Some(script.use_advanced_arguments)
+                    };
+
+                    let advanced_arguments = if let Some(original_script) = &original_script {
+                        if original_script.advanced_arguments == script.advanced_arguments {
+                            None
+                        } else {
+                            Some(script.advanced_arguments.clone())
+                        }
+                    } else {
+                        Some(script.advanced_arguments.clone())
                     };
 
                     let mut overridden_placeholder_values = HashMap::new();
@@ -1599,7 +1647,9 @@ impl MainWindow {
                     preset.items.push(config::PresetItem {
                         uid: script.uid.clone(),
                         name,
-                        arguments,
+                        arguments_line,
+                        use_advanced_arguments: show_advanced_arguments,
+                        advanced_arguments,
                         overridden_placeholder_values,
                         autorerun_count,
                         reaction_to_previous_failures,
@@ -3434,13 +3484,13 @@ fn produce_script_to_execute_edit_content<'a>(
         parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
         parameters.push(text("Arguments line:").into());
         parameters.push(
-            text_input(&script.arguments_hint, &script.arguments)
+            text_input(&script.arguments_hint, &script.arguments_line)
                 .on_input(move |new_value| {
-                    WindowMessage::EditArgumentsForScriptExecution(new_value)
+                    WindowMessage::EditArgumentsLineForScriptExecution(new_value)
                 })
                 .style(
                     if script.arguments_requirement == config::ArgumentRequirement::Required
-                        && script.arguments.is_empty()
+                        && script.arguments_line.is_empty()
                     {
                         style::invalid_text_input_style
                     } else {
@@ -3553,15 +3603,33 @@ fn populate_original_script_config_edit_content<'a>(
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     parameters.push(text("Default arguments:").into());
     parameters.push(
-        text_input(&script.arguments_hint, &script.arguments)
+        text_input(&script.arguments_hint, &script.arguments_line)
             .on_input(move |new_value| {
-                WindowMessage::EditArgumentsForConfig(config_script_id, new_value)
+                WindowMessage::EditArgumentsLineForConfig(config_script_id, new_value)
             })
             .style(text_input::default)
             .padding(5)
             .id(ARGUMENTS_INPUT_ID.clone())
             .into(),
     );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(
+        checkbox("Use advanced arguments", script.use_advanced_arguments)
+            .on_toggle(move |val| WindowMessage::ToggleUseAdvancedArguments(config_script_id, val))
+            .into(),
+    );
+
+    if script.use_advanced_arguments {
+        parameters.push(text("Advanced arguments:").into());
+        populate_string_vec_edit_content(
+            parameters,
+            &script.advanced_arguments,
+            move |idx, new_value| {
+                WindowMessage::EditAdvancedArguments(config_script_id, new_value, idx)
+            },
+        );
+    }
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     parameters.push(text("Argument hint:").into());
@@ -3612,24 +3680,12 @@ fn populate_original_script_config_edit_content<'a>(
     );
 
     if let Some(mut custom_executor) = script.custom_executor.clone() {
-        custom_executor.push("".to_string());
-        parameters.push(
-            row(custom_executor.iter().enumerate().map(|(idx, line)| {
-                text_input(
-                    if idx + 1 == custom_executor.len() {
-                        "+"
-                    } else {
-                        ""
-                    },
-                    &line,
-                )
-                .on_input(move |new_value| {
-                    WindowMessage::EditCustomExecutor(config_script_id, new_value, idx)
-                })
-                .padding(5)
-                .into()
-            }))
-            .into(),
+        populate_string_vec_edit_content(
+            parameters,
+            &mut custom_executor,
+            move |idx, new_value| {
+                WindowMessage::EditCustomExecutor(config_script_id, new_value, idx)
+            },
         );
     }
 

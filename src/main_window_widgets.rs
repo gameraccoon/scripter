@@ -569,3 +569,24 @@ pub(crate) fn drop_marker<'a>(
         iced::widget::column![]
     }
 }
+
+pub(crate) fn populate_string_vec_edit_content<'a>(
+    content: &mut Vec<Element<'a, WindowMessage, Theme, iced::Renderer>>,
+    values: &Vec<String>,
+    change_fn: impl Fn(usize, String) -> WindowMessage + 'static + Copy,
+) {
+    let values_len = values.len();
+    content.push(
+        row(values
+            .iter()
+            .chain(std::iter::once::<&String>(&String::new()))
+            .enumerate()
+            .map(|(idx, line)| {
+                text_input(if idx + 1 == values_len { "+" } else { "" }, &line)
+                    .on_input(move |new_value| change_fn(idx, new_value))
+                    .padding(5)
+                    .into()
+            }))
+        .into(),
+    );
+}

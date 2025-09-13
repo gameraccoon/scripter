@@ -52,7 +52,7 @@ pub fn is_local_config_script(script_idx: usize, app_config: &config::AppConfig)
 
 pub fn is_original_script_missing_arguments(script: &config::OriginalScriptDefinition) -> bool {
     if script.arguments_requirement == config::ArgumentRequirement::Required
-        && script.arguments.is_empty()
+        && script.arguments_line.is_empty()
     {
         return true;
     }
@@ -166,8 +166,8 @@ pub fn get_resulting_scripts_from_guid(
                                 script.name = name.clone();
                             }
 
-                            if let Some(arguments) = &preset_item.arguments {
-                                script.arguments = arguments.clone();
+                            if let Some(arguments) = &preset_item.arguments_line {
+                                script.arguments_line = arguments.clone();
                             }
 
                             for (placeholder, value) in &preset_item.overridden_placeholder_values {
@@ -1807,7 +1807,9 @@ mod tests {
                             icon: config::PathConfig::default(),
                             command: config::PathConfig::default(),
                             working_directory: config::PathConfig::default(),
-                            arguments: "".to_string(),
+                            arguments_line: "".to_string(),
+                            use_advanced_arguments: false,
+                            advanced_arguments: Vec::new(),
                             argument_placeholders: Vec::new(),
                             autorerun_count: 0,
                             reaction_to_previous_failures:
@@ -1825,7 +1827,9 @@ mod tests {
                             icon: config::PathConfig::default(),
                             command: config::PathConfig::default(),
                             working_directory: config::PathConfig::default(),
-                            arguments: "".to_string(),
+                            arguments_line: "".to_string(),
+                            use_advanced_arguments: false,
+                            advanced_arguments: Vec::new(),
                             argument_placeholders: Vec::new(),
                             autorerun_count: 0,
                             reaction_to_previous_failures:
@@ -1845,7 +1849,9 @@ mod tests {
                                 config::PresetItem {
                                     uid: test_script_guid_1.clone(),
                                     name: None,
-                                    arguments: None,
+                                    arguments_line: None,
+                                    use_advanced_arguments: None,
+                                    advanced_arguments: None,
                                     overridden_placeholder_values: std::collections::HashMap::new(),
                                     autorerun_count: None,
                                     reaction_to_previous_failures: None,
@@ -1854,7 +1860,9 @@ mod tests {
                                 config::PresetItem {
                                     uid: test_script_guid_2.clone(),
                                     name: None,
-                                    arguments: None,
+                                    arguments_line: None,
+                                    use_advanced_arguments: None,
+                                    advanced_arguments: None,
                                     overridden_placeholder_values: std::collections::HashMap::new(),
                                     autorerun_count: None,
                                     reaction_to_previous_failures: None,
@@ -1915,7 +1923,9 @@ mod tests {
                                 icon: config::PathConfig::default(),
                                 command: config::PathConfig::default(),
                                 working_directory: config::PathConfig::default(),
-                                arguments: "".to_string(),
+                                arguments_line: "".to_string(),
+                                use_advanced_arguments: false,
+                                advanced_arguments: Vec::new(),
                                 argument_placeholders: Vec::new(),
                                 autorerun_count: 0,
                                 reaction_to_previous_failures:
