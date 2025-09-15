@@ -3086,9 +3086,9 @@ dependencies = [
 
 [[package]]
 name = "sparse_set_container"
-version = "1.2.0"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5974c715129fa2e3e79cf4f41d32ef53be831af6235af2180d352eceec50fb3b"
+checksum = "ca9df851b873fb96d4f695a76ea0bdad3de6a55da10eddf17987fb70ec0cbd97"
 
 [[package]]
 name = "spirv"
