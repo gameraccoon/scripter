@@ -54,7 +54,7 @@ pub struct Execution {
 
 pub struct ParallelExecutionManager {
     started_executions: SparseSet<Execution>,
-    edited_scripts: Vec<config::OriginalScriptDefinition>,
+    edited_scripts: SparseSet<config::OriginalScriptDefinition>,
 }
 
 pub struct ScheduledScriptCacheRecord {
@@ -471,7 +471,7 @@ impl ParallelExecutionManager {
     pub fn new() -> Self {
         Self {
             started_executions: SparseSet::new(),
-            edited_scripts: Vec::new(),
+            edited_scripts: SparseSet::new(),
         }
     }
 
@@ -480,20 +480,20 @@ impl ParallelExecutionManager {
         self.get_edited_scripts_mut().push(script);
     }
 
-    pub fn remove_script_from_edited_list(&mut self, idx: usize) {
-        self.get_edited_scripts_mut().remove(idx);
+    pub fn remove_script_from_edited_list(&mut self, id: SparseKey) {
+        self.get_edited_scripts_mut().remove(id);
     }
 
-    pub fn get_edited_scripts(&self) -> &Vec<config::OriginalScriptDefinition> {
+    pub fn get_edited_scripts(&self) -> &SparseSet<config::OriginalScriptDefinition> {
         &self.edited_scripts
     }
 
-    pub fn get_edited_scripts_mut(&mut self) -> &mut Vec<config::OriginalScriptDefinition> {
+    pub fn get_edited_scripts_mut(&mut self) -> &mut SparseSet<config::OriginalScriptDefinition> {
         &mut self.edited_scripts
     }
 
     pub fn consume_edited_scripts(&mut self) -> Vec<config::OriginalScriptDefinition> {
-        std::mem::replace(&mut self.edited_scripts, Vec::new())
+        std::mem::replace(&mut self.edited_scripts, SparseSet::new()).into_vec()
     }
 
     pub fn clear_edited_scripts(&mut self) {
@@ -614,7 +614,7 @@ impl ParallelExecutionManager {
         };
 
         self.edited_scripts
-            .extend(execution.consume_disconnected_and_not_started_scripts());
+            .extend_with_vec(execution.consume_disconnected_and_not_started_scripts());
     }
 
     fn update_execution_names(&mut self) {

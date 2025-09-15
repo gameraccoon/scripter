@@ -1,14 +1,8 @@
 // Copyright (C) Pavel Grebnev 2023-2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
-use iced::advanced::image::Handle;
-use iced::widget::{pane_grid, text_input};
-use iced::window::resize;
-use iced::{keyboard, window, Size, Task, Theme};
-
 use crate::color_utils;
 use crate::config;
-use crate::drag_and_drop_list;
 use crate::drag_and_drop_list::{DragAndDropList, DropArea};
 use crate::events;
 use crate::git_support;
@@ -16,6 +10,12 @@ use crate::keybind_editing;
 use crate::main_window::*;
 use crate::parallel_execution_manager;
 use crate::style;
+
+use iced::advanced::image::Handle;
+use iced::widget::{pane_grid, text_input};
+use iced::window::resize;
+use iced::{keyboard, window, Size, Task, Theme};
+use sparse_set_container::{SparseKey, SparseSet};
 
 pub(crate) const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
 pub(crate) const ONE_SCRIPT_LIST_ELEMENT_HEIGHT: f32 = 30.0;
@@ -297,21 +297,19 @@ pub fn get_next_pane_selection(app: &MainWindow, is_forward: bool) -> PaneVarian
         // try to predict what the user wants to do
 
         let is_editing = app.edit_data.window_edit_data.is_some();
-        let selected_script_type = app
-            .window_state
-            .cursor_script
-            .as_ref()
-            .map(|s| &s.script_type);
+        let selected_script_type = app.window_state.cursor_script.as_ref().map(|s| match s {
+            EditScriptId::ScriptConfig(_) => EditScriptType::ScriptConfig,
+            EditScriptId::ExecutionList(_) => EditScriptType::ExecutionList,
+        });
 
         let have_scripts_in_execution = !app.execution_manager.get_edited_scripts().is_empty();
         let have_parameters_open = if let Some(selected_script_type) = selected_script_type {
-            selected_script_type == &EditScriptType::ExecutionList || is_editing
+            selected_script_type == EditScriptType::ExecutionList || is_editing
         } else {
             false
         };
         let circle_clockwise = if let Some(selected_script_type) = selected_script_type {
-            let editing_script =
-                selected_script_type == &EditScriptType::ScriptConfig && is_editing;
+            let editing_script = selected_script_type == EditScriptType::ScriptConfig && is_editing;
             editing_script != is_forward
         } else {
             is_forward
@@ -854,12 +852,17 @@ pub fn move_cursor(app: &mut MainWindow, is_up: bool) {
             return;
         }
 
-        let cursor_script_type = app
-            .window_state
-            .cursor_script
-            .as_ref()
-            .map(|x| x.script_type);
-        let cursor_script_idx = app.window_state.cursor_script.as_ref().map(|x| x.idx);
+        let cursor_script_type = app.window_state.cursor_script.as_ref().map(|x| match x {
+            EditScriptId::ScriptConfig(_) => EditScriptType::ScriptConfig,
+            EditScriptId::ExecutionList(_) => EditScriptType::ExecutionList,
+        });
+        let cursor_script_idx = match &app.window_state.cursor_script {
+            Some(EditScriptId::ScriptConfig(idx)) => Some(*idx),
+            Some(EditScriptId::ExecutionList(idx)) => {
+                app.execution_manager.get_edited_scripts().index(*idx)
+            }
+            _ => None,
+        };
 
         let next_selection = if cursor_script_idx.is_none()
             || (cursor_script_idx.is_some() && cursor_script_type != Some(pane_script_type))
@@ -886,14 +889,25 @@ pub fn move_cursor(app: &mut MainWindow, is_up: bool) {
             }
         };
 
-        select_script_by_type(
-            app,
-            ConfigScriptId {
-                idx: next_selection,
-                edit_mode: config::get_main_edit_mode(&app.app_config),
-            },
-            pane_script_type,
-        );
+        match pane_script_type {
+            EditScriptType::ScriptConfig => select_config_edited_script(
+                app,
+                ConfigScriptId {
+                    idx: next_selection,
+                    edit_mode: config::get_main_edit_mode(&app.app_config),
+                },
+            ),
+            EditScriptType::ExecutionList => {
+                let id = app
+                    .execution_manager
+                    .get_edited_scripts()
+                    .get_key(next_selection);
+
+                if let Some(id) = id {
+                    select_execution_script(app, id);
+                }
+            }
+        }
     }
 }
 
@@ -905,7 +919,7 @@ pub fn start_new_execution_from_edited_scripts(app: &mut MainWindow) {
     if app
         .execution_manager
         .get_edited_scripts()
-        .iter()
+        .values()
         .any(|script| is_original_script_missing_arguments(script))
     {
         return;
@@ -955,7 +969,7 @@ pub fn add_edited_scripts_to_started_execution(
     if app
         .execution_manager
         .get_edited_scripts()
-        .iter()
+        .values()
         .any(|script| is_original_script_missing_arguments(script))
     {
         return;
@@ -989,8 +1003,9 @@ pub fn add_script_to_execution(
     }
 
     if should_focus {
-        let script_idx = app.execution_manager.get_edited_scripts().len() - 1;
-        select_execution_script(app, script_idx);
+        if let Some(script_id) = app.execution_manager.get_edited_scripts().keys().last() {
+            select_execution_script(app, script_id);
+        }
         app.window_state.pane_focus = Some(app.pane_by_pane_type[&PaneVariant::ExecutionList]);
     }
 
@@ -1004,11 +1019,17 @@ pub fn take_edited_execution_script(
     uid: config::Guid,
     predicate: impl Fn(&config::OriginalScriptDefinition) -> bool,
 ) -> Option<config::OriginalScriptDefinition> {
-    execution_manager
+    let Some(idx) = execution_manager
         .get_edited_scripts()
-        .iter()
+        .values()
         .position(|script| script.uid == uid && predicate(script))
-        .and_then(|idx| Some(execution_manager.get_edited_scripts_mut().remove(idx)))
+    else {
+        return None;
+    };
+
+    execution_manager
+        .get_edited_scripts_mut()
+        .remove_by_index(idx)
 }
 
 pub fn add_script_to_config(
@@ -1036,7 +1057,7 @@ pub fn add_script_to_config(
         .settings_edit_mode = None;
 
     if let Some(script_idx) = script_idx {
-        select_edited_script(
+        select_config_edited_script(
             app,
             ConfigScriptId {
                 idx: script_idx,
@@ -1130,9 +1151,9 @@ pub fn remove_config_script(app: &mut MainWindow, config_script_id: ConfigScript
     keybind_editing::prune_unused_keybinds(app);
 }
 
-pub fn remove_execution_list_script(app: &mut MainWindow, script_idx: usize) {
+pub fn remove_execution_list_script(app: &mut MainWindow, script_id: SparseKey) {
     app.execution_manager
-        .remove_script_from_edited_list(script_idx);
+        .remove_script_from_edited_list(script_id);
     update_edited_execution_list_script_number(app);
     clean_script_selection(&mut app.window_state.cursor_script);
 }
@@ -1164,12 +1185,8 @@ fn add_script_to_local_config(
     }
 }
 
-pub fn select_edited_script(app: &mut MainWindow, config_script_id: ConfigScriptId) {
-    set_selected_script(
-        &mut app.window_state.cursor_script,
-        config_script_id.idx,
-        EditScriptType::ScriptConfig,
-    );
+pub fn select_config_edited_script(app: &mut MainWindow, config_script_id: ConfigScriptId) {
+    app.window_state.cursor_script = Some(EditScriptId::ScriptConfig(config_script_id.idx));
 
     if let Some(script) =
         &config::get_script_definition_list(&app.app_config, config_script_id.edit_mode)
@@ -1210,38 +1227,12 @@ pub fn select_edited_script(app: &mut MainWindow, config_script_id: ConfigScript
     }
 }
 
-pub fn select_execution_script(app: &mut MainWindow, script_idx: usize) {
-    set_selected_script(
-        &mut app.window_state.cursor_script,
-        script_idx,
-        EditScriptType::ExecutionList,
-    );
+pub fn select_execution_script(app: &mut MainWindow, script_id: SparseKey) {
+    app.window_state.cursor_script = Some(EditScriptId::ExecutionList(script_id));
 
-    if let Some(script) = &app.execution_manager.get_edited_scripts().get(script_idx) {
+    if let Some(script) = &app.execution_manager.get_edited_scripts().get(script_id) {
         app.visual_caches.autorerun_count = script.autorerun_count.to_string();
     }
-}
-
-fn select_script_by_type(
-    app: &mut MainWindow,
-    config_script_idx: ConfigScriptId,
-    script_type: EditScriptType,
-) {
-    match script_type {
-        EditScriptType::ScriptConfig => select_edited_script(app, config_script_idx),
-        EditScriptType::ExecutionList => select_execution_script(app, config_script_idx.idx),
-    }
-}
-
-fn set_selected_script(
-    currently_edited_script: &mut Option<EditScriptId>,
-    script_idx: usize,
-    script_type: EditScriptType,
-) {
-    *currently_edited_script = Some(EditScriptId {
-        idx: script_idx,
-        script_type: script_type.clone(),
-    });
 }
 
 pub fn clean_script_selection(currently_edited_script: &mut Option<EditScriptId>) {
@@ -1271,9 +1262,9 @@ pub fn move_config_script_up(app: &mut MainWindow, index: usize) {
         }
     }
 
-    if let Some(edited_script) = &app.window_state.cursor_script {
-        if edited_script.idx == index && index > 0 {
-            select_edited_script(
+    if let Some(EditScriptId::ScriptConfig(script_idx)) = &app.window_state.cursor_script {
+        if *script_idx == index && index > 0 {
+            select_config_edited_script(
                 app,
                 ConfigScriptId {
                     idx: index - 1,
@@ -1309,9 +1300,9 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
         }
     }
 
-    if let Some(edited_script) = &app.window_state.cursor_script {
-        if edited_script.idx == index && index + 1 < app.displayed_configs_list_cache.len() {
-            select_edited_script(
+    if let Some(EditScriptId::ScriptConfig(script_idx)) = &app.window_state.cursor_script {
+        if *script_idx == index && index + 1 < app.displayed_configs_list_cache.len() {
+            select_config_edited_script(
                 app,
                 ConfigScriptId {
                     idx: index + 1,
@@ -1333,6 +1324,18 @@ pub fn move_vec_element_to_index<T>(vec: &mut Vec<T>, index: usize, new_index: u
         vec[index..new_index].rotate_left(1);
     } else {
         vec[new_index..=index].rotate_right(1);
+    }
+}
+
+pub fn move_sparse_set_element_to_index<T>(set: &mut SparseSet<T>, index: usize, new_index: usize) {
+    if index >= set.len() || new_index > set.len() {
+        return;
+    }
+
+    if index < new_index {
+        set.rotate_left(index, new_index, 1);
+    } else {
+        set.rotate_right(new_index, index + 1, 1);
     }
 }
 
@@ -1401,13 +1404,13 @@ pub fn apply_config_script_edit(
 
 pub fn apply_execution_script_edit(
     app: &mut MainWindow,
-    script_idx: usize,
+    script_id: SparseKey,
     edit_fn: impl FnOnce(&mut config::OriginalScriptDefinition),
 ) {
     match &mut app
         .execution_manager
         .get_edited_scripts_mut()
-        .get_mut(script_idx)
+        .get_mut(script_id)
     {
         Some(script) => {
             edit_fn(script);
@@ -1700,9 +1703,7 @@ pub(crate) fn update_edited_execution_list_script_number(app: &mut MainWindow) {
     update_execution_list_drag_and_drop_list_bounds(app);
 }
 
-pub(crate) fn get_current_script_list_drag_and_drop(
-    app: &mut MainWindow,
-) -> &mut drag_and_drop_list::DragAndDropList {
+pub(crate) fn get_current_script_list_drag_and_drop(app: &mut MainWindow) -> &mut DragAndDropList {
     if app.edit_data.window_edit_data.is_some() {
         &mut app.window_state.drag_and_drop_lists.edit_script_list
     } else {
