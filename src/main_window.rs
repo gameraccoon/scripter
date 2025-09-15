@@ -111,7 +111,7 @@ pub(crate) enum EditScriptType {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum EditScriptId {
+pub(crate) enum ScriptId {
     ScriptConfig(usize),
     ExecutionList(SparseKey),
 }
@@ -183,7 +183,7 @@ pub(crate) struct DropAreas {
 
 pub(crate) struct WindowState {
     pub(crate) pane_focus: Option<pane_grid::Pane>,
-    pub(crate) cursor_script: Option<EditScriptId>,
+    pub(crate) cursor_script: Option<ScriptId>,
     pub(crate) full_window_size: Size,
     pub(crate) is_command_key_down: bool,
     is_alt_key_down: bool,
@@ -853,7 +853,7 @@ impl MainWindow {
                     get_top_level_edited_script_idx_by_uid(&mut self.app_config, &new_script_uid);
 
                 if let Some(idx) = idx {
-                    self.window_state.cursor_script = Some(EditScriptId::ScriptConfig(idx));
+                    self.window_state.cursor_script = Some(ScriptId::ScriptConfig(idx));
                 }
                 update_config_cache(self);
                 self.edit_data.is_dirty = true;
@@ -909,9 +909,7 @@ impl MainWindow {
                 }
             }
             WindowMessage::EditScriptNameForExecutionList(new_name) => {
-                if let Some(EditScriptId::ExecutionList(script_id)) =
-                    &self.window_state.cursor_script
-                {
+                if let Some(ScriptId::ExecutionList(script_id)) = &self.window_state.cursor_script {
                     apply_execution_script_edit(self, *script_id, move |script| {
                         script.name = new_name
                     });
@@ -965,9 +963,7 @@ impl MainWindow {
                 });
             }
             WindowMessage::EditArgumentsLineForScriptExecution(new_arguments) => {
-                if let Some(EditScriptId::ExecutionList(script_id)) =
-                    &self.window_state.cursor_script
-                {
+                if let Some(ScriptId::ExecutionList(script_id)) = &self.window_state.cursor_script {
                     apply_execution_script_edit(self, *script_id, move |script| {
                         script.arguments_line = new_arguments;
                     });
@@ -1075,9 +1071,7 @@ impl MainWindow {
                 });
             }
             WindowMessage::EditArgumentPlaceholderValueForScriptExecution(index, new_value) => {
-                if let Some(EditScriptId::ExecutionList(script_id)) =
-                    &self.window_state.cursor_script
-                {
+                if let Some(ScriptId::ExecutionList(script_id)) = &self.window_state.cursor_script {
                     apply_execution_script_edit(self, *script_id, move |script| {
                         if let Some(placeholder) = script.argument_placeholders.get_mut(index) {
                             placeholder.value = new_value;
@@ -1103,7 +1097,7 @@ impl MainWindow {
                     update_autorerun_count_text(self, new_autorerun_count_str);
 
                 if let Some(new_autorerun_count) = new_autorerun_count {
-                    if let Some(EditScriptId::ExecutionList(script_id)) =
+                    if let Some(ScriptId::ExecutionList(script_id)) =
                         &self.window_state.cursor_script
                     {
                         apply_execution_script_edit(self, *script_id, |script| {
@@ -1118,9 +1112,7 @@ impl MainWindow {
                 });
             }
             WindowMessage::EditReactionToPreviousFailuresForExecutionList(value) => {
-                if let Some(EditScriptId::ExecutionList(script_id)) =
-                    &self.window_state.cursor_script
-                {
+                if let Some(ScriptId::ExecutionList(script_id)) = &self.window_state.cursor_script {
                     apply_execution_script_edit(self, *script_id, |script| {
                         script.reaction_to_previous_failures = value
                     });
@@ -1154,9 +1146,7 @@ impl MainWindow {
                 });
             }
             WindowMessage::ToggleAutocleanOnSuccessForExecutionList(value) => {
-                if let Some(EditScriptId::ExecutionList(script_id)) =
-                    &self.window_state.cursor_script
-                {
+                if let Some(ScriptId::ExecutionList(script_id)) = &self.window_state.cursor_script {
                     apply_execution_script_edit(self, *script_id, |script| {
                         script.autoclean_on_success = value
                     });
@@ -1406,8 +1396,7 @@ impl MainWindow {
                 switch_to_editing_settings_config(self, config::ConfigEditMode::Local);
             }
             WindowMessage::ToggleScriptHidden(is_hidden) => {
-                let Some(EditScriptId::ScriptConfig(script_idx)) =
-                    &mut self.window_state.cursor_script
+                let Some(ScriptId::ScriptConfig(script_idx)) = &mut self.window_state.cursor_script
                 else {
                     return Task::none();
                 };
@@ -1732,14 +1721,14 @@ impl MainWindow {
 
                 if focused_pane == PaneVariant::ScriptList {
                     if self.edit_data.window_edit_data.is_some() {
-                        if let Some(EditScriptId::ScriptConfig(script_idx)) =
+                        if let Some(ScriptId::ScriptConfig(script_idx)) =
                             &self.window_state.cursor_script
                         {
                             move_config_script_down(self, *script_idx);
                         }
                     }
                 } else if focused_pane == PaneVariant::ExecutionList {
-                    if let Some(EditScriptId::ExecutionList(script_id)) =
+                    if let Some(ScriptId::ExecutionList(script_id)) =
                         &self.window_state.cursor_script
                     {
                         let Some(script_idx) = self
@@ -1769,14 +1758,14 @@ impl MainWindow {
 
                 if focused_pane == PaneVariant::ScriptList {
                     if self.edit_data.window_edit_data.is_some() {
-                        if let Some(EditScriptId::ScriptConfig(script_idx)) =
+                        if let Some(ScriptId::ScriptConfig(script_idx)) =
                             &self.window_state.cursor_script
                         {
                             move_config_script_up(self, *script_idx);
                         }
                     }
                 } else if focused_pane == PaneVariant::ExecutionList {
-                    if let Some(EditScriptId::ExecutionList(script_id)) =
+                    if let Some(ScriptId::ExecutionList(script_id)) =
                         &self.window_state.cursor_script
                     {
                         let Some(script_idx) = self
@@ -1801,7 +1790,7 @@ impl MainWindow {
                     return Task::none();
                 }
 
-                let Some(EditScriptId::ScriptConfig(script_idx)) = &self.window_state.cursor_script
+                let Some(ScriptId::ScriptConfig(script_idx)) = &self.window_state.cursor_script
                 else {
                     return Task::none();
                 };
@@ -1842,9 +1831,7 @@ impl MainWindow {
                     }
                 }
 
-                if let Some(EditScriptId::ExecutionList(script_id)) =
-                    &self.window_state.cursor_script
-                {
+                if let Some(ScriptId::ExecutionList(script_id)) = &self.window_state.cursor_script {
                     remove_execution_list_script(self, *script_id);
                 }
             }
@@ -1863,11 +1850,11 @@ impl MainWindow {
                     if let Some(focus) = self.window_state.pane_focus {
                         if self.panes.panes[&focus].variant != PaneVariant::Parameters {
                             match &self.window_state.cursor_script {
-                                Some(EditScriptId::ScriptConfig(_)) => {
+                                Some(ScriptId::ScriptConfig(_)) => {
                                     should_select_arguments =
                                         self.edit_data.window_edit_data.is_some();
                                 }
-                                Some(EditScriptId::ExecutionList(_)) => {
+                                Some(ScriptId::ExecutionList(_)) => {
                                     should_select_arguments = true;
                                 }
                                 _ => {}
@@ -2258,7 +2245,7 @@ fn produce_script_list_content<'a>(
                 };
 
                 let is_selected = match &window_state.cursor_script {
-                    Some(EditScriptId::ScriptConfig(idx)) if *idx == i => true,
+                    Some(ScriptId::ScriptConfig(idx)) if *idx == i => true,
                     _ => false,
                 };
 
@@ -2890,7 +2877,7 @@ fn produce_execution_list_content<'a>(
             .enumerate()
             .map(|(i, (script_id, script))| {
                 let is_selected = match &window_state.cursor_script {
-                    Some(EditScriptId::ExecutionList(selected_script_id)) => {
+                    Some(ScriptId::ExecutionList(selected_script_id)) => {
                         *selected_script_id == script_id
                     }
                     _ => false,
@@ -3245,7 +3232,7 @@ fn produce_script_edit_content<'a>(
     };
 
     match edited_script {
-        EditScriptId::ScriptConfig(script_idx) => {
+        ScriptId::ScriptConfig(script_idx) => {
             if edit_data.window_edit_data.is_none() {
                 return Column::new();
             }
@@ -3263,7 +3250,7 @@ fn produce_script_edit_content<'a>(
                 theme,
             )
         }
-        EditScriptId::ExecutionList(script_id) => {
+        ScriptId::ExecutionList(script_id) => {
             match execution_lists.get_edited_scripts().get(*script_id) {
                 Some(script) => {
                     produce_script_to_execute_edit_content(visual_caches, *script_id, &script)
