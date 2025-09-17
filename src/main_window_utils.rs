@@ -643,7 +643,7 @@ pub fn update_config_cache(app: &mut MainWindow) {
 }
 
 pub fn add_cache_record(
-    result_list: &mut Vec<ScriptListCacheRecord>,
+    result_list: &mut SparseSet<ScriptListCacheRecord>,
     is_full_list: bool,
     is_script_hidden: bool,
     script_name: String,

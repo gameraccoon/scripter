@@ -36,7 +36,7 @@ use iced::{keyboard, mouse, ContentFit, Task};
 use iced::{time, Size};
 use iced::{Element, Length, Subscription};
 use once_cell::sync::Lazy;
-use sparse_set_container::SparseKey;
+use sparse_set_container::{SparseKey, SparseSet};
 use std::collections::HashMap;
 use std::mem::swap;
 use std::path::PathBuf;
@@ -326,7 +326,7 @@ pub(crate) struct MainWindow {
     pub(crate) edit_data: EditData,
     pub(crate) window_state: WindowState,
     pub(crate) keybinds: custom_keybinds::CustomKeybinds<keybind_editing::KeybindAssociatedData>,
-    pub(crate) displayed_configs_list_cache: Vec<ScriptListCacheRecord>,
+    pub(crate) displayed_configs_list_cache: SparseSet<ScriptListCacheRecord>,
 }
 
 impl MainWindow {
@@ -432,7 +432,7 @@ impl MainWindow {
                 dragged_script: None,
             },
             keybinds: custom_keybinds::CustomKeybinds::new(),
-            displayed_configs_list_cache: Vec::new(),
+            displayed_configs_list_cache: SparseSet::new(),
         };
 
         update_theme_icons(&mut main_window);
@@ -580,7 +580,8 @@ impl MainWindow {
                         .on_mouse_move(position);
                     match move_result {
                         DragResult::JustStartedDragging(script_idx) => {
-                            if let Some(script) = self.displayed_configs_list_cache.get(script_idx)
+                            if let Some(script) =
+                                self.displayed_configs_list_cache.get_by_index(script_idx)
                             {
                                 self.window_state
                                     .drop_areas
@@ -600,7 +601,8 @@ impl MainWindow {
                         .on_mouse_move(position);
                     match move_result {
                         DragResult::JustStartedDragging(script_idx) => {
-                            if let Some(script) = self.displayed_configs_list_cache.get(script_idx)
+                            if let Some(script) =
+                                self.displayed_configs_list_cache.get_by_index(script_idx)
                             {
                                 self.window_state.dragged_script =
                                     Some(script.original_script_uid.clone());
@@ -1809,7 +1811,7 @@ impl MainWindow {
                     if &self.panes.panes[&focus].variant == &PaneVariant::ScriptList {
                         let scripts = &self.displayed_configs_list_cache;
 
-                        if let Some(script) = scripts.get(*script_idx) {
+                        if let Some(script) = scripts.get_by_index(*script_idx) {
                             if self.window_state.is_command_key_down {
                                 if self.window_state.is_alt_key_down {
                                     let scripts = get_resulting_scripts_from_guid(
@@ -2195,7 +2197,7 @@ impl AppPane {
 fn produce_script_list_content<'a>(
     execution_lists: &parallel_execution_manager::ParallelExecutionManager,
     config: &config::AppConfig,
-    displayed_configs_list_cache: &Vec<ScriptListCacheRecord>,
+    displayed_configs_list_cache: &SparseSet<ScriptListCacheRecord>,
     edit_data: &EditData,
     visual_caches: &'a VisualCaches,
     window_state: &WindowState,
@@ -2220,7 +2222,7 @@ fn produce_script_list_content<'a>(
 
     let data: Element<_> = column(
         displayed_configs_list_cache
-            .iter()
+            .values()
             .enumerate()
             .map(|(i, script)| {
                 let mut name_text = script.name.clone();
@@ -4118,7 +4120,7 @@ fn view_content<'a>(
     execution_lists: &parallel_execution_manager::ParallelExecutionManager,
     variant: &PaneVariant,
     theme: &Theme,
-    displayed_configs_list_cache: &Vec<ScriptListCacheRecord>,
+    displayed_configs_list_cache: &SparseSet<ScriptListCacheRecord>,
     paths: &config::PathCaches,
     visual_caches: &'a VisualCaches,
     config: &config::AppConfig,
