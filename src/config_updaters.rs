@@ -662,21 +662,17 @@ fn v0_18_5_refined_previous_failure_choices(config_json: &mut JsonValue) {
 }
 
 fn v0_19_3_add_use_advanced_arguments_fields(config_json: &mut JsonValue) {
-    for_each_script_original_definition_post_0_10_0(config_json, |script| {
-        script["arguments_line"] = script["arguments"].take();
-        script["use_advanced_arguments"] = json!(false);
-        script["advanced_arguments"] = json!([]);
-    });
+    let update_item_fn = |item: &mut JsonValue| {
+        item["arguments_line"] = item["arguments"].take();
+        item["use_advanced_arguments"] = json!(false);
+        item["advanced_arguments"] = json!([]);
+    };
+
+    for_each_script_original_definition_post_0_10_0(config_json, update_item_fn);
 
     for_each_script_preset(config_json, |preset| {
-        preset["items"]
-            .as_array_mut()
-            .unwrap()
-            .iter_mut()
-            .for_each(|item| {
-                item["arguments_line"] = item["arguments"].take();
-                item["use_advanced_arguments"] = json!(false);
-                item["advanced_arguments"] = json!([]);
-            });
+        if let Some(items) = preset["items"].as_array_mut() {
+            items.iter_mut().for_each(update_item_fn);
+        }
     });
 }
