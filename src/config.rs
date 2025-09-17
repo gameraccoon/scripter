@@ -9,7 +9,9 @@ use crate::config_updaters::{
 use crate::json_file_updater::{JsonFileUpdaterError, UpdateResult};
 use crate::key_mapping::{CustomKeyCode, CustomModifiers};
 use rand::RngCore;
+use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
+use sparse_set_container::SparseSet;
 use std::ffi::OsString;
 use std::mem::swap;
 use std::path::{Path, PathBuf};
@@ -93,7 +95,7 @@ pub enum ConfigReadError {
 pub struct AppConfig {
     pub version: String,
     pub rewritable: RewritableConfig,
-    pub script_definitions: Vec<ScriptDefinition>,
+    pub script_definitions: ScriptDefinitions,
     pub local_config_path: PathConfig,
     #[serde(skip)]
     pub is_read_only: bool,
@@ -115,7 +117,7 @@ pub struct AppConfig {
 pub struct LocalConfig {
     pub version: String,
     pub rewritable: RewritableConfig,
-    pub script_definitions: Vec<ScriptDefinition>,
+    pub script_definitions: ScriptDefinitions,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -410,7 +412,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             show_current_git_branch: false,
             quick_launch_scripts: Vec::new(),
         },
-        script_definitions: Vec::new(),
+        script_definitions: ScriptDefinitions(SparseSet::new()),
         is_read_only: !has_write_permission(&config_path),
         paths: PathCaches {
             logs_path: if let Some(custom_logs_path) = app_arguments.custom_logs_path.clone() {
@@ -439,7 +441,7 @@ pub fn get_default_local_config(shared_config: &AppConfig) -> LocalConfig {
     LocalConfig {
         version: LATEST_LOCAL_CONFIG_VERSION.to_string(),
         rewritable: shared_config.rewritable.clone(),
-        script_definitions: Vec::new(),
+        script_definitions: ScriptDefinitions(SparseSet::new()),
     }
 }
 
@@ -631,20 +633,20 @@ pub fn get_original_script_definition_by_uid<'a>(
 ) -> Option<(&'a ScriptDefinition, usize)> {
     if let Some(local_config) = &app_config.local_config_body {
         if let Some(result) =
-            find_original_script_definition_by_uid(&local_config.script_definitions, &script_uid)
+            find_original_script_definition_by_uid(&local_config.script_definitions.0, &script_uid)
         {
             return Some(result);
         }
     }
 
-    find_original_script_definition_by_uid(&app_config.script_definitions, &script_uid)
+    find_original_script_definition_by_uid(&app_config.script_definitions.0, &script_uid)
 }
 
 fn find_original_script_definition_by_uid<'a>(
-    script_definitions: &'a Vec<ScriptDefinition>,
+    script_definitions: &'a SparseSet<ScriptDefinition>,
     script_uid: &Guid,
 ) -> Option<(&'a ScriptDefinition, usize)> {
-    for (idx, script_definition) in script_definitions.iter().enumerate() {
+    for (idx, script_definition) in script_definitions.values().enumerate() {
         if original_script_definition_search_predicate(script_definition, &script_uid) {
             return Some((&script_definition, idx));
         }
@@ -805,7 +807,7 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
     // find all the shared scripts that are missing from the local config, and populate them
     let mut previous_script_idx = None;
     let mut has_configs_to_remove = false;
-    for script in &shared_config.script_definitions {
+    for script in shared_config.script_definitions.0.values() {
         let (original_script_uid, is_hidden) = match script {
             ScriptDefinition::ReferenceToShared(_) => {
                 continue;
@@ -815,16 +817,14 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
         };
 
         // find position of the script in the local config
-        let script_idx =
-            local_config
-                .script_definitions
-                .iter()
-                .position(|local_script: &ScriptDefinition| match local_script {
-                    ScriptDefinition::ReferenceToShared(reference) => {
-                        reference.uid == original_script_uid
-                    }
-                    _ => false,
-                });
+        let script_idx = local_config.script_definitions.0.values().position(
+            |local_script: &ScriptDefinition| match local_script {
+                ScriptDefinition::ReferenceToShared(reference) => {
+                    reference.uid == original_script_uid
+                }
+                _ => false,
+            },
+        );
 
         match script_idx {
             Some(script_idx) => {
@@ -835,7 +835,7 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
                 match &mut previous_script_idx {
                     Some(previous_script_idx) => {
                         // insert the script after the previous script
-                        local_config.script_definitions.insert(
+                        local_config.script_definitions.0.insert_at_position(
                             *previous_script_idx + 1,
                             ScriptDefinition::ReferenceToShared(ReferenceToSharedScript {
                                 uid: original_script_uid.clone(),
@@ -846,7 +846,7 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
                     }
                     None => {
                         // insert the script at the beginning
-                        local_config.script_definitions.insert(
+                        local_config.script_definitions.0.insert_at_position(
                             0,
                             ScriptDefinition::ReferenceToShared(ReferenceToSharedScript {
                                 uid: original_script_uid.clone(),
@@ -862,19 +862,21 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
 
     if has_configs_to_remove {
         // remove all the scripts that are not in the shared config
-        local_config.script_definitions.retain(
-            |local_script: &ScriptDefinition| match local_script {
+        local_config
+            .script_definitions
+            .0
+            .retain(|local_script: &ScriptDefinition| match local_script {
                 ScriptDefinition::ReferenceToShared(reference) => shared_config
                     .script_definitions
-                    .iter()
+                    .0
+                    .values()
                     .any(|script| match script {
                         ScriptDefinition::ReferenceToShared(_) => false,
                         ScriptDefinition::Original(script) => reference.uid == script.uid,
                         ScriptDefinition::Preset(preset) => reference.uid == preset.uid,
                     }),
                 _ => true,
-            },
-        );
+            });
     }
 }
 
@@ -1122,26 +1124,26 @@ pub fn get_rewritable_config_mut(
     }
 }
 
-pub fn get_main_script_definition_list(config: &AppConfig) -> &Vec<ScriptDefinition> {
+pub fn get_main_script_definition_list(config: &AppConfig) -> &SparseSet<ScriptDefinition> {
     if let Some(local_config) = &config.local_config_body {
-        &local_config.script_definitions
+        &local_config.script_definitions.0
     } else {
-        &config.script_definitions
+        &config.script_definitions.0
     }
 }
 
 pub fn get_script_definition_list(
     config: &AppConfig,
     edit_mode: ConfigEditMode,
-) -> &Vec<ScriptDefinition> {
+) -> &SparseSet<ScriptDefinition> {
     match edit_mode {
-        ConfigEditMode::Shared => &config.script_definitions,
+        ConfigEditMode::Shared => &config.script_definitions.0,
         ConfigEditMode::Local => {
             if let Some(local_config) = &config.local_config_body {
-                &local_config.script_definitions
+                &local_config.script_definitions.0
             } else {
                 eprintln!("We are requested to get local config when no local config is present");
-                &config.script_definitions
+                &config.script_definitions.0
             }
         }
     }
@@ -1150,15 +1152,15 @@ pub fn get_script_definition_list(
 pub fn get_script_definition_list_mut(
     config: &mut AppConfig,
     edit_mode: ConfigEditMode,
-) -> &mut Vec<ScriptDefinition> {
+) -> &mut SparseSet<ScriptDefinition> {
     match edit_mode {
-        ConfigEditMode::Shared => &mut config.script_definitions,
+        ConfigEditMode::Shared => &mut config.script_definitions.0,
         ConfigEditMode::Local => {
             if let Some(local_config) = &mut config.local_config_body {
-                &mut local_config.script_definitions
+                &mut local_config.script_definitions.0
             } else {
                 eprintln!("We are requested to get local config when no local config is present");
-                &mut config.script_definitions
+                &mut config.script_definitions.0
             }
         }
     }
@@ -1179,7 +1181,7 @@ pub fn update_shared_config_script_positions_from_local_config(app_config: &mut 
 
     let mut positions = std::collections::HashMap::new();
     let mut index = 0usize;
-    for script in &local_config.script_definitions {
+    for script in local_config.script_definitions.0.values() {
         match script {
             ScriptDefinition::ReferenceToShared(script) => {
                 positions.insert(script.uid.clone(), index);
@@ -1189,9 +1191,10 @@ pub fn update_shared_config_script_positions_from_local_config(app_config: &mut 
         }
     }
 
-    let mut script_definitions_copy = Vec::with_capacity(app_config.script_definitions.len());
+    let mut script_definitions_copy =
+        SparseSet::with_capacity(app_config.script_definitions.0.len());
     script_definitions_copy.resize(
-        app_config.script_definitions.len(),
+        app_config.script_definitions.0.len(),
         ScriptDefinition::ReferenceToShared(ReferenceToSharedScript {
             uid: Guid { data: 0 },
             is_hidden: false,
@@ -1199,13 +1202,17 @@ pub fn update_shared_config_script_positions_from_local_config(app_config: &mut 
     );
     swap(
         &mut script_definitions_copy,
-        &mut app_config.script_definitions,
+        &mut app_config.script_definitions.0,
     );
 
-    for script in script_definitions_copy {
+    for mut script in script_definitions_copy.into_vec() {
         let script_uid = get_script_uid(&script).clone();
         if let Some(index) = positions.get(&script_uid) {
-            app_config.script_definitions[*index] = script;
+            app_config
+                .script_definitions
+                .0
+                .get_by_index_mut(*index)
+                .replace(&mut script);
         }
     }
 }
@@ -1214,15 +1221,15 @@ pub fn update_local_config_script_positions_from_shared_config(
     local_config: &mut LocalConfig,
     shared_config: &mut AppConfig,
 ) {
-    let mut positions = Vec::with_capacity(local_config.script_definitions.len());
-    for script in &shared_config.script_definitions {
+    let mut positions = Vec::with_capacity(local_config.script_definitions.0.len());
+    for script in shared_config.script_definitions.0.values() {
         positions.push(get_script_uid(script).clone());
     }
 
     let mut original_index = 0;
     let mut rearrangement_needed = false;
     // find out if we need to do a rearrangement
-    for script in &local_config.script_definitions {
+    for script in local_config.script_definitions.0.values() {
         match script {
             ScriptDefinition::ReferenceToShared(script) => {
                 if Some(&script.uid) == positions.get(original_index) {
@@ -1241,7 +1248,7 @@ pub fn update_local_config_script_positions_from_shared_config(
     }
 
     let mut position_to_insert = 0usize;
-    for script in &local_config.script_definitions {
+    for script in local_config.script_definitions.0.values() {
         match script {
             ScriptDefinition::ReferenceToShared(script) => {
                 let Some(new_idx) = positions.iter().position(|uid| *uid == script.uid) else {
@@ -1264,9 +1271,10 @@ pub fn update_local_config_script_positions_from_shared_config(
     }
     let positions = positions_map;
 
-    let mut script_definitions_copy = Vec::with_capacity(local_config.script_definitions.len());
+    let mut script_definitions_copy =
+        SparseSet::with_capacity(local_config.script_definitions.0.len());
     script_definitions_copy.resize(
-        local_config.script_definitions.len(),
+        local_config.script_definitions.0.len(),
         ScriptDefinition::ReferenceToShared(ReferenceToSharedScript {
             uid: Guid { data: 0 },
             is_hidden: false,
@@ -1274,13 +1282,39 @@ pub fn update_local_config_script_positions_from_shared_config(
     );
     swap(
         &mut script_definitions_copy,
-        &mut local_config.script_definitions,
+        &mut local_config.script_definitions.0,
     );
 
-    for script in script_definitions_copy {
+    for mut script in script_definitions_copy.into_vec() {
         let script_uid = get_script_uid(&script).clone();
         if let Some(index) = positions.get(&script_uid) {
-            local_config.script_definitions[*index] = script;
+            local_config
+                .script_definitions
+                .0
+                .get_by_index_mut(*index)
+                .replace(&mut script);
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct ScriptDefinitions(pub SparseSet<ScriptDefinition>);
+
+impl Serialize for ScriptDefinitions {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
+        for script in self.0.values() {
+            seq.serialize_element(script)?;
+        }
+        seq.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for ScriptDefinitions {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let vec: Vec<ScriptDefinition> = Deserialize::deserialize(deserializer)?;
+        let mut result = SparseSet::with_capacity(vec.len());
+        result.extend_with_vec(vec);
+        Ok(ScriptDefinitions(result))
     }
 }

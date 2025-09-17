@@ -40,7 +40,7 @@ pub(crate) struct ConfigScriptId {
 
 pub fn is_local_config_script(script_idx: usize, app_config: &config::AppConfig) -> bool {
     if let Some(scripts) = &app_config.local_config_body {
-        match scripts.script_definitions.get(script_idx) {
+        match scripts.script_definitions.0.get_by_index(script_idx) {
             Some(config::ScriptDefinition::Original(_)) => true,
             Some(config::ScriptDefinition::Preset(_)) => true,
             _ => false,
@@ -112,9 +112,16 @@ pub fn get_script_definition(
             .local_config_body
             .as_ref()
             .unwrap()
-            .script_definitions[script_idx]
+            .script_definitions
+            .0
+            .get_by_index(script_idx)
+            .unwrap()
     } else {
-        &app_config.script_definitions[script_idx]
+        &app_config
+            .script_definitions
+            .0
+            .get_by_index(script_idx)
+            .unwrap()
     }
 }
 
@@ -124,7 +131,9 @@ fn get_script_definition_mut(
 ) -> &mut config::ScriptDefinition {
     let script_definitions =
         config::get_script_definition_list_mut(app_config, config_script_id.edit_mode);
-    &mut script_definitions[config_script_id.idx]
+    script_definitions
+        .get_by_index_mut(config_script_id.idx)
+        .unwrap()
 }
 
 pub fn get_resulting_scripts_from_guid(
@@ -210,11 +219,11 @@ pub fn get_resulting_scripts_from_guid(
 }
 
 fn find_script_idx_by_id(
-    script_definitions: &Vec<config::ScriptDefinition>,
+    script_definitions: &SparseSet<config::ScriptDefinition>,
     script_id: &config::Guid,
 ) -> Option<usize> {
-    for i in 0..script_definitions.len() {
-        match &script_definitions[i] {
+    for (i, script_definition) in script_definitions.values().enumerate() {
+        match script_definition {
             config::ScriptDefinition::Original(script) => {
                 if script.uid == *script_id {
                     return Some(i);
@@ -247,8 +256,8 @@ pub fn get_editing_preset(
 }
 
 pub fn find_best_shared_script_insert_position(
-    source_script_definitions: &Vec<config::ScriptDefinition>,
-    target_script_definitions: &Vec<config::ScriptDefinition>,
+    source_script_definitions: &SparseSet<config::ScriptDefinition>,
+    target_script_definitions: &SparseSet<config::ScriptDefinition>,
     script_idx: usize,
 ) -> usize {
     // first search up to find if we have reference to shared scripts
@@ -256,7 +265,7 @@ pub fn find_best_shared_script_insert_position(
     let mut target_shared_script_uid = config::GUID_NULL;
     for i in (0..script_idx).rev() {
         if let config::ScriptDefinition::ReferenceToShared(reference) =
-            &source_script_definitions[i]
+            &source_script_definitions.get_by_index(i).unwrap()
         {
             last_shared_script_idx = i;
             target_shared_script_uid = reference.uid.clone();
@@ -273,10 +282,8 @@ pub fn find_best_shared_script_insert_position(
     // search down
     let mut next_shared_script_idx = script_idx;
     let mut target_shared_script_idx = config::GUID_NULL;
-    for i in script_idx..source_script_definitions.len() {
-        if let config::ScriptDefinition::ReferenceToShared(reference) =
-            &source_script_definitions[i]
-        {
+    for (i, script_definition) in source_script_definitions.values().enumerate() {
+        if let config::ScriptDefinition::ReferenceToShared(reference) = &script_definition {
             next_shared_script_idx = i;
             target_shared_script_idx = reference.uid.clone();
             break;
@@ -470,12 +477,13 @@ pub fn update_config_cache(app: &mut MainWindow) {
         let shared_script_definitions = &app.app_config.script_definitions;
 
         result_list.clear();
-        for script_definition in &local_config.script_definitions {
+        for script_definition in local_config.script_definitions.0.values() {
             match script_definition {
                 config::ScriptDefinition::ReferenceToShared(reference) => {
                     let shared_script =
                         shared_script_definitions
-                            .iter()
+                            .0
+                            .values()
                             .find(|script| match script {
                                 config::ScriptDefinition::Original(script) => {
                                     script.uid == reference.uid
@@ -549,7 +557,7 @@ pub fn update_config_cache(app: &mut MainWindow) {
         let script_definitions = &app.app_config.script_definitions;
 
         result_list.clear();
-        for script_definition in script_definitions {
+        for script_definition in script_definitions.0.values() {
             match script_definition {
                 config::ScriptDefinition::ReferenceToShared(_) => {}
                 config::ScriptDefinition::Original(script) => {
@@ -1069,17 +1077,17 @@ pub fn add_script_to_config(
 }
 
 pub fn make_script_copy(
-    script: config::ScriptDefinition,
+    script: &config::ScriptDefinition,
 ) -> (config::ScriptDefinition, config::Guid) {
     match script {
-        config::ScriptDefinition::ReferenceToShared(_) => (script, config::GUID_NULL),
+        config::ScriptDefinition::ReferenceToShared(_) => (script.clone(), config::GUID_NULL),
         config::ScriptDefinition::Preset(preset) => {
             let new_uid = config::Guid::new();
             (
                 config::ScriptDefinition::Preset(config::ScriptPreset {
                     uid: new_uid.clone(),
                     name: format!("{} (copy)", preset.name),
-                    ..preset
+                    ..preset.clone()
                 }),
                 new_uid,
             )
@@ -1090,7 +1098,7 @@ pub fn make_script_copy(
                 config::ScriptDefinition::Original(config::OriginalScriptDefinition {
                     uid: new_uid.clone(),
                     name: format!("{} (copy)", script.name),
-                    ..script
+                    ..script.clone()
                 }),
                 new_uid,
             )
@@ -1104,7 +1112,7 @@ pub fn get_top_level_edited_script_idx_by_uid(
 ) -> Option<usize> {
     let script_definitions = config::get_main_script_definition_list(app_config);
 
-    for (idx, script) in script_definitions.iter().enumerate() {
+    for (idx, script) in script_definitions.values().enumerate() {
         match script {
             config::ScriptDefinition::ReferenceToShared(script) => {
                 if script.uid == *script_uid {
@@ -1133,12 +1141,16 @@ pub fn remove_config_script(app: &mut MainWindow, config_script_id: ConfigScript
             config::ConfigEditMode::Shared => {
                 app.app_config
                     .script_definitions
-                    .remove(config_script_id.idx);
+                    .0
+                    .remove_by_index(config_script_id.idx);
                 app.edit_data.is_dirty = true;
             }
             config::ConfigEditMode::Local => {
                 if let Some(config) = &mut app.app_config.local_config_body {
-                    config.script_definitions.remove(config_script_id.idx);
+                    config
+                        .script_definitions
+                        .0
+                        .remove_by_index(config_script_id.idx);
                     app.edit_data.is_dirty = true;
                 }
             }
@@ -1162,8 +1174,8 @@ fn add_script_to_shared_config(
     app_config: &mut config::AppConfig,
     script: config::ScriptDefinition,
 ) -> usize {
-    app_config.script_definitions.push(script);
-    let script_idx = app_config.script_definitions.len() - 1;
+    app_config.script_definitions.0.push(script);
+    let script_idx = app_config.script_definitions.0.len() - 1;
     config::populate_shared_scripts_from_config(app_config);
     script_idx
 }
@@ -1173,13 +1185,13 @@ fn add_script_to_local_config(
     script: config::ScriptDefinition,
 ) -> Option<usize> {
     if let Some(config) = &mut app_config.local_config_body {
-        config.script_definitions.push(script);
+        config.script_definitions.0.push(script);
     } else {
         return None;
     }
 
     if let Some(config) = &mut app_config.local_config_body {
-        Some(config.script_definitions.len() - 1)
+        Some(config.script_definitions.0.len() - 1)
     } else {
         None
     }
@@ -1190,7 +1202,7 @@ pub fn select_config_edited_script(app: &mut MainWindow, config_script_id: Confi
 
     if let Some(script) =
         &config::get_script_definition_list(&app.app_config, config_script_id.edit_mode)
-            .get(config_script_id.idx)
+            .get_by_index(config_script_id.idx)
     {
         match script {
             config::ScriptDefinition::Original(script) => {
@@ -1243,15 +1255,21 @@ pub fn move_config_script_up(app: &mut MainWindow, index: usize) {
     if app.edit_data.window_edit_data.is_some() {
         match config::get_main_edit_mode(&app.app_config) {
             config::ConfigEditMode::Shared => {
-                if index >= 1 && index < app.app_config.script_definitions.len() {
-                    app.app_config.script_definitions.swap(index, index - 1);
+                if index >= 1 && index < app.app_config.script_definitions.0.len() {
+                    app.app_config
+                        .script_definitions
+                        .0
+                        .swap_by_index(index, index - 1);
                     app.edit_data.is_dirty = true;
                 }
             }
             config::ConfigEditMode::Local => {
                 if let Some(local_config_body) = &mut app.app_config.local_config_body {
-                    if index >= 1 && index < local_config_body.script_definitions.len() {
-                        local_config_body.script_definitions.swap(index, index - 1);
+                    if index >= 1 && index < local_config_body.script_definitions.0.len() {
+                        local_config_body
+                            .script_definitions
+                            .0
+                            .swap_by_index(index, index - 1);
                         config::update_shared_config_script_positions_from_local_config(
                             &mut app.app_config,
                         );
@@ -1281,15 +1299,21 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
     if app.edit_data.window_edit_data.is_some() {
         match config::get_main_edit_mode(&app.app_config) {
             config::ConfigEditMode::Shared => {
-                if index + 1 < app.app_config.script_definitions.len() {
-                    app.app_config.script_definitions.swap(index, index + 1);
+                if index + 1 < app.app_config.script_definitions.0.len() {
+                    app.app_config
+                        .script_definitions
+                        .0
+                        .swap_by_index(index, index + 1);
                     app.edit_data.is_dirty = true;
                 }
             }
             config::ConfigEditMode::Local => {
                 if let Some(local_config_body) = &mut app.app_config.local_config_body {
-                    if index + 1 < local_config_body.script_definitions.len() {
-                        local_config_body.script_definitions.swap(index, index + 1);
+                    if index + 1 < local_config_body.script_definitions.0.len() {
+                        local_config_body
+                            .script_definitions
+                            .0
+                            .swap_by_index(index, index + 1);
                         config::update_shared_config_script_positions_from_local_config(
                             &mut app.app_config,
                         );
@@ -1315,18 +1339,6 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
     update_config_cache(app);
 }
 
-pub fn move_vec_element_to_index<T>(vec: &mut Vec<T>, index: usize, new_index: usize) {
-    if index >= vec.len() || new_index > vec.len() {
-        return;
-    }
-
-    if index < new_index {
-        vec[index..new_index].rotate_left(1);
-    } else {
-        vec[new_index..=index].rotate_right(1);
-    }
-}
-
 pub fn move_sparse_set_element_to_index<T>(set: &mut SparseSet<T>, index: usize, new_index: usize) {
     if index >= set.len() || new_index > set.len() {
         return;
@@ -1347,13 +1359,17 @@ pub fn move_config_script_to_index(app: &mut MainWindow, index: usize, new_index
     if app.edit_data.window_edit_data.is_some() {
         match config::get_main_edit_mode(&app.app_config) {
             config::ConfigEditMode::Shared => {
-                move_vec_element_to_index(&mut app.app_config.script_definitions, index, new_index);
+                move_sparse_set_element_to_index(
+                    &mut app.app_config.script_definitions.0,
+                    index,
+                    new_index,
+                );
                 app.edit_data.is_dirty = true;
             }
             config::ConfigEditMode::Local => {
                 if let Some(local_config_body) = &mut app.app_config.local_config_body {
-                    move_vec_element_to_index(
-                        &mut local_config_body.script_definitions,
+                    move_sparse_set_element_to_index(
+                        &mut local_config_body.script_definitions.0,
                         index,
                         new_index,
                     );
@@ -1377,7 +1393,11 @@ pub fn apply_config_script_edit(
     match config_script_id.edit_mode {
         config::ConfigEditMode::Local => {
             if let Some(config) = &mut app.app_config.local_config_body {
-                match &mut config.script_definitions.get_mut(config_script_id.idx) {
+                match &mut config
+                    .script_definitions
+                    .0
+                    .get_by_index_mut(config_script_id.idx)
+                {
                     Some(config::ScriptDefinition::Original(script)) => {
                         edit_fn(script);
                         app.edit_data.is_dirty = true;
@@ -1390,7 +1410,8 @@ pub fn apply_config_script_edit(
         config::ConfigEditMode::Shared => match &mut app
             .app_config
             .script_definitions
-            .get_mut(config_script_id.idx)
+            .0
+            .get_by_index_mut(config_script_id.idx)
         {
             Some(config::ScriptDefinition::Original(script)) => {
                 edit_fn(script);
@@ -1781,6 +1802,7 @@ pub(crate) fn get_started_execution_list_size_y(app: &MainWindow) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::ScriptDefinitions;
 
     const APP_CONFIG_WITH_DIFFERENT_SCRIPTS: fn() -> (config::AppConfig, Vec<config::Guid>) =
         || {
@@ -1805,7 +1827,7 @@ mod tests {
                         show_current_git_branch: false,
                         quick_launch_scripts: Vec::new(),
                     },
-                    script_definitions: vec![
+                    script_definitions: ScriptDefinitions(SparseSet::from_vec(vec![
                         config::ScriptDefinition::Original(config::OriginalScriptDefinition {
                             uid: test_script_guid_1.clone(),
                             name: "Shared script 1".to_string(),
@@ -1875,7 +1897,7 @@ mod tests {
                                 },
                             ],
                         }),
-                    ],
+                    ])),
                     is_read_only: false,
                     paths: config::PathCaches {
                         logs_path: std::path::PathBuf::new(),
@@ -1903,7 +1925,7 @@ mod tests {
                             show_current_git_branch: false,
                             quick_launch_scripts: vec![],
                         },
-                        script_definitions: vec![
+                        script_definitions: ScriptDefinitions(SparseSet::from_vec(vec![
                             config::ScriptDefinition::ReferenceToShared(
                                 config::ReferenceToSharedScript {
                                     uid: test_script_guid_1.clone(),
@@ -1942,7 +1964,7 @@ mod tests {
                                 autoclean_on_success: false,
                                 ignore_output: false,
                             }),
-                        ],
+                        ])),
                     })),
                 },
                 vec![

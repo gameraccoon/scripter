@@ -838,9 +838,14 @@ impl MainWindow {
                     config_script_id.edit_mode,
                 );
 
-                let (new_script, new_script_uid) =
-                    make_script_copy(script_definition_list[config_script_id.idx].clone());
-                script_definition_list.insert(config_script_id.idx + 1, new_script);
+                let (new_script, new_script_uid) = if let Some(script) =
+                    script_definition_list.get_by_index(config_script_id.idx)
+                {
+                    make_script_copy(script)
+                } else {
+                    return Task::none();
+                };
+                script_definition_list.insert_at_position(config_script_id.idx + 1, new_script);
 
                 // if we duplicated a shared script, make a reference to it in the local config
                 if config_script_id.edit_mode == config::ConfigEditMode::Shared
@@ -1402,7 +1407,8 @@ impl MainWindow {
                 };
 
                 if let Some(config) = &mut self.app_config.local_config_body {
-                    let Some(script) = config.script_definitions.get_mut(*script_idx) else {
+                    let Some(script) = config.script_definitions.0.get_by_index_mut(*script_idx)
+                    else {
                         return Task::none();
                     };
 
@@ -1418,7 +1424,7 @@ impl MainWindow {
             }
             WindowMessage::CreateCopyOfSharedScript(script_idx) => {
                 let script = if let Some(config) = &self.app_config.local_config_body {
-                    if let Some(script) = config.script_definitions.get(script_idx) {
+                    if let Some(script) = config.script_definitions.0.get_by_index(script_idx) {
                         script
                     } else {
                         return Task::none();
@@ -1460,7 +1466,10 @@ impl MainWindow {
                 };
 
                 if let Some(config) = &mut self.app_config.local_config_body {
-                    config.script_definitions.insert(script_idx + 1, new_script);
+                    config
+                        .script_definitions
+                        .0
+                        .insert_at_position(script_idx + 1, new_script);
                     select_config_edited_script(
                         self,
                         ConfigScriptId {
@@ -1474,17 +1483,17 @@ impl MainWindow {
             }
             WindowMessage::MoveToShared(script_idx) => {
                 if let Some(config) = &mut self.app_config.local_config_body {
-                    if config.script_definitions.len() <= script_idx {
+                    if config.script_definitions.0.len() <= script_idx {
                         return Task::none();
                     }
 
                     let insert_position = find_best_shared_script_insert_position(
-                        &config.script_definitions,
-                        &self.app_config.script_definitions,
+                        &config.script_definitions.0,
+                        &self.app_config.script_definitions.0,
                         script_idx,
                     );
 
-                    if let Some(script) = config.script_definitions.get_mut(script_idx) {
+                    if let Some(script) = config.script_definitions.0.get_by_index_mut(script_idx) {
                         let mut replacement_script = match script {
                             config::ScriptDefinition::Original(definition) => {
                                 config::ScriptDefinition::ReferenceToShared(
@@ -1510,7 +1519,8 @@ impl MainWindow {
                         swap(script, &mut replacement_script);
                         self.app_config
                             .script_definitions
-                            .insert(insert_position, replacement_script);
+                            .0
+                            .insert_at_position(insert_position, replacement_script);
                         self.edit_data.is_dirty = true;
                     }
                 }
