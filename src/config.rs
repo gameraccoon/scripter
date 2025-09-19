@@ -11,7 +11,7 @@ use crate::key_mapping::{CustomKeyCode, CustomModifiers};
 use rand::RngCore;
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Serialize};
-use sparse_set_container::SparseSet;
+use sparse_set_container::{SparseKey, SparseSet};
 use std::ffi::OsString;
 use std::mem::swap;
 use std::path::{Path, PathBuf};
@@ -630,7 +630,7 @@ pub fn populate_shared_scripts_from_config(app_config: &mut AppConfig) {
 pub fn get_original_script_definition_by_uid<'a>(
     app_config: &'a AppConfig,
     script_uid: &Guid,
-) -> Option<(&'a ScriptDefinition, usize)> {
+) -> Option<(&'a ScriptDefinition, SparseKey)> {
     if let Some(local_config) = &app_config.local_config_body {
         if let Some(result) =
             find_original_script_definition_by_uid(&local_config.script_definitions.0, &script_uid)
@@ -645,10 +645,10 @@ pub fn get_original_script_definition_by_uid<'a>(
 fn find_original_script_definition_by_uid<'a>(
     script_definitions: &'a SparseSet<ScriptDefinition>,
     script_uid: &Guid,
-) -> Option<(&'a ScriptDefinition, usize)> {
-    for (idx, script_definition) in script_definitions.values().enumerate() {
+) -> Option<(&'a ScriptDefinition, SparseKey)> {
+    for (id, script_definition) in script_definitions.key_values() {
         if original_script_definition_search_predicate(script_definition, &script_uid) {
-            return Some((&script_definition, idx));
+            return Some((&script_definition, id));
         }
     }
     None

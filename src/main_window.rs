@@ -112,7 +112,7 @@ pub(crate) enum EditScriptType {
 
 #[derive(Debug, Clone)]
 pub(crate) enum ScriptId {
-    ScriptConfig(usize),
+    ScriptConfig(SparseKey),
     ExecutionList(SparseKey),
 }
 
@@ -265,7 +265,7 @@ pub(crate) enum WindowMessage {
     TrySwitchWindowEditMode,
     SaveConfigAndExitEditing,
     RevertConfigAndExitEditing,
-    OpenScriptConfigEditing(usize),
+    OpenScriptConfigEditing(SparseKey),
     ToggleConfigEditing,
     SettingsToggleWindowStatusReactions(config::ConfigEditMode, bool),
     SettingsToggleKeepWindowSize(config::ConfigEditMode, bool),
@@ -287,8 +287,8 @@ pub(crate) enum WindowMessage {
     SwitchToSharedSettingsConfig,
     SwitchToLocalSettingsConfig,
     ToggleScriptHidden(bool),
-    CreateCopyOfSharedScript(usize),
-    MoveToShared(usize),
+    CreateCopyOfSharedScript(SparseKey),
+    MoveToShared(SparseKey),
     SaveAsPreset,
     ScriptFilterChanged(String),
     RequestCloseApp,
@@ -840,14 +840,16 @@ impl MainWindow {
                     config_script_id.edit_mode,
                 );
 
-                let (new_script, new_script_uid) = if let Some(script) =
-                    script_definition_list.get_by_index(config_script_id.idx)
-                {
-                    make_script_copy(script)
-                } else {
+                let (new_script, new_script_uid) =
+                    if let Some(script) = script_definition_list.get(config_script_id.id) {
+                        make_script_copy(script)
+                    } else {
+                        return Task::none();
+                    };
+                let Some(idx) = script_definition_list.index(config_script_id.id) else {
                     return Task::none();
                 };
-                script_definition_list.insert_at_position(config_script_id.idx + 1, new_script);
+                script_definition_list.insert_at_position(idx + 1, new_script);
 
                 // if we duplicated a shared script, make a reference to it in the local config
                 if config_script_id.edit_mode == config::ConfigEditMode::Shared
@@ -857,7 +859,7 @@ impl MainWindow {
                 }
 
                 let idx =
-                    get_top_level_edited_script_idx_by_uid(&mut self.app_config, &new_script_uid);
+                    get_top_level_edited_script_id_by_uid(&mut self.app_config, &new_script_uid);
 
                 if let Some(idx) = idx {
                     self.window_state.cursor_script = Some(ScriptId::ScriptConfig(idx));
@@ -1204,11 +1206,11 @@ impl MainWindow {
                 keybind_editing::update_keybind_visual_caches(self, edit_mode);
                 exit_window_edit_mode(self);
             }
-            WindowMessage::OpenScriptConfigEditing(script_idx) => {
+            WindowMessage::OpenScriptConfigEditing(script_id) => {
                 select_config_edited_script(
                     self,
                     ConfigScriptId {
-                        idx: script_idx,
+                        id: script_id,
                         edit_mode: config::get_main_edit_mode(&self.app_config),
                     },
                 );
@@ -1403,14 +1405,13 @@ impl MainWindow {
                 switch_to_editing_settings_config(self, config::ConfigEditMode::Local);
             }
             WindowMessage::ToggleScriptHidden(is_hidden) => {
-                let Some(ScriptId::ScriptConfig(script_idx)) = &mut self.window_state.cursor_script
+                let Some(ScriptId::ScriptConfig(script_id)) = &mut self.window_state.cursor_script
                 else {
                     return Task::none();
                 };
 
                 if let Some(config) = &mut self.app_config.local_config_body {
-                    let Some(script) = config.script_definitions.0.get_by_index_mut(*script_idx)
-                    else {
+                    let Some(script) = config.script_definitions.0.get_mut(*script_id) else {
                         return Task::none();
                     };
 
@@ -1424,9 +1425,9 @@ impl MainWindow {
                 }
                 update_config_cache(self);
             }
-            WindowMessage::CreateCopyOfSharedScript(script_idx) => {
+            WindowMessage::CreateCopyOfSharedScript(script_id) => {
                 let script = if let Some(config) = &self.app_config.local_config_body {
-                    if let Some(script) = config.script_definitions.0.get_by_index(script_idx) {
+                    if let Some(script) = config.script_definitions.0.get(script_id) {
                         script
                     } else {
                         return Task::none();
@@ -1468,14 +1469,17 @@ impl MainWindow {
                 };
 
                 if let Some(config) = &mut self.app_config.local_config_body {
-                    config
+                    let Some(script_idx) = config.script_definitions.0.index(script_id) else {
+                        return Task::none();
+                    };
+                    let new_script_id = config
                         .script_definitions
                         .0
                         .insert_at_position(script_idx + 1, new_script);
                     select_config_edited_script(
                         self,
                         ConfigScriptId {
-                            idx: script_idx + 1,
+                            id: new_script_id,
                             edit_mode: config::ConfigEditMode::Local,
                         },
                     );
@@ -1483,19 +1487,19 @@ impl MainWindow {
                 }
                 update_config_cache(self);
             }
-            WindowMessage::MoveToShared(script_idx) => {
+            WindowMessage::MoveToShared(script_id) => {
                 if let Some(config) = &mut self.app_config.local_config_body {
-                    if config.script_definitions.0.len() <= script_idx {
+                    if !config.script_definitions.0.contains(script_id) {
                         return Task::none();
                     }
 
                     let insert_position = find_best_shared_script_insert_position(
                         &config.script_definitions.0,
                         &self.app_config.script_definitions.0,
-                        script_idx,
+                        script_id,
                     );
 
-                    if let Some(script) = config.script_definitions.0.get_by_index_mut(script_idx) {
+                    if let Some(script) = config.script_definitions.0.get_mut(script_id) {
                         let mut replacement_script = match script {
                             config::ScriptDefinition::Original(definition) => {
                                 config::ScriptDefinition::ReferenceToShared(
@@ -1733,10 +1737,10 @@ impl MainWindow {
 
                 if focused_pane == PaneVariant::ScriptList {
                     if self.edit_data.window_edit_data.is_some() {
-                        if let Some(ScriptId::ScriptConfig(script_idx)) =
+                        if let Some(ScriptId::ScriptConfig(script_id)) =
                             &self.window_state.cursor_script
                         {
-                            move_config_script_down(self, *script_idx);
+                            move_config_script_down(self, *script_id);
                         }
                     }
                 } else if focused_pane == PaneVariant::ExecutionList {
@@ -1802,7 +1806,7 @@ impl MainWindow {
                     return Task::none();
                 }
 
-                let Some(ScriptId::ScriptConfig(script_idx)) = &self.window_state.cursor_script
+                let Some(ScriptId::ScriptConfig(script_id)) = &self.window_state.cursor_script
                 else {
                     return Task::none();
                 };
@@ -1811,7 +1815,7 @@ impl MainWindow {
                     if &self.panes.panes[&focus].variant == &PaneVariant::ScriptList {
                         let scripts = &self.displayed_configs_list_cache;
 
-                        if let Some(script) = scripts.get_by_index(*script_idx) {
+                        if let Some(script) = scripts.get(*script_id) {
                             if self.window_state.is_command_key_down {
                                 if self.window_state.is_alt_key_down {
                                     let scripts = get_resulting_scripts_from_guid(
@@ -2222,12 +2226,12 @@ fn produce_script_list_content<'a>(
 
     let data: Element<_> = column(
         displayed_configs_list_cache
-            .values()
+            .key_values()
             .enumerate()
-            .map(|(i, script)| {
+            .map(|(i, (script_id, script))| {
                 let mut name_text = script.name.clone();
 
-                if is_editing && is_local_config_script(i, &config) {
+                if is_editing && is_local_config_script(script_id, &config) {
                     name_text += " [local]";
                 }
                 if is_editing && script.is_hidden {
@@ -2257,7 +2261,7 @@ fn produce_script_list_content<'a>(
                 };
 
                 let is_selected = match &window_state.cursor_script {
-                    Some(ScriptId::ScriptConfig(idx)) if *idx == i => true,
+                    Some(ScriptId::ScriptConfig(id)) if *id == script_id => true,
                     _ => false,
                 };
 
@@ -2283,7 +2287,7 @@ fn produce_script_list_content<'a>(
                 .on_press(if edit_data.window_edit_data.is_none() {
                     WindowMessage::AddScriptToExecutionOrRun(script.original_script_uid.clone())
                 } else {
-                    WindowMessage::OpenScriptConfigEditing(i)
+                    WindowMessage::OpenScriptConfigEditing(script_id)
                 });
 
                 row![item_button].into()
@@ -3249,16 +3253,20 @@ fn produce_script_edit_content<'a>(
                 return Column::new();
             }
 
+            let Some(script_definition) = get_script_definition(
+                &app_config,
+                config::get_main_edit_mode(app_config),
+                *script_idx,
+            ) else {
+                return Column::new();
+            };
+
             produce_script_config_edit_content(
                 visual_caches,
                 edit_data,
                 app_config,
                 *script_idx,
-                get_script_definition(
-                    &app_config,
-                    config::get_main_edit_mode(app_config),
-                    *script_idx,
-                ),
+                script_definition,
                 theme,
             )
         }
@@ -3280,7 +3288,7 @@ fn produce_script_config_edit_content<'a>(
     visual_caches: &VisualCaches,
     edit_data: &EditData,
     app_config: &config::AppConfig,
-    edited_script_idx: usize,
+    edited_script_id: SparseKey,
     script: &config::ScriptDefinition,
     theme: &Theme,
 ) -> Column<'a, WindowMessage> {
@@ -3292,7 +3300,7 @@ fn produce_script_config_edit_content<'a>(
     };
 
     let config_script_id = ConfigScriptId {
-        idx: edited_script_idx,
+        id: edited_script_id,
         edit_mode: config::get_main_edit_mode(&app_config),
     };
 
@@ -3326,14 +3334,11 @@ fn produce_script_config_edit_content<'a>(
             );
 
             if config_script_id.edit_mode == config::ConfigEditMode::Local
-                && is_local_config_script(edited_script_idx, &app_config)
+                && is_local_config_script(edited_script_id, &app_config)
             {
                 parameters.push(
-                    edit_button(
-                        "Make shared",
-                        WindowMessage::MoveToShared(edited_script_idx),
-                    )
-                    .into(),
+                    edit_button("Make shared", WindowMessage::MoveToShared(edited_script_id))
+                        .into(),
                 );
             }
 
@@ -3352,14 +3357,14 @@ fn produce_script_config_edit_content<'a>(
                 return Column::new();
             };
 
-            let Some((original_script, original_idx)) =
+            let Some((original_script, original_id)) =
                 config::get_original_script_definition_by_uid(&app_config, &reference.uid)
             else {
                 return Column::new();
             };
 
             let original_script_id = ConfigScriptId {
-                idx: original_idx,
+                id: original_id,
                 edit_mode: config::ConfigEditMode::Shared,
             };
 
@@ -3410,7 +3415,7 @@ fn produce_script_config_edit_content<'a>(
             parameters.push(
                 edit_button(
                     "Make local copy",
-                    WindowMessage::CreateCopyOfSharedScript(edited_script_idx),
+                    WindowMessage::CreateCopyOfSharedScript(edited_script_id),
                 )
                 .into(),
             );
@@ -3458,14 +3463,11 @@ fn produce_script_config_edit_content<'a>(
             );
 
             if config_script_id.edit_mode == config::ConfigEditMode::Local
-                && is_local_config_script(edited_script_idx, &app_config)
+                && is_local_config_script(edited_script_id, &app_config)
             {
                 parameters.push(
-                    edit_button(
-                        "Make shared",
-                        WindowMessage::MoveToShared(edited_script_idx),
-                    )
-                    .into(),
+                    edit_button("Make shared", WindowMessage::MoveToShared(edited_script_id))
+                        .into(),
                 );
             }
 
