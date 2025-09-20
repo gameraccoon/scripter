@@ -550,11 +550,12 @@ impl MainWindow {
                                     self.execution_manager.get_started_executions().get_key(i);
 
                                 if let Some(execution_id) = execution_id {
-                                    self.execution_manager.add_script_to_running_execution(
-                                        &mut self.app_config,
-                                        execution_id,
-                                        vec![script],
-                                    );
+                                    self.execution_manager
+                                        .add_execution_scripts_to_running_execution(
+                                            &mut self.app_config,
+                                            execution_id,
+                                            vec![script],
+                                        );
                                     has_scheduled_new_script = true;
                                 }
                             }
@@ -759,7 +760,7 @@ impl MainWindow {
                         .drain(..)
                         .for_each(|record| {
                             self.execution_manager
-                                .add_script_to_edited_list(record.script);
+                                .add_execution_script_to_edited_list(record.script);
                         });
                 }
                 update_edited_execution_list_script_number(self);
@@ -786,7 +787,7 @@ impl MainWindow {
                             .drain(..)
                             .for_each(|record| {
                                 self.execution_manager
-                                    .add_script_to_edited_list(record.script);
+                                    .add_execution_script_to_edited_list(record.script);
                             });
                     }
                 }
@@ -1520,11 +1521,13 @@ impl MainWindow {
                     items: vec![],
                 };
 
-                for script in self.execution_manager.get_edited_scripts() {
+                for execution_script in self.execution_manager.get_edited_scripts() {
                     let original_script = config::get_original_script_definition_by_uid(
                         &self.app_config,
-                        &script.uid, // wrong
+                        &execution_script.original.uid,
                     );
+
+                    let script = &execution_script.original;
 
                     let original_script = if let Some(original_script_tuple) = original_script {
                         match original_script_tuple.0 {
@@ -1887,7 +1890,7 @@ impl MainWindow {
                         let output_path = if should_open_folder {
                             file_utils::get_script_output_path(
                                 execution.get_log_path().clone(),
-                                &record.script.name.clone(),
+                                &record.script.original.name.clone(),
                                 script_index as isize,
                                 record.status.retry_count,
                             )
@@ -2610,7 +2613,7 @@ fn produce_execution_list_content<'a>(
             let repeat_text = if script_status.retry_count > 0 {
                 format!(
                     " [{}/{}]",
-                    script_status.retry_count, record.script.autorerun_count
+                    script_status.retry_count, record.script.original.autorerun_count
                 )
             } else {
                 String::new()
@@ -2694,18 +2697,21 @@ fn produce_execution_list_content<'a>(
                 .into(),
             );
             row_data.push(Space::with_width(4).into());
-            if !record.script.icon.path.is_empty() {
+            if !record.script.original.icon.path.is_empty() {
                 row_data.push(
-                    image(config::get_full_path(path_caches, &record.script.icon))
-                        .width(22)
-                        .height(22)
-                        .into(),
+                    image(config::get_full_path(
+                        path_caches,
+                        &record.script.original.icon,
+                    ))
+                    .width(22)
+                    .height(22)
+                    .into(),
                 );
                 row_data.push(Space::with_width(4).into());
             }
             row_data.push(
                 tooltip(
-                    text(format!("{} {}", record.script.name, progress)).color(color),
+                    text(format!("{} {}", record.script.original.name, progress)).color(color),
                     text(record.tooltip.clone()),
                     tooltip::Position::Bottom,
                 )
@@ -2886,16 +2892,16 @@ fn produce_execution_list_content<'a>(
                     Vec::new();
 
                 row_data.push(Space::with_width(4).into());
-                if !script.icon.path.is_empty() {
+                if !script.original.icon.path.is_empty() {
                     row_data.push(
-                        image(config::get_full_path(path_caches, &script.icon))
+                        image(config::get_full_path(path_caches, &script.original.icon))
                             .width(22)
                             .height(22)
                             .into(),
                     );
                     row_data.push(Space::with_width(4).into());
                 }
-                row_data.push(text(script.name.clone()).color(color).into());
+                row_data.push(text(script.original.name.clone()).color(color).into());
 
                 if is_selected {
                     row_data.push(horizontal_space().into());
@@ -2932,7 +2938,7 @@ fn produce_execution_list_content<'a>(
                 } else if is_selected {
                     button::primary
                 } else {
-                    if is_original_script_missing_arguments(&script) {
+                    if is_original_script_missing_arguments(&script.original) {
                         button::danger
                     } else {
                         button::secondary
@@ -2960,7 +2966,7 @@ fn produce_execution_list_content<'a>(
         let have_scripts_missing_arguments = execution_lists
             .get_edited_scripts()
             .iter()
-            .any(|script| is_original_script_missing_arguments(script));
+            .any(|script| is_original_script_missing_arguments(&script.original));
 
         let mut execution_buttons: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
             Vec::with_capacity(6);
@@ -3242,9 +3248,11 @@ fn produce_script_edit_content<'a>(
         )
     } else {
         match execution_lists.get_edited_scripts().get(edited_script.idx) {
-            Some(script) => {
-                produce_script_to_execute_edit_content(visual_caches, edited_script.idx, &script)
-            }
+            Some(script) => produce_script_to_execute_edit_content(
+                visual_caches,
+                edited_script.idx,
+                &script.original,
+            ),
             _ => {
                 eprintln!("Could not find script with index {}", edited_script.idx);
                 Column::new()

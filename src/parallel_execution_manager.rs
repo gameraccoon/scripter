@@ -54,11 +54,11 @@ pub struct Execution {
 
 pub struct ParallelExecutionManager {
     started_executions: SparseSet<Execution>,
-    edited_scripts: Vec<config::OriginalScriptDefinition>,
+    edited_scripts: Vec<execution_thread::ExecutionScript>,
 }
 
 pub struct ScheduledScriptCacheRecord {
-    pub script: config::OriginalScriptDefinition,
+    pub script: execution_thread::ExecutionScript,
     pub tooltip: String,
     pub status: execution_thread::ScriptExecutionStatus,
 }
@@ -90,7 +90,7 @@ impl Execution {
     pub fn execute_scripts(
         &mut self,
         app_config: &config::AppConfig,
-        scripts_to_run: Vec<config::OriginalScriptDefinition>,
+        scripts_to_run: Vec<execution_thread::ExecutionScript>,
     ) {
         if scripts_to_run.is_empty() {
             return;
@@ -106,7 +106,7 @@ impl Execution {
                     .iter()
                     .map(|script| ScheduledScriptCacheRecord {
                         script: script.clone(),
-                        tooltip: get_tooltip_for_script(script),
+                        tooltip: get_tooltip_for_script(&script.original),
                         status: execution_thread::ScriptExecutionStatus {
                             start_time: None,
                             finish_time: None,
@@ -230,7 +230,7 @@ impl Execution {
                         .get_mut(script_local_idx)
                     {
                         if execution_thread::should_turn_failure_to_success(
-                            script.reaction_to_previous_failures,
+                            script.original.reaction_to_previous_failures,
                         ) {
                             self.has_failed_scripts = false;
                         }
@@ -395,7 +395,7 @@ impl Execution {
 
     fn consume_disconnected_and_not_started_scripts(
         &mut self,
-    ) -> Vec<config::OriginalScriptDefinition> {
+    ) -> Vec<execution_thread::ExecutionScript> {
         let mut result = Vec::new();
 
         if self.current_execution_list_index >= self.execution_lists.len() {
@@ -475,8 +475,15 @@ impl ParallelExecutionManager {
         }
     }
 
-    pub fn add_script_to_edited_list(&mut self, mut script: config::OriginalScriptDefinition) {
-        script.uid = config::Guid::new();
+    pub fn add_script_to_edited_list(&mut self, script: config::OriginalScriptDefinition) {
+        self.get_edited_scripts_mut()
+            .push(execution_thread::ExecutionScript::from_original(script));
+    }
+
+    pub fn add_execution_script_to_edited_list(
+        &mut self,
+        script: execution_thread::ExecutionScript,
+    ) {
         self.get_edited_scripts_mut().push(script);
     }
 
@@ -484,15 +491,15 @@ impl ParallelExecutionManager {
         self.get_edited_scripts_mut().remove(idx);
     }
 
-    pub fn get_edited_scripts(&self) -> &Vec<config::OriginalScriptDefinition> {
+    pub fn get_edited_scripts(&self) -> &Vec<execution_thread::ExecutionScript> {
         &self.edited_scripts
     }
 
-    pub fn get_edited_scripts_mut(&mut self) -> &mut Vec<config::OriginalScriptDefinition> {
+    pub fn get_edited_scripts_mut(&mut self) -> &mut Vec<execution_thread::ExecutionScript> {
         &mut self.edited_scripts
     }
 
-    pub fn consume_edited_scripts(&mut self) -> Vec<config::OriginalScriptDefinition> {
+    pub fn consume_edited_scripts(&mut self) -> Vec<execution_thread::ExecutionScript> {
         std::mem::replace(&mut self.edited_scripts, Vec::new())
     }
 
@@ -507,7 +514,7 @@ impl ParallelExecutionManager {
     pub fn start_new_execution(
         &mut self,
         app_config: &config::AppConfig,
-        scripts_to_run: Vec<config::OriginalScriptDefinition>,
+        scripts_to_run: Vec<execution_thread::ExecutionScript>,
     ) -> ExecutionId {
         let index = self.started_executions.push(Execution::new());
         let new_execution = self.started_executions.get_mut(index).unwrap();
@@ -526,11 +533,28 @@ impl ParallelExecutionManager {
         execution
     }
 
-    pub fn add_script_to_running_execution(
+    pub fn add_scripts_to_running_execution(
         &mut self,
         app_config: &config::AppConfig,
         execution_index: ExecutionId,
         scripts_to_add: Vec<config::OriginalScriptDefinition>,
+    ) {
+        if let Some(execution) = self.started_executions.get_mut(execution_index) {
+            execution.execute_scripts(
+                app_config,
+                scripts_to_add
+                    .into_iter()
+                    .map(|script| execution_thread::ExecutionScript::from_original(script))
+                    .collect(),
+            );
+        }
+    }
+
+    pub fn add_execution_scripts_to_running_execution(
+        &mut self,
+        app_config: &config::AppConfig,
+        execution_index: ExecutionId,
+        scripts_to_add: Vec<execution_thread::ExecutionScript>,
     ) {
         if let Some(execution) = self.started_executions.get_mut(execution_index) {
             execution.execute_scripts(app_config, scripts_to_add);

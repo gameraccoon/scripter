@@ -6,7 +6,6 @@ use iced::widget::{pane_grid, text_input};
 use iced::window::resize;
 use iced::{keyboard, window, Size, Task, Theme};
 
-use crate::color_utils;
 use crate::config;
 use crate::drag_and_drop_list;
 use crate::drag_and_drop_list::{DragAndDropList, DropArea};
@@ -16,6 +15,7 @@ use crate::keybind_editing;
 use crate::main_window::*;
 use crate::parallel_execution_manager;
 use crate::style;
+use crate::{color_utils, execution_thread};
 
 pub(crate) const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
 pub(crate) const ONE_SCRIPT_LIST_ELEMENT_HEIGHT: f32 = 30.0;
@@ -429,7 +429,7 @@ pub fn try_add_script_to_execution_or_start_new(app: &mut MainWindow, script_uid
             .unwrap()
             .get_id();
 
-        app.execution_manager.add_script_to_running_execution(
+        app.execution_manager.add_scripts_to_running_execution(
             &app.app_config,
             execution_id,
             scripts_to_add,
@@ -906,23 +906,36 @@ pub fn start_new_execution_from_edited_scripts(app: &mut MainWindow) {
         .execution_manager
         .get_edited_scripts()
         .iter()
-        .any(|script| is_original_script_missing_arguments(script))
+        .any(|script| is_original_script_missing_arguments(&script.original))
     {
         return;
     }
 
     let scripts_to_execute = app.execution_manager.consume_edited_scripts();
 
-    start_new_execution_from_provided_scripts(app, scripts_to_execute);
+    start_new_execution_from_provided_execution_scripts(app, scripts_to_execute);
 }
 
 pub fn start_new_execution_from_provided_scripts(
     app: &mut MainWindow,
     scripts: Vec<config::OriginalScriptDefinition>,
 ) {
+    start_new_execution_from_provided_execution_scripts(
+        app,
+        scripts
+            .into_iter()
+            .map(|script| execution_thread::ExecutionScript::from_original(script))
+            .collect(),
+    );
+}
+
+pub fn start_new_execution_from_provided_execution_scripts(
+    app: &mut MainWindow,
+    scripts: Vec<execution_thread::ExecutionScript>,
+) {
     if scripts
         .iter()
-        .any(|script| is_original_script_missing_arguments(script))
+        .any(|script| is_original_script_missing_arguments(&script.original))
     {
         eprintln!("Some scripts are missing arguments");
         return;
@@ -956,7 +969,7 @@ pub fn add_edited_scripts_to_started_execution(
         .execution_manager
         .get_edited_scripts()
         .iter()
-        .any(|script| is_original_script_missing_arguments(script))
+        .any(|script| is_original_script_missing_arguments(&script.original))
     {
         return;
     }
@@ -964,11 +977,12 @@ pub fn add_edited_scripts_to_started_execution(
     clean_script_selection(&mut app.window_state.cursor_script);
 
     let scripts_to_execute = app.execution_manager.consume_edited_scripts();
-    app.execution_manager.add_script_to_running_execution(
-        &app.app_config,
-        execution_id,
-        scripts_to_execute,
-    );
+    app.execution_manager
+        .add_execution_scripts_to_running_execution(
+            &app.app_config,
+            execution_id,
+            scripts_to_execute,
+        );
 
     cancel_all_drag_and_drop_operations(app);
 }
@@ -1003,11 +1017,11 @@ pub fn take_edited_execution_script(
     execution_manager: &mut parallel_execution_manager::ParallelExecutionManager,
     uid: config::Guid,
     predicate: impl Fn(&config::OriginalScriptDefinition) -> bool,
-) -> Option<config::OriginalScriptDefinition> {
+) -> Option<execution_thread::ExecutionScript> {
     execution_manager
         .get_edited_scripts()
         .iter()
-        .position(|script| script.uid == uid && predicate(script))
+        .position(|script| script.uid == uid && predicate(&script.original))
         .and_then(|idx| Some(execution_manager.get_edited_scripts_mut().remove(idx)))
 }
 
@@ -1218,7 +1232,7 @@ pub fn select_execution_script(app: &mut MainWindow, script_idx: usize) {
     );
 
     if let Some(script) = &app.execution_manager.get_edited_scripts().get(script_idx) {
-        app.visual_caches.autorerun_count = script.autorerun_count.to_string();
+        app.visual_caches.autorerun_count = script.original.autorerun_count.to_string();
     }
 }
 
@@ -1410,7 +1424,7 @@ pub fn apply_execution_script_edit(
         .get_mut(script_idx)
     {
         Some(script) => {
-            edit_fn(script);
+            edit_fn(&mut script.original);
         }
         _ => {}
     }
@@ -1540,7 +1554,7 @@ pub fn should_autoclean_on_success(
         return execution
             .get_scheduled_scripts_cache()
             .iter()
-            .all(|record| record.script.autoclean_on_success);
+            .all(|record| record.script.original.autoclean_on_success);
     }
 
     false

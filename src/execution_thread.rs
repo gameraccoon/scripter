@@ -48,13 +48,30 @@ pub struct OutputLine {
     pub timestamp: chrono::DateTime<chrono::Local>,
 }
 
-pub(crate) type LogBuffer = RingBuffer<OutputLine, 30>;
+#[derive(Clone)]
+pub struct ExecutionScript {
+    pub original: config::OriginalScriptDefinition,
+    // there may be multiple original scripts with the same uid,
+    // but we want to make a way to distinguish them, so we use this uid instead
+    pub uid: config::Guid,
+}
+
+impl ExecutionScript {
+    pub fn from_original(original: config::OriginalScriptDefinition) -> Self {
+        Self {
+            original,
+            uid: config::Guid::new(),
+        }
+    }
+}
+
+pub type LogBuffer = RingBuffer<OutputLine, 30>;
 const REQUESTED_ACTION_NONE: u8 = 0;
 const REQUESTED_ACTION_STOP: u8 = 1;
 const REQUESTED_ACTION_DISCONNECT: u8 = 2;
 
 pub struct ScriptExecutionData {
-    pub scripts_to_run: Vec<config::OriginalScriptDefinition>,
+    pub scripts_to_run: Vec<ExecutionScript>,
     pub progress_receiver: Option<Receiver<(usize, ScriptExecutionStatus)>>,
     pub requested_action: Arc<AtomicU8>,
     pub thread_join_handle: Option<std::thread::JoinHandle<()>>,
@@ -128,7 +145,7 @@ pub fn run_scripts(
         let mut kill_requested = false;
         for script_idx in 0..scripts_to_run.len() {
             let mut disconnect_requested = false;
-            let script = &scripts_to_run[script_idx];
+            let script = &scripts_to_run[script_idx].original;
             let mut script_state = get_default_script_execution_status();
             script_state.start_time = Some(Instant::now());
 
