@@ -804,10 +804,12 @@ fn get_default_work_path() -> PathBuf {
 fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut AppConfig) {
     // find all the shared scripts that are missing from the local config, and populate them
     let mut previous_script_idx = None;
-    let mut has_configs_to_remove = false;
     for script in &shared_config.script_definitions {
         let (original_script_uid, is_hidden) = match script {
             ScriptDefinition::ReferenceToShared(_) => {
+                eprintln!(
+                    "Shared config contains reference to shared script, this is not supported"
+                );
                 continue;
             }
             ScriptDefinition::Original(script) => (script.uid.clone(), script.is_hidden),
@@ -829,7 +831,6 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
         match script_idx {
             Some(script_idx) => {
                 previous_script_idx = Some(script_idx);
-                has_configs_to_remove = true;
             }
             None => {
                 match &mut previous_script_idx {
@@ -860,22 +861,20 @@ fn populate_shared_scripts(local_config: &mut LocalConfig, shared_config: &mut A
         }
     }
 
-    if has_configs_to_remove {
-        // remove all the scripts that are not in the shared config
-        local_config.script_definitions.retain(
-            |local_script: &ScriptDefinition| match local_script {
-                ScriptDefinition::ReferenceToShared(reference) => shared_config
-                    .script_definitions
-                    .iter()
-                    .any(|script| match script {
-                        ScriptDefinition::ReferenceToShared(_) => false,
-                        ScriptDefinition::Original(script) => reference.uid == script.uid,
-                        ScriptDefinition::Preset(preset) => reference.uid == preset.uid,
-                    }),
-                _ => true,
-            },
-        );
-    }
+    // remove all the scripts that are not in the shared config
+    local_config
+        .script_definitions
+        .retain(|local_script: &ScriptDefinition| match local_script {
+            ScriptDefinition::ReferenceToShared(reference) => shared_config
+                .script_definitions
+                .iter()
+                .any(|script| match script {
+                    ScriptDefinition::ReferenceToShared(_) => false,
+                    ScriptDefinition::Original(script) => reference.uid == script.uid,
+                    ScriptDefinition::Preset(preset) => reference.uid == preset.uid,
+                }),
+            _ => true,
+        });
 }
 
 fn has_write_permission(path: &Path) -> bool {
