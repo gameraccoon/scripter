@@ -3,7 +3,8 @@
 
 use crate::config;
 use iced::theme::{self, Theme};
-use iced::widget::{button, container, text_input};
+use iced::widget::scrollable::{Rail, Scroller};
+use iced::widget::{button, container, scrollable, text_input};
 use iced::Border;
 
 pub fn title_bar_active(theme: &Theme) -> container::Style {
@@ -145,5 +146,20 @@ pub(crate) fn drop_area_button_style(theme: &Theme, status: button::Status) -> b
             ..default_style.border
         },
         ..default_style
+    }
+}
+
+pub(crate) fn log_scrollable_style(theme: &Theme, status: scrollable::Status) -> scrollable::Style {
+    scrollable::Style {
+        container: Default::default(),
+        vertical_rail: Rail {
+            background: None,
+            border: Default::default(),
+            scroller: Scroller {
+                color: Default::default(),
+                border: Default::default(),
+            },
+        },
+        ..scrollable::default(theme, status)
     }
 }

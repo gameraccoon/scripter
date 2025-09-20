@@ -23,7 +23,7 @@ use iced::event::listen_with;
 use iced::mouse::Event;
 use iced::theme::Theme;
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
-use iced::widget::scrollable::Scrollbar;
+use iced::widget::scrollable::{RelativeOffset, Scrollbar};
 use iced::widget::text::LineHeight;
 use iced::widget::{
     button, checkbox, column, container, horizontal_rule, horizontal_space, image, image::Handle,
@@ -63,6 +63,7 @@ impl std::fmt::Display for config::ConfigUpdateBehavior {
 // these should be const not just static
 pub(crate) static FILTER_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 static ARGUMENTS_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
+static LOGS_SCROLL_ID: Lazy<scrollable::Id> = Lazy::new(scrollable::Id::unique);
 
 // caches for visual elements content
 pub(crate) struct VisualCaches {
@@ -821,6 +822,10 @@ impl MainWindow {
                     events::on_execution_pane_content_height_decreased(self);
                     update_edited_execution_list_script_number(self);
                     update_drag_and_drop_area_bounds(self);
+                }
+
+                if !self.window_state.has_maximized_pane {
+                    return scrollable::snap_to(LOGS_SCROLL_ID.clone(), RelativeOffset::END);
                 }
             }
             WindowMessage::OpenScriptEditing(script_idx) => {
@@ -3190,7 +3195,16 @@ fn produce_log_output_content<'a>(
 
         let data: Element<_> = column(data_lines).spacing(10).width(Length::Fill).into();
 
-        column![tabs, logs, scrollable(data)]
+        column![
+            tabs,
+            logs,
+            stack![
+                scrollable(data)
+                    .style(style::log_scrollable_style)
+                    .id(LOGS_SCROLL_ID.clone()),
+                opaque(row![].width(Length::Fill).height(Length::Fill))
+            ]
+        ]
     } else {
         column![tabs]
     }

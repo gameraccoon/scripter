@@ -274,7 +274,7 @@ pub fn get_pane_name_from_variant(variant: &PaneVariant) -> &str {
     match variant {
         PaneVariant::ScriptList => "Scripts",
         PaneVariant::ExecutionList => "Execution",
-        PaneVariant::LogOutput => "Log",
+        PaneVariant::LogOutput => "Log preview",
         PaneVariant::Parameters => "Parameters",
     }
 }
