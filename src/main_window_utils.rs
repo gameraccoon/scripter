@@ -412,6 +412,8 @@ pub fn try_add_edited_scripts_to_execution_or_start_new(app: &mut MainWindow) {
         // if there are no executions, then we can start a new one
         start_new_execution_from_edited_scripts(app);
     }
+
+    events::on_execution_pane_content_height_decreased(app);
 }
 
 pub fn try_add_script_to_execution_or_start_new(app: &mut MainWindow, script_uid: config::Guid) {
@@ -985,6 +987,7 @@ pub fn add_edited_scripts_to_started_execution(
         );
 
     cancel_all_drag_and_drop_operations(app);
+    update_drag_and_drop_area_bounds(app);
 }
 
 pub fn add_script_to_execution(
