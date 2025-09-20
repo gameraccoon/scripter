@@ -10,7 +10,7 @@ use iced::advanced::image::Handle;
 use iced::widget::text::LineHeight;
 use iced::widget::{
     button, checkbox, container, horizontal_rule, image, pick_list, row, text, text_input, tooltip,
-    Button, Column, Space,
+    value, Button, Column, Space,
 };
 use iced::{alignment, Alignment, Element, Length, Theme};
 
@@ -203,7 +203,7 @@ pub fn main_icon_button(
 
 pub fn main_icon_button_string(
     icon_handle: Handle,
-    label: String,
+    label: impl ToString,
     message: Option<WindowMessage>,
 ) -> Button<'static, WindowMessage> {
     let new_button = button(
@@ -212,7 +212,7 @@ pub fn main_icon_button_string(
                 .width(Length::Fixed(16.0))
                 .height(Length::Fixed(16.0)),
             Space::with_width(4),
-            text(label.to_string()).width(Length::Shrink).size(16),
+            value(label).width(Length::Shrink).size(16),
         ]
         .align_y(Alignment::Center),
     )

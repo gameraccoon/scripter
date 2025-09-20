@@ -7,7 +7,6 @@ use crate::custom_keybinds;
 use crate::drag_and_drop_list;
 use crate::events;
 use crate::execution_thread;
-use crate::file_utils;
 use crate::git_support;
 use crate::keybind_editing;
 use crate::main_window_utils::*;
@@ -305,7 +304,7 @@ pub(crate) enum WindowMessage {
     EditExecutionListTitle(String),
     OpenWithDefaultApplication(PathBuf),
     OpenUrl(String),
-    OpenLogFileOrFolder(parallel_execution_manager::ExecutionId, usize),
+    OpenLogFolder(parallel_execution_manager::ExecutionId),
     ProcessKeyPress(keyboard::Key, keyboard::Modifiers),
     StartRecordingKeybind(keybind_editing::KeybindAssociatedData),
     StopRecordingKeybind,
@@ -1878,28 +1877,13 @@ impl MainWindow {
                     eprintln!("Failed to open URL: {}", e);
                 }
             }
-            WindowMessage::OpenLogFileOrFolder(execution_id, script_index) => {
+            WindowMessage::OpenLogFolder(execution_id) => {
                 if let Some(execution) = self
                     .execution_manager
                     .get_started_executions()
                     .get(execution_id)
                 {
-                    if let Some(record) = execution.get_scheduled_scripts_cache().get(script_index)
-                    {
-                        let should_open_folder = record.status.retry_count > 0;
-                        let output_path = if should_open_folder {
-                            file_utils::get_script_output_path(
-                                execution.get_log_path().clone(),
-                                &record.script.original.name.clone(),
-                                script_index as isize,
-                                record.status.retry_count,
-                            )
-                        } else {
-                            execution.get_log_path().clone()
-                        };
-
-                        open::that_in_background(output_path);
-                    }
+                    open::that_in_background(execution.get_log_folder_path());
                 }
             }
             WindowMessage::ProcessKeyPress(iced_key, iced_modifiers) => {
@@ -2719,36 +2703,6 @@ fn produce_execution_list_content<'a>(
                 .into(),
             );
 
-            if script_status.has_script_started() {
-                row_data.push(Space::with_width(8).into());
-                if script_status.retry_count > 0 {
-                    row_data.push(
-                        tooltip(
-                            inline_icon_button(
-                                icons.themed.log.clone(),
-                                WindowMessage::OpenLogFileOrFolder(execution_id, i),
-                            ),
-                            "Open log directory",
-                            tooltip::Position::Right,
-                        )
-                        .style(container::bordered_box)
-                        .into(),
-                    );
-                } else if !script_status.has_script_been_skipped() {
-                    row_data.push(
-                        tooltip(
-                            inline_icon_button(
-                                icons.themed.log.clone(),
-                                WindowMessage::OpenLogFileOrFolder(execution_id, i),
-                            ),
-                            "Open log file",
-                            tooltip::Position::Right,
-                        )
-                        .style(container::bordered_box)
-                        .into(),
-                    );
-                }
-            }
             data_lines.push(row(row_data).height(30).into());
         }
 
@@ -2795,6 +2749,15 @@ fn produce_execution_list_content<'a>(
                             },
                             Some(WindowMessage::ClearFinishedExecutionScripts(execution_id)),
                         ),
+                        if execution.has_non_skipped_scripts() {
+                            row![main_icon_button_string(
+                                icons.themed.log.clone(),
+                                "Logs",
+                                Some(WindowMessage::OpenLogFolder(execution_id)),
+                            )]
+                        } else {
+                            row![]
+                        }
                     ]
                 } else {
                     row![text("Waiting for the execution to stop")]
@@ -2836,6 +2799,15 @@ fn produce_execution_list_content<'a>(
                                 icons.themed.edit.clone(),
                                 "Edit",
                                 Some(WindowMessage::EditExecutedScripts(execution_id))
+                            )]
+                        } else {
+                            row![]
+                        },
+                        if execution.has_non_skipped_scripts() {
+                            row![main_icon_button_string(
+                                icons.themed.log.clone(),
+                                "Logs",
+                                Some(WindowMessage::OpenLogFolder(execution_id)),
                             )]
                         } else {
                             row![]
@@ -3163,8 +3135,8 @@ fn produce_log_output_content<'a>(
         None
     };
 
-    let mut data_lines: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
     if let Some(selected_execution) = selected_execution {
+        let mut data_lines: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
         if let Ok(logs) = selected_execution.get_recent_logs().try_lock() {
             if !logs.is_empty() {
                 let (caption_color, error_color) =
@@ -3206,15 +3178,26 @@ fn produce_log_output_content<'a>(
                 }));
             }
         }
+
+        let logs = if selected_execution.has_non_skipped_scripts() {
+            column![main_button(
+                "Open log directory",
+                Some(WindowMessage::OpenLogFolder(selected_execution.get_id())),
+            )]
+        } else {
+            column![]
+        };
+
+        let data: Element<_> = column(data_lines).spacing(10).width(Length::Fill).into();
+
+        column![tabs, logs, scrollable(data)]
+    } else {
+        column![tabs]
     }
-
-    let data: Element<_> = column(data_lines).spacing(10).width(Length::Fill).into();
-
-    column![tabs, scrollable(data)]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .spacing(10)
-        .align_x(Alignment::Start)
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .spacing(10)
+    .align_x(Alignment::Start)
 }
 
 fn produce_script_edit_content<'a>(

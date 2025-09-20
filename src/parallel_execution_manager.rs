@@ -39,6 +39,7 @@ pub struct Execution {
     scheduled_scripts_cache: Vec<ScheduledScriptCacheRecord>,
 
     has_failed_scripts: bool,
+    has_non_skipped_scripts: bool,
 
     log_directory: PathBuf,
     recent_logs: Arc<Mutex<execution_thread::LogBuffer>>,
@@ -72,6 +73,7 @@ impl Execution {
             current_execution_list_index: 0,
             scheduled_scripts_cache: Vec::new(),
             has_failed_scripts: false,
+            has_non_skipped_scripts: false,
             log_directory: PathBuf::new(),
             recent_logs: Arc::new(Mutex::new(ring_buffer::RingBuffer::new(Default::default()))),
             currently_outputting_script: -1,
@@ -191,7 +193,7 @@ impl Execution {
             < self.scheduled_scripts_cache.len() as isize
     }
 
-    pub fn get_log_path(&self) -> &PathBuf {
+    pub fn get_log_folder_path(&self) -> &PathBuf {
         &self.log_directory
     }
 
@@ -207,9 +209,14 @@ impl Execution {
         self.has_failed_scripts
     }
 
+    pub fn has_non_skipped_scripts(&self) -> bool {
+        self.has_non_skipped_scripts
+    }
+
     pub fn get_scheduled_scripts_cache(&self) -> &Vec<ScheduledScriptCacheRecord> {
         &self.scheduled_scripts_cache
     }
+
     pub fn get_scheduled_scripts_cache_mut(&mut self) -> &mut Vec<ScheduledScriptCacheRecord> {
         &mut self.scheduled_scripts_cache
     }
@@ -220,6 +227,10 @@ impl Execution {
             if let Ok(progress) = rx.try_recv() {
                 let script_local_idx = progress.0;
                 let script_status = progress.1;
+
+                if !script_status.has_script_been_skipped() {
+                    self.has_non_skipped_scripts = true;
+                }
 
                 if script_status.has_script_failed() {
                     self.has_failed_scripts = true;
