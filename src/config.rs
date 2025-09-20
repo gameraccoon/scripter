@@ -1244,11 +1244,11 @@ pub fn update_local_config_script_positions_from_shared_config(
     for script in &local_config.script_definitions {
         match script {
             ScriptDefinition::ReferenceToShared(script) => {
-                let Some(new_idx) = positions.iter().position(|uid| *uid == script.uid) else {
+                if let Some(new_idx) = positions.iter().position(|uid| *uid == script.uid) {
+                    position_to_insert = new_idx + 1;
+                } else {
                     eprintln!("Failed to find shared script with uid {}", script.uid.data);
-                    return;
                 };
-                position_to_insert = new_idx + 1;
             }
             _ => {
                 let uid = get_script_uid(script).clone();
