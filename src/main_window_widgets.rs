@@ -588,7 +588,7 @@ pub(crate) fn populate_string_vec_edit_content<'a>(
             .chain(std::iter::once::<&String>(&String::new()))
             .enumerate()
             .map(|(idx, line)| {
-                text_input(if idx + 1 == values_len { "+" } else { "" }, &line)
+                text_input(if idx == values_len { "+" } else { "" }, &line)
                     .on_input(move |new_value| change_fn(idx, new_value))
                     .padding(5)
                     .into()
