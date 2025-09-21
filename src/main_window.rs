@@ -4,7 +4,7 @@
 use crate::color_utils;
 use crate::config;
 use crate::custom_keybinds;
-use crate::drag_and_drop_list;
+use crate::drag_and_drop;
 use crate::events;
 use crate::execution_thread;
 use crate::git_support;
@@ -16,8 +16,8 @@ use crate::style;
 use crate::ui_icons;
 use std::cmp::PartialEq;
 
-use crate::drag_and_drop_list::{DragAndDropList, DragResult, DropArea};
-use drag_and_drop_list::DropAreaState;
+use crate::drag_and_drop::{DragAndDropList, DragResult, DropArea};
+use drag_and_drop::DropAreaState;
 use iced::alignment::{self, Alignment};
 use iced::event::listen_with;
 use iced::mouse::Event;
@@ -398,7 +398,7 @@ impl MainWindow {
                 drag_and_drop_lists: DragAndDropLists {
                     script_list: DragAndDropList::new(
                         0,
-                        drag_and_drop_list::StaticDragAreaParameters {
+                        drag_and_drop::StaticDragAreaParameters {
                             element_height: ONE_SCRIPT_LIST_ELEMENT_HEIGHT,
                             is_dragging_outside_allowed: true,
                             is_reordering_allowed: false,
@@ -407,7 +407,7 @@ impl MainWindow {
                     ),
                     edit_script_list: DragAndDropList::new(
                         0,
-                        drag_and_drop_list::StaticDragAreaParameters {
+                        drag_and_drop::StaticDragAreaParameters {
                             element_height: ONE_SCRIPT_LIST_ELEMENT_HEIGHT,
                             is_dragging_outside_allowed: false,
                             is_reordering_allowed: true,
@@ -416,7 +416,7 @@ impl MainWindow {
                     ),
                     execution_edit_list: DragAndDropList::new(
                         0,
-                        drag_and_drop_list::StaticDragAreaParameters {
+                        drag_and_drop::StaticDragAreaParameters {
                             element_height: ONE_EXECUTION_LIST_ELEMENT_HEIGHT,
                             is_dragging_outside_allowed: true,
                             is_reordering_allowed: true,
@@ -494,7 +494,7 @@ impl MainWindow {
                         .edit_script_list
                         .on_mouse_up(mouse_pos);
                     match drop_result {
-                        drag_and_drop_list::DropResult::ItemChangedPosition(index, new_index) => {
+                        drag_and_drop::DropResult::ItemChangedPosition(index, new_index) => {
                             move_config_script_to_index(self, index, new_index);
                         }
                         _ => {}
@@ -507,7 +507,7 @@ impl MainWindow {
                     .execution_edit_list
                     .on_mouse_up(mouse_pos);
                 match drop_result {
-                    drag_and_drop_list::DropResult::ItemChangedPosition(index, new_index) => {
+                    drag_and_drop::DropResult::ItemChangedPosition(index, new_index) => {
                         move_vec_element_to_index(
                             self.execution_manager.get_edited_scripts_mut(),
                             index,

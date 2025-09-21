@@ -7,8 +7,8 @@ use iced::window::resize;
 use iced::{keyboard, window, Size, Task, Theme};
 
 use crate::config;
-use crate::drag_and_drop_list;
-use crate::drag_and_drop_list::{DragAndDropList, DropArea};
+use crate::drag_and_drop;
+use crate::drag_and_drop::{DragAndDropList, DropArea};
 use crate::events;
 use crate::git_support;
 use crate::keybind_editing;
@@ -1719,7 +1719,7 @@ pub(crate) fn update_edited_execution_list_script_number(app: &mut MainWindow) {
 
 pub(crate) fn get_current_script_list_drag_and_drop(
     app: &mut MainWindow,
-) -> &mut drag_and_drop_list::DragAndDropList {
+) -> &mut drag_and_drop::DragAndDropList {
     if app.edit_data.window_edit_data.is_some() {
         &mut app.window_state.drag_and_drop_lists.edit_script_list
     } else {
