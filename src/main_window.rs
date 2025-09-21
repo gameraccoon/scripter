@@ -5,6 +5,7 @@ use crate::color_utils;
 use crate::config;
 use crate::custom_keybinds;
 use crate::drag_and_drop;
+use crate::drag_and_drop::{DragAndDropList, DragResult, DropArea};
 use crate::events;
 use crate::execution_thread;
 use crate::git_support;
@@ -14,10 +15,8 @@ use crate::main_window_widgets::*;
 use crate::parallel_execution_manager;
 use crate::style;
 use crate::ui_icons;
-use std::cmp::PartialEq;
-
-use crate::drag_and_drop::{DragAndDropList, DragResult, DropArea};
 use drag_and_drop::DropAreaState;
+
 use iced::alignment::{self, Alignment};
 use iced::event::listen_with;
 use iced::mouse::Event;
@@ -35,6 +34,7 @@ use iced::{keyboard, mouse, ContentFit, Task};
 use iced::{time, Size};
 use iced::{Element, Length, Subscription};
 use once_cell::sync::Lazy;
+use std::cmp::PartialEq;
 use std::collections::HashMap;
 use std::mem::swap;
 use std::path::PathBuf;
