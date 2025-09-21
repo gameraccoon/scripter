@@ -859,7 +859,7 @@ pub(crate) fn create_script_from_file(app: &mut MainWindow, file_path: PathBuf) 
             if extension != name {
                 match extension {
                     "py" => Some(vec!["python".to_string()]),
-                    "ps1" => Some(vec!["powershell".to_string(), "-file".to_string()]),
+                    "ps1" => Some(vec!["powershell".to_string(), "-Command".to_string()]),
                     _ => None,
                 }
             } else {
