@@ -1,11 +1,6 @@
 // Copyright (C) Pavel Grebnev 2023-2025
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
-use iced::advanced::image::Handle;
-use iced::widget::{pane_grid, text_input};
-use iced::window::resize;
-use iced::{keyboard, window, Size, Task, Theme};
-
 use crate::config;
 use crate::drag_and_drop;
 use crate::drag_and_drop::{DragAndDropList, DropArea};
@@ -16,6 +11,12 @@ use crate::main_window::*;
 use crate::parallel_execution_manager;
 use crate::style;
 use crate::{color_utils, execution_thread};
+
+use iced::advanced::image::Handle;
+use iced::widget::{pane_grid, text_input};
+use iced::window::resize;
+use iced::{keyboard, window, Size, Task, Theme};
+use std::path::PathBuf;
 
 pub(crate) const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
 pub(crate) const ONE_SCRIPT_LIST_ELEMENT_HEIGHT: f32 = 30.0;
@@ -820,6 +821,72 @@ pub fn maximize_pane(
     }
 
     Task::none()
+}
+
+pub(crate) fn create_script_from_file(app: &mut MainWindow, file_path: PathBuf) {
+    if !file_path.is_file() {
+        return;
+    }
+
+    let path_config = {
+        if let Ok(path) = file_path.strip_prefix(&app.app_config.paths.exe_folder_path) {
+            config::PathConfig {
+                path: path.to_string_lossy().to_string(),
+                path_type: config::PathType::ScripterExecutableRelative,
+            }
+        } else {
+            let path = if let Ok(path) = file_path.strip_prefix(&app.app_config.paths.work_path) {
+                path
+            } else {
+                &file_path
+            };
+
+            config::PathConfig {
+                path: path.to_string_lossy().to_string(),
+                path_type: config::PathType::WorkingDirRelative,
+            }
+        }
+    };
+
+    let name = file_path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    let custom_executor = {
+        if let Some(extension) = name.split(".").last() {
+            if extension != name {
+                match extension {
+                    "py" => Some(vec!["python".to_string()]),
+                    "ps1" => Some(vec!["powershell".to_string(), "-file".to_string()]),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+
+    let script = config::OriginalScriptDefinition {
+        name: if name.is_empty() {
+            "new script".to_string()
+        } else {
+            name
+        },
+        command: path_config,
+        custom_executor,
+        ..config::OriginalScriptDefinition::default()
+    };
+    add_script_to_config(
+        app,
+        config::get_main_edit_mode(&app.app_config),
+        config::ScriptDefinition::Original(script),
+    );
+
+    update_config_cache(app);
 }
 
 pub fn restore_window(app: &mut MainWindow) -> Task<WindowMessage> {

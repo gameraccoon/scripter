@@ -199,6 +199,9 @@ pub(crate) enum WindowMessage {
     WindowOnMouseDown,
     WindowOnMouseUp,
     WindowOnMouseMove(iced::Point),
+    WindowOnFileHovered,
+    WindowOnFilesHoveredLeft,
+    WindowOnFileDropped(PathBuf),
     PaneHeaderClicked(pane_grid::Pane),
     PaneHeaderDragged(pane_grid::DragEvent),
     PaneResized(pane_grid::ResizeEvent),
@@ -637,6 +640,15 @@ impl MainWindow {
                 for drop_area in &mut self.window_state.drop_areas.running_executions {
                     drop_area.on_mouse_move(position);
                 }
+            }
+            WindowMessage::WindowOnFileHovered => {}
+            WindowMessage::WindowOnFilesHoveredLeft => {}
+            WindowMessage::WindowOnFileDropped(file_path) => {
+                if self.execution_manager.has_any_execution_started() {
+                    return Task::none();
+                }
+                enter_window_edit_mode(self);
+                create_script_from_file(self, file_path);
             }
             WindowMessage::PaneHeaderClicked(pane) => {
                 self.window_state.pane_focus = Some(pane);
@@ -2065,6 +2077,15 @@ impl MainWindow {
             listen_with(move |event, _status, id| match event {
                 iced::event::Event::Window(window::Event::Resized(size)) => {
                     Some(WindowMessage::WindowResized(id, size))
+                }
+                iced::event::Event::Window(window::Event::FileHovered(_)) => {
+                    Some(WindowMessage::WindowOnFileHovered)
+                }
+                iced::event::Event::Window(window::Event::FilesHoveredLeft) => {
+                    Some(WindowMessage::WindowOnFilesHoveredLeft)
+                }
+                iced::event::Event::Window(window::Event::FileDropped(file_path)) => {
+                    Some(WindowMessage::WindowOnFileDropped(file_path))
                 }
                 iced::event::Event::Mouse(event) => match event {
                     Event::ButtonPressed(button) => {
