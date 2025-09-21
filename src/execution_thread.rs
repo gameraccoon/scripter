@@ -184,12 +184,12 @@ pub fn run_scripts(
                     (std::process::Stdio::null(), std::process::Stdio::null())
                 };
 
-                let advanced_arguments = {
-                    let mut advanced_arguments = script.advanced_arguments.clone();
-                    for argument in &mut advanced_arguments {
+                let executor_arguments = {
+                    let mut executor_arguments = script.executor_arguments.clone();
+                    for argument in &mut executor_arguments {
                         replace_placeholders(argument, &script.argument_placeholders);
                     }
-                    advanced_arguments
+                    executor_arguments
                 };
 
                 let executor = script
@@ -228,8 +228,8 @@ pub fn run_scripts(
                             },
                             executor.join("]["),
                             command_line,
-                            if script.use_advanced_arguments {
-                                format!("[{}]", advanced_arguments.join("]["))
+                            if !executor_arguments.is_empty() {
+                                format!("[{}]", executor_arguments.join("]["))
                             } else {
                                 "".to_string()
                             },
@@ -271,8 +271,8 @@ pub fn run_scripts(
                     .stdout(stdout_type)
                     .stderr(stderr_type);
 
-                if script.use_advanced_arguments {
-                    for argument in &advanced_arguments {
+                if !executor_arguments.is_empty() {
+                    for argument in &executor_arguments {
                         command.arg(argument);
                     }
                 }

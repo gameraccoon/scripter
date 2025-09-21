@@ -2,7 +2,6 @@
 // Distributed under the MIT License (license terms are at http://opensource.org/licenses/MIT).
 
 use crate::config;
-use crate::drag_and_drop;
 use crate::drag_and_drop::{DragAndDropList, DropArea};
 use crate::events;
 use crate::git_support;
@@ -645,7 +644,7 @@ pub fn add_cache_record(
     is_script_hidden: bool,
     script_name: String,
     script_uid: config::Guid,
-    script_icon_path: Option<std::path::PathBuf>,
+    script_icon_path: Option<PathBuf>,
 ) {
     if is_full_list || !is_script_hidden {
         result_list.push(ScriptListCacheRecord {
@@ -1784,9 +1783,7 @@ pub(crate) fn update_edited_execution_list_script_number(app: &mut MainWindow) {
     update_execution_list_drag_and_drop_list_bounds(app);
 }
 
-pub(crate) fn get_current_script_list_drag_and_drop(
-    app: &mut MainWindow,
-) -> &mut drag_and_drop::DragAndDropList {
+pub(crate) fn get_current_script_list_drag_and_drop(app: &mut MainWindow) -> &mut DragAndDropList {
     if app.edit_data.window_edit_data.is_some() {
         &mut app.window_state.drag_and_drop_lists.edit_script_list
     } else {
@@ -1896,8 +1893,6 @@ mod tests {
                             command: config::PathConfig::default(),
                             working_directory: config::PathConfig::default(),
                             arguments_line: "".to_string(),
-                            use_advanced_arguments: false,
-                            advanced_arguments: Vec::new(),
                             argument_placeholders: Vec::new(),
                             autorerun_count: 0,
                             reaction_to_previous_failures:
@@ -1905,6 +1900,7 @@ mod tests {
                             arguments_requirement: config::ArgumentRequirement::Optional,
                             arguments_hint: String::new(),
                             custom_executor: None,
+                            executor_arguments: Vec::new(),
                             is_hidden: false,
                             autoclean_on_success: false,
                             ignore_output: false,
@@ -1916,8 +1912,6 @@ mod tests {
                             command: config::PathConfig::default(),
                             working_directory: config::PathConfig::default(),
                             arguments_line: "".to_string(),
-                            use_advanced_arguments: false,
-                            advanced_arguments: Vec::new(),
                             argument_placeholders: Vec::new(),
                             autorerun_count: 0,
                             reaction_to_previous_failures:
@@ -1925,6 +1919,7 @@ mod tests {
                             arguments_requirement: config::ArgumentRequirement::Optional,
                             arguments_hint: String::new(),
                             custom_executor: None,
+                            executor_arguments: Vec::new(),
                             is_hidden: false,
                             autoclean_on_success: false,
                             ignore_output: false,
@@ -1938,8 +1933,7 @@ mod tests {
                                     uid: test_script_guid_1.clone(),
                                     name: None,
                                     arguments_line: None,
-                                    use_advanced_arguments: None,
-                                    advanced_arguments: None,
+                                    executor_arguments: None,
                                     overridden_placeholder_values: std::collections::HashMap::new(),
                                     autorerun_count: None,
                                     reaction_to_previous_failures: None,
@@ -1949,8 +1943,7 @@ mod tests {
                                     uid: test_script_guid_2.clone(),
                                     name: None,
                                     arguments_line: None,
-                                    use_advanced_arguments: None,
-                                    advanced_arguments: None,
+                                    executor_arguments: None,
                                     overridden_placeholder_values: std::collections::HashMap::new(),
                                     autorerun_count: None,
                                     reaction_to_previous_failures: None,
@@ -1961,10 +1954,10 @@ mod tests {
                     ],
                     is_read_only: false,
                     paths: config::PathCaches {
-                        logs_path: std::path::PathBuf::new(),
-                        work_path: std::path::PathBuf::new(),
-                        exe_folder_path: std::path::PathBuf::new(),
-                        config_path: std::path::PathBuf::new(),
+                        logs_path: PathBuf::new(),
+                        work_path: PathBuf::new(),
+                        exe_folder_path: PathBuf::new(),
+                        config_path: PathBuf::new(),
                     },
                     env_vars: Vec::new(),
                     custom_title: None,
@@ -2012,8 +2005,6 @@ mod tests {
                                 command: config::PathConfig::default(),
                                 working_directory: config::PathConfig::default(),
                                 arguments_line: "".to_string(),
-                                use_advanced_arguments: false,
-                                advanced_arguments: Vec::new(),
                                 argument_placeholders: Vec::new(),
                                 autorerun_count: 0,
                                 reaction_to_previous_failures:
@@ -2021,6 +2012,7 @@ mod tests {
                                 arguments_requirement: config::ArgumentRequirement::Optional,
                                 arguments_hint: "\"arg1\" \"arg2\"".to_string(),
                                 custom_executor: None,
+                                executor_arguments: Vec::new(),
                                 is_hidden: false,
                                 autoclean_on_success: false,
                                 ignore_output: false,

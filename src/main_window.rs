@@ -241,8 +241,6 @@ pub(crate) enum WindowMessage {
     EditArgumentsLineForConfig(ConfigScriptId, String),
     EditArgumentsLineForScriptExecution(String),
     EditArgumentsRequirement(ConfigScriptId, config::ArgumentRequirement),
-    ToggleUseAdvancedArguments(ConfigScriptId, bool),
-    EditAdvancedArguments(ConfigScriptId, String, usize),
     EditArgumentsHint(ConfigScriptId, String),
     AddArgumentPlaceholder(ConfigScriptId),
     RemoveArgumentPlaceholder(ConfigScriptId, usize),
@@ -258,6 +256,7 @@ pub(crate) enum WindowMessage {
     EditReactionToPreviousFailuresForExecutionList(config::ReactionToPreviousFailures),
     ToggleUseCustomExecutor(ConfigScriptId, bool),
     EditCustomExecutor(ConfigScriptId, String, usize),
+    EditExecutorArguments(ConfigScriptId, String, usize),
     ToggleAutocleanOnSuccessForConfig(ConfigScriptId, bool),
     ToggleAutocleanOnSuccessForExecutionList(bool),
     ToggleIgnoreOutput(ConfigScriptId, bool),
@@ -969,30 +968,6 @@ impl MainWindow {
                     script.arguments_requirement = new_requirement
                 });
             }
-            WindowMessage::ToggleUseAdvancedArguments(config_script_id, value) => {
-                apply_config_script_edit(self, config_script_id, move |script| {
-                    script.use_advanced_arguments = value
-                });
-            }
-            WindowMessage::EditAdvancedArguments(
-                config_script_id,
-                new_advanced_arguments,
-                index,
-            ) => {
-                apply_config_script_edit(self, config_script_id, |script| {
-                    if new_advanced_arguments.is_empty()
-                        && index + 1 == script.advanced_arguments.len()
-                    {
-                        script.advanced_arguments.pop();
-                    } else if !new_advanced_arguments.is_empty()
-                        && index == script.advanced_arguments.len()
-                    {
-                        script.advanced_arguments.push(new_advanced_arguments);
-                    } else if index < script.advanced_arguments.len() {
-                        script.advanced_arguments[index] = new_advanced_arguments;
-                    }
-                });
-            }
             WindowMessage::EditArgumentsHint(config_script_id, new_arguments_hint) => {
                 apply_config_script_edit(self, config_script_id, move |script| {
                     script.arguments_hint = new_arguments_hint
@@ -1130,6 +1105,25 @@ impl MainWindow {
                         } else if index < executor.len() {
                             executor[index] = value;
                         }
+                    }
+                });
+            }
+            WindowMessage::EditExecutorArguments(
+                config_script_id,
+                new_executor_arguments,
+                index,
+            ) => {
+                apply_config_script_edit(self, config_script_id, |script| {
+                    if new_executor_arguments.is_empty()
+                        && index + 1 == script.executor_arguments.len()
+                    {
+                        script.executor_arguments.pop();
+                    } else if !new_executor_arguments.is_empty()
+                        && index == script.executor_arguments.len()
+                    {
+                        script.executor_arguments.push(new_executor_arguments);
+                    } else if index < script.executor_arguments.len() {
+                        script.executor_arguments[index] = new_executor_arguments;
                     }
                 });
             }
@@ -1566,24 +1560,14 @@ impl MainWindow {
                         Some(script.arguments_line.clone())
                     };
 
-                    let show_advanced_arguments = if let Some(original_script) = &original_script {
-                        if original_script.use_advanced_arguments == script.use_advanced_arguments {
+                    let executor_arguments = if let Some(original_script) = &original_script {
+                        if original_script.executor_arguments == script.executor_arguments {
                             None
                         } else {
-                            Some(script.use_advanced_arguments)
+                            Some(script.executor_arguments.clone())
                         }
                     } else {
-                        Some(script.use_advanced_arguments)
-                    };
-
-                    let advanced_arguments = if let Some(original_script) = &original_script {
-                        if original_script.advanced_arguments == script.advanced_arguments {
-                            None
-                        } else {
-                            Some(script.advanced_arguments.clone())
-                        }
-                    } else {
-                        Some(script.advanced_arguments.clone())
+                        Some(script.executor_arguments.clone())
                     };
 
                     let mut overridden_placeholder_values = HashMap::new();
@@ -1646,8 +1630,7 @@ impl MainWindow {
                         uid: script.uid.clone(),
                         name,
                         arguments_line,
-                        use_advanced_arguments: show_advanced_arguments,
-                        advanced_arguments,
+                        executor_arguments,
                         overridden_placeholder_values,
                         autorerun_count,
                         reaction_to_previous_failures,
@@ -3632,29 +3615,6 @@ fn populate_original_script_config_edit_content<'a>(
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-    parameters.push(
-        row![
-            checkbox("Use advanced arguments", script.use_advanced_arguments).on_toggle(
-                move |val| WindowMessage::ToggleUseAdvancedArguments(config_script_id, val)
-            ),
-            Space::with_width(4),
-            help_icon(ADVANCED_ARGUMENTS_HELP_TEXT, visual_caches, theme),
-        ]
-        .into(),
-    );
-
-    if script.use_advanced_arguments {
-        parameters.push(text("Advanced arguments:").into());
-        populate_string_vec_edit_content(
-            parameters,
-            &script.advanced_arguments,
-            move |idx, new_value| {
-                WindowMessage::EditAdvancedArguments(config_script_id, new_value, idx)
-            },
-        );
-    }
-
-    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     parameters.push(text("Argument hint:").into());
     parameters.push(
         text_input("", &script.arguments_hint)
@@ -3728,6 +3688,23 @@ fn populate_original_script_config_edit_content<'a>(
             &mut custom_executor,
             move |idx, new_value| {
                 WindowMessage::EditCustomExecutor(config_script_id, new_value, idx)
+            },
+        );
+
+        parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+        parameters.push(
+            row![
+                text("Executor arguments:"),
+                Space::with_width(4),
+                help_icon(EXECUTOR_ARGUMENTS_HELP_TEXT, visual_caches, theme),
+            ]
+            .into(),
+        );
+        populate_string_vec_edit_content(
+            parameters,
+            &script.executor_arguments,
+            move |idx, new_value| {
+                WindowMessage::EditExecutorArguments(config_script_id, new_value, idx)
             },
         );
     }

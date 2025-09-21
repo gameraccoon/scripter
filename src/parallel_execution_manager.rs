@@ -676,7 +676,7 @@ fn get_tooltip_for_script(script: &config::OriginalScriptDefinition) -> String {
         tooltip.push_str(format!("[{} {}]", script.command.path, arguments_line).as_str());
     }
 
-    for advanced_argument in &script.advanced_arguments {
+    for advanced_argument in &script.executor_arguments {
         let mut advanced_argument = advanced_argument.clone();
         execution_thread::replace_placeholders(
             &mut advanced_argument,

@@ -15,7 +15,8 @@ use iced::widget::{
 use iced::{alignment, Alignment, Element, Length, Theme};
 
 pub(crate) const COMMAND_HELP_TEXT: &str = "This can be a relative or an absolute path to a script file, or you can use a command name directly (e.g. \"echo\").";
-pub(crate) const ADVANCED_ARGUMENTS_HELP_TEXT: &str = "Advanced arguments are passed separately to the executor. Some executors (like powershell) require the arguments to be passed this way.\nArgument placeholders can also be used in advanced arguments.";
+pub(crate) const EXECUTOR_ARGUMENTS_HELP_TEXT: &str =
+    "Arguments passed to the executor after the command with its arguments.";
 pub(crate) const ARGUMENT_PLACEHOLDERS_HELP_TEXT: &str = "Some scripts or commands can have massive lists of arguments, you can use argument placeholders to make it easier to edit them.";
 pub(crate) const RETRY_COUNT_HELP_TEXT: &str =
     "If the script fails, it will be retried this many times before failing the whole execution.";
