@@ -176,6 +176,33 @@ pub struct OriginalScriptDefinition {
     pub ignore_output: bool,
 }
 
+impl Default for OriginalScriptDefinition {
+    fn default() -> Self {
+        Self {
+            uid: Guid::new(),
+            name: "new script".to_string(),
+            icon: PathConfig::default(),
+            command: PathConfig::default(),
+            working_directory: PathConfig {
+                path: ".".to_string(),
+                path_type: PathType::WorkingDirRelative,
+            },
+            arguments_line: "".to_string(),
+            use_advanced_arguments: false,
+            advanced_arguments: Vec::new(),
+            argument_placeholders: Vec::new(),
+            autorerun_count: 0,
+            reaction_to_previous_failures: ReactionToPreviousFailures::SkipOnFailure,
+            arguments_requirement: ArgumentRequirement::Optional,
+            arguments_hint: "\"arg1\" \"arg2\"".to_string(),
+            custom_executor: None,
+            is_hidden: false,
+            autoclean_on_success: false,
+            ignore_output: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PresetItem {
     pub uid: Guid,

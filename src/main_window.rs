@@ -871,29 +871,7 @@ impl MainWindow {
                 events::on_execution_pane_content_height_decreased(self);
             }
             WindowMessage::AddScriptToConfig => {
-                let script = config::OriginalScriptDefinition {
-                    uid: config::Guid::new(),
-                    name: "new script".to_string(),
-                    icon: config::PathConfig::default(),
-                    command: config::PathConfig::default(),
-                    working_directory: config::PathConfig {
-                        path: ".".to_string(),
-                        path_type: config::PathType::WorkingDirRelative,
-                    },
-                    arguments_line: "".to_string(),
-                    use_advanced_arguments: false,
-                    advanced_arguments: Vec::new(),
-                    argument_placeholders: Vec::new(),
-                    autorerun_count: 0,
-                    reaction_to_previous_failures:
-                        config::ReactionToPreviousFailures::SkipOnFailure,
-                    arguments_requirement: config::ArgumentRequirement::Optional,
-                    arguments_hint: "\"arg1\" \"arg2\"".to_string(),
-                    custom_executor: None,
-                    is_hidden: false,
-                    autoclean_on_success: false,
-                    ignore_output: false,
-                };
+                let script = config::OriginalScriptDefinition::default();
                 add_script_to_config(
                     self,
                     config::get_main_edit_mode(&self.app_config),
