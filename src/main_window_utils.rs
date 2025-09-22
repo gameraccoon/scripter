@@ -873,7 +873,7 @@ pub(crate) fn create_script_from_file(app: &mut MainWindow, file_path: PathBuf) 
         name: if name.is_empty() {
             "new script".to_string()
         } else {
-            name
+            get_pretty_name(name)
         },
         command: path_config,
         custom_executor,
@@ -1791,6 +1791,45 @@ pub(crate) fn get_current_script_list_drag_and_drop(app: &mut MainWindow) -> &mu
     }
 }
 
+fn get_pretty_name(name: String) -> String {
+    let mut prettified_name = String::with_capacity(name.len());
+    let mut was_separator = true;
+    let mut was_upper_case = false;
+    for char in name.chars() {
+        if char == '.' {
+            break;
+        }
+        if char == '_' || char == ' ' || char == '-' {
+            prettified_name.push(' ');
+            was_upper_case = false;
+            was_separator = true;
+        } else if char.is_uppercase() {
+            if was_separator {
+                prettified_name.push(char);
+            } else if was_upper_case {
+                prettified_name.extend(char.to_lowercase());
+            } else {
+                prettified_name.push(' ');
+                prettified_name.push(char);
+            }
+            was_upper_case = true;
+            was_separator = false;
+        } else {
+            if was_separator {
+                prettified_name.extend(char.to_uppercase())
+            } else if was_upper_case {
+                prettified_name.push(char);
+            } else {
+                prettified_name.push(char);
+            }
+            was_upper_case = false;
+            was_separator = false;
+        }
+    }
+
+    prettified_name
+}
+
 pub(crate) fn get_script_list_content_offset_y(app: &MainWindow) -> f32 {
     PANE_HEADER_HEIGHT
         + if app.visual_caches.enable_script_filtering {
@@ -2061,6 +2100,27 @@ mod tests {
         assert_eq!(
             get_resulting_scripts_from_guid(&mut app_config, all_guids[3].clone()).len(),
             1
+        );
+    }
+
+    #[test]
+    fn get_pretty_name_test() {
+        assert_eq!(get_pretty_name("test.sh".to_string()), "Test".to_string());
+        assert_eq!(
+            get_pretty_name("test_script.sh".to_string()),
+            "Test Script".to_string()
+        );
+        assert_eq!(
+            get_pretty_name("TestScript.sh".to_string()),
+            "Test Script".to_string()
+        );
+        assert_eq!(
+            get_pretty_name("Test-Script".to_string()),
+            "Test Script".to_string()
+        );
+        assert_eq!(
+            get_pretty_name("TEST_SCRIPT.txt.sh".to_string()),
+            "Test Script".to_string()
         );
     }
 }
