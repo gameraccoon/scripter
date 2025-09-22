@@ -11,6 +11,7 @@ use crate::parallel_execution_manager;
 use crate::style;
 use crate::{color_utils, execution_thread};
 
+use crate::config::get_current_rewritable_config;
 use iced::advanced::image::Handle;
 use iced::widget::{pane_grid, text_input};
 use iced::window::resize;
@@ -853,19 +854,26 @@ pub(crate) fn create_script_from_file(app: &mut MainWindow, file_path: PathBuf) 
         .to_string_lossy()
         .to_string();
 
-    let custom_executor = {
+    let (custom_executor, executor_arguments) = {
         if let Some(extension) = name.split(".").last() {
             if extension != name {
-                match extension {
-                    "py" => Some(vec!["python".to_string()]),
-                    "ps1" => Some(vec!["powershell".to_string(), "-Command".to_string()]),
-                    _ => None,
+                if let Some(association) = get_current_rewritable_config(&app.app_config)
+                    .file_associations
+                    .iter()
+                    .find(|association| association.extension == extension)
+                {
+                    (
+                        Some(association.executor.clone()),
+                        association.executor_arguments.clone(),
+                    )
+                } else {
+                    (None, Vec::new())
                 }
             } else {
-                None
+                (None, Vec::new())
             }
         } else {
-            None
+            (None, Vec::new())
         }
     };
 
@@ -877,6 +885,7 @@ pub(crate) fn create_script_from_file(app: &mut MainWindow, file_path: PathBuf) 
         },
         command: path_config,
         custom_executor,
+        executor_arguments,
         ..config::OriginalScriptDefinition::default()
     };
     add_script_to_config(
@@ -1900,6 +1909,7 @@ pub(crate) fn get_started_execution_list_size_y(app: &MainWindow) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::FileAssociation;
 
     const APP_CONFIG_WITH_DIFFERENT_SCRIPTS: fn() -> (config::AppConfig, Vec<config::Guid>) =
         || {
@@ -1923,6 +1933,11 @@ mod tests {
                         script_keybinds: Vec::new(),
                         show_current_git_branch: false,
                         quick_launch_scripts: Vec::new(),
+                        file_associations: vec![FileAssociation {
+                            extension: "py".to_string(),
+                            executor: vec!["python".to_string()],
+                            executor_arguments: vec![],
+                        }],
                     },
                     script_definitions: vec![
                         config::ScriptDefinition::Original(config::OriginalScriptDefinition {
@@ -2017,6 +2032,11 @@ mod tests {
                             script_keybinds: vec![],
                             show_current_git_branch: false,
                             quick_launch_scripts: vec![],
+                            file_associations: vec![FileAssociation {
+                                extension: "py".to_string(),
+                                executor: vec!["python".to_string()],
+                                executor_arguments: vec![],
+                            }],
                         },
                         script_definitions: vec![
                             config::ScriptDefinition::ReferenceToShared(

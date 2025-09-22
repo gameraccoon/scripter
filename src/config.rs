@@ -45,6 +45,13 @@ impl Default for PathConfig {
     }
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+pub struct FileAssociation {
+    pub extension: String,
+    pub executor: Vec<String>,
+    pub executor_arguments: Vec<String>,
+}
+
 // Part of the config that can be fully overridden by the local config
 #[derive(Clone, Deserialize, Serialize)]
 pub struct RewritableConfig {
@@ -59,6 +66,7 @@ pub struct RewritableConfig {
     pub script_keybinds: Vec<ScriptKeybind>,
     pub show_current_git_branch: bool,
     pub quick_launch_scripts: Vec<Guid>,
+    pub file_associations: Vec<FileAssociation>,
 }
 
 #[derive(Clone)]
@@ -433,6 +441,18 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
             script_keybinds: Vec::new(),
             show_current_git_branch: false,
             quick_launch_scripts: Vec::new(),
+            file_associations: vec![
+                FileAssociation {
+                    extension: "py".to_string(),
+                    executor: vec!["python".to_string()],
+                    executor_arguments: vec![],
+                },
+                FileAssociation {
+                    extension: "ps1".to_string(),
+                    executor: vec!["powershell".to_string(), "-Command".to_string()],
+                    executor_arguments: vec![],
+                },
+            ],
         },
         script_definitions: Vec::new(),
         is_read_only: !has_write_permission(&config_path),

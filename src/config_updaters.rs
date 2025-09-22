@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "1.0.1";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "1.0.1";
+pub static LATEST_CONFIG_VERSION: &str = "1.0.2";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "1.0.2";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -145,6 +145,7 @@ fn register_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.18.5", v0_18_5_refined_previous_failure_choices);
     json_config_updater.add_update_function("0.19.3", v0_19_3_add_use_advanced_arguments_fields);
     json_config_updater.add_update_function("1.0.1", v1_0_1_rename_advanced_args_to_executor_args);
+    json_config_updater.add_update_function("1.0.2", v1_0_2_add_file_associations);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -232,6 +233,7 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("0.18.5", v0_18_5_refined_previous_failure_choices);
     json_config_updater.add_update_function("0.19.3", v0_19_3_add_use_advanced_arguments_fields);
     json_config_updater.add_update_function("1.0.1", v1_0_1_rename_advanced_args_to_executor_args);
+    json_config_updater.add_update_function("1.0.2", v1_0_2_add_file_associations);
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
 
@@ -699,4 +701,23 @@ fn v1_0_1_rename_advanced_args_to_executor_args(config_json: &mut JsonValue) {
             items.iter_mut().for_each(update_item_fn);
         }
     });
+}
+
+fn v1_0_2_add_file_associations(config_json: &mut JsonValue) {
+    if let Some(rewritable_config) = config_json["rewritable"].as_object_mut() {
+        rewritable_config.insert(
+            "file_associations".to_string(),
+            json!([{
+                    "extension": "py",
+                    "executor": ["python"],
+                    "executor_arguments": [],
+                },
+                {
+                    "extension": "ps1",
+                    "executor": ["powershell", "-Command"],
+                    "executor_arguments": [],
+                }
+            ]),
+        );
+    }
 }
