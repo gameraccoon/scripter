@@ -687,7 +687,7 @@ pub fn update_button_key_hint_caches(app: &mut MainWindow) {
 }
 
 pub fn update_git_branch_visibility(app: &mut MainWindow) {
-    if config::get_current_rewritable_config(&app.app_config).show_current_git_branch {
+    if get_current_rewritable_config(&app.app_config).show_current_git_branch {
         if app.visual_caches.git_branch_requester.is_none() {
             app.visual_caches.git_branch_requester =
                 Some(git_support::GitCurrentBranchRequester::new());
@@ -780,7 +780,7 @@ pub fn maximize_pane(
     app.window_state.pane_focus = Some(pane);
     app.panes.maximize(pane);
     app.window_state.has_maximized_pane = true;
-    if !config::get_current_rewritable_config(&app.app_config).keep_window_size {
+    if !get_current_rewritable_config(&app.app_config).keep_window_size {
         app.window_state.full_window_size = window_size.clone();
         let regions = app.panes.layout().pane_regions(PANE_SPACING, window_size);
         let size = regions.get(&pane);
@@ -1867,7 +1867,7 @@ pub(crate) fn get_execution_list_title_size_y(app: &MainWindow) -> f32 {
         0
     };
 
-    let config = config::get_current_rewritable_config(&app.app_config);
+    let config = get_current_rewritable_config(&app.app_config);
 
     // if title editing enabled, we can't have less than 1 line
     if title_lines == 0 && config.enable_title_editing {
