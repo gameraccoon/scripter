@@ -1690,10 +1690,6 @@ impl MainWindow {
                 move_cursor(self, false);
             }
             WindowMessage::MoveScriptDown => {
-                if self.execution_manager.has_any_execution_started() {
-                    return Task::none();
-                }
-
                 let focused_pane = if let Some(focus) = self.window_state.pane_focus {
                     self.panes.panes[&focus].variant
                 } else {
