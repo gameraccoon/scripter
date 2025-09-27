@@ -474,7 +474,9 @@ impl MainWindow {
             WindowMessage::WindowResized(_window_id, size) => events::on_window_resized(self, size),
             WindowMessage::WindowOnMouseDown => {
                 let mouse_pos = self.window_state.mouse_position;
-                for_each_drag_area(self, |area| area.on_mouse_down(mouse_pos));
+                if !self.window_state.has_maximized_pane {
+                    for_each_drag_area(self, |area| area.on_mouse_down(mouse_pos));
+                }
             }
             WindowMessage::WindowOnMouseUp => {
                 let mut dragged_script = self.window_state.dragged_script.take();
