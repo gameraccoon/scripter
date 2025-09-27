@@ -64,6 +64,7 @@ impl std::fmt::Display for config::ConfigUpdateBehavior {
 pub(crate) static FILTER_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 static ARGUMENTS_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 static SCRIPTS_PANE_SCROLL_ID: Lazy<scrollable::Id> = Lazy::new(scrollable::Id::unique);
+static EXECUTIONS_PANE_SCROLL_ID: Lazy<scrollable::Id> = Lazy::new(scrollable::Id::unique);
 static LOGS_SCROLL_ID: Lazy<scrollable::Id> = Lazy::new(scrollable::Id::unique);
 
 // caches for visual elements content
@@ -527,9 +528,11 @@ impl MainWindow {
                     .execution_pane
                     .on_mouse_up(mouse_pos);
 
+                let mut added_new_edited_scripts = false;
                 if execution_edit_list_got_item_dropped {
                     if let Some(dragged_script) = dragged_script.take() {
-                        add_script_to_execution(self, dragged_script, false);
+                        add_script_to_execution(self, dragged_script, true);
+                        added_new_edited_scripts = true;
                     }
                 }
 
@@ -570,6 +573,13 @@ impl MainWindow {
                     update_edited_execution_list_script_number(self);
                     update_drag_and_drop_area_bounds(self);
                     clean_script_selection(&mut self.window_state.cursor_script);
+                }
+
+                if added_new_edited_scripts {
+                    return scrollable::snap_to(
+                        EXECUTIONS_PANE_SCROLL_ID.clone(),
+                        RelativeOffset::END,
+                    );
                 }
             }
             WindowMessage::WindowOnMouseMove(position) => {
@@ -722,6 +732,10 @@ impl MainWindow {
                     }
                 } else {
                     add_script_to_execution(self, script_uid, true);
+                    return scrollable::snap_to(
+                        EXECUTIONS_PANE_SCROLL_ID.clone(),
+                        RelativeOffset::END,
+                    );
                 }
             }
             WindowMessage::AddScriptToExecutionWithoutRunning(script_uid) => {
@@ -3067,7 +3081,8 @@ fn produce_execution_list_content<'a>(
                     stack![]
                 },
             ])
-            .on_scroll(move |viewport| WindowMessage::OnExecutionListScroll(viewport)),
+            .on_scroll(move |viewport| WindowMessage::OnExecutionListScroll(viewport))
+            .id(EXECUTIONS_PANE_SCROLL_ID.clone()),
         ]
         .width(Length::Fill)
         .height(Length::Fill)
