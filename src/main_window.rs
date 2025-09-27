@@ -63,6 +63,7 @@ impl std::fmt::Display for config::ConfigUpdateBehavior {
 // these should be const not just static
 pub(crate) static FILTER_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
 static ARGUMENTS_INPUT_ID: Lazy<text_input::Id> = Lazy::new(text_input::Id::unique);
+static SCRIPTS_PANE_SCROLL_ID: Lazy<scrollable::Id> = Lazy::new(scrollable::Id::unique);
 static LOGS_SCROLL_ID: Lazy<scrollable::Id> = Lazy::new(scrollable::Id::unique);
 
 // caches for visual elements content
@@ -648,6 +649,8 @@ impl MainWindow {
                 }
                 enter_window_edit_mode(self);
                 create_script_from_file(self, file_path);
+
+                return scrollable::snap_to(SCRIPTS_PANE_SCROLL_ID.clone(), RelativeOffset::END);
             }
             WindowMessage::PaneHeaderClicked(pane) => {
                 self.window_state.pane_focus = Some(pane);
@@ -889,7 +892,7 @@ impl MainWindow {
                     config::ScriptDefinition::Original(script),
                 );
 
-                update_config_cache(self);
+                return scrollable::snap_to(SCRIPTS_PANE_SCROLL_ID.clone(), RelativeOffset::END);
             }
             WindowMessage::EditScriptNameForConfig(config_script_id, new_name) => {
                 if let Some(preset) = get_editing_preset(&mut self.app_config, config_script_id) {
@@ -2377,7 +2380,8 @@ fn produce_script_list_content<'a>(
         filter_field,
         scrollable(stack![data, drop_marker])
             .height(Length::Fill)
-            .on_scroll(move |viewport| WindowMessage::OnScriptListScroll(viewport)),
+            .on_scroll(move |viewport| WindowMessage::OnScriptListScroll(viewport))
+            .id(SCRIPTS_PANE_SCROLL_ID.clone()),
         quick_launch_buttons,
     ]
     .width(Length::Fill)
