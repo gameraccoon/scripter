@@ -471,13 +471,7 @@ impl MainWindow {
 
     pub(crate) fn update(&mut self, message: WindowMessage) -> Task<WindowMessage> {
         match message {
-            WindowMessage::WindowResized(_window_id, size) => {
-                if !self.window_state.has_maximized_pane {
-                    self.window_state.full_window_size = size;
-                }
-                update_drag_and_drop_area_bounds(self);
-                cancel_all_drag_and_drop_operations(self);
-            }
+            WindowMessage::WindowResized(_window_id, size) => events::on_window_resized(self, size),
             WindowMessage::WindowOnMouseDown => {
                 let mouse_pos = self.window_state.mouse_position;
                 for_each_drag_area(self, |area| area.on_mouse_down(mouse_pos));

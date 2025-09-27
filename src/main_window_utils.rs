@@ -803,21 +803,18 @@ pub fn maximize_pane(
                 }
         };
 
-        return window::get_oldest().and_then(move |window_id| {
-            resize(
-                window_id,
-                Size {
-                    width: size.width,
-                    height: f32::min(
-                        size.height,
-                        EMPTY_EXECUTION_LIST_HEIGHT
-                            + title_size_y
-                            + started_executions_size_y
-                            + edited_executions_size_y,
-                    ),
-                },
-            )
-        });
+        let new_window_size = Size {
+            width: size.width,
+            height: f32::min(
+                size.height,
+                EMPTY_EXECUTION_LIST_HEIGHT
+                    + title_size_y
+                    + started_executions_size_y
+                    + edited_executions_size_y,
+            ),
+        };
+        events::on_window_resized(app, new_window_size);
+        return window::get_oldest().and_then(move |window_id| resize(window_id, new_window_size));
     }
 
     Task::none()
@@ -902,6 +899,7 @@ pub fn restore_window(app: &mut MainWindow) -> Task<WindowMessage> {
     app.panes.restore();
     if !config::get_main_rewritable_config(&app.app_config).keep_window_size {
         let window_size = app.window_state.full_window_size.clone();
+        events::on_window_resized(app, window_size);
         return window::get_oldest().and_then(move |window_id| resize(window_id, window_size));
     }
     Task::none()
