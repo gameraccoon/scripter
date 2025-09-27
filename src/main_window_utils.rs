@@ -759,7 +759,7 @@ pub fn remove_execution(
 }
 
 pub fn switch_to_editing_settings_config(app: &mut MainWindow, edit_mode: config::ConfigEditMode) {
-    clean_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.cursor_script);
     app.edit_data.window_edit_data = Some(WindowEditData::from_config(
         &app.app_config,
         Some(edit_mode),
@@ -775,7 +775,7 @@ pub fn maximize_pane(
     window_size: Size,
 ) -> Task<WindowMessage> {
     if app.window_state.pane_focus != Some(pane) {
-        clean_script_selection(&mut app.window_state.cursor_script);
+        clear_script_selection(&mut app.window_state.cursor_script);
     }
     app.window_state.pane_focus = Some(pane);
     app.panes.maximize(pane);
@@ -1018,7 +1018,7 @@ pub fn start_new_execution_from_provided_execution_scripts(
         return;
     }
 
-    clean_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.cursor_script);
     let new_execution_id = app
         .execution_manager
         .start_new_execution(&app.app_config, scripts);
@@ -1051,7 +1051,7 @@ pub fn add_edited_scripts_to_started_execution(
         return;
     }
 
-    clean_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.cursor_script);
 
     let scripts_to_execute = app.execution_manager.consume_edited_scripts();
     app.execution_manager
@@ -1218,7 +1218,7 @@ pub fn remove_config_script(app: &mut MainWindow, config_script_id: ConfigScript
 
     config::populate_shared_scripts_from_config(&mut app.app_config);
     update_config_cache(app);
-    clean_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.cursor_script);
     keybind_editing::prune_unused_keybinds(app);
 }
 
@@ -1226,7 +1226,7 @@ pub fn remove_execution_list_script(app: &mut MainWindow, script_idx: usize) {
     app.execution_manager
         .remove_script_from_edited_list(script_idx);
     update_edited_execution_list_script_number(app);
-    clean_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.cursor_script);
 }
 
 fn add_script_to_shared_config(
@@ -1336,8 +1336,24 @@ fn set_selected_script(
     });
 }
 
-pub fn clean_script_selection(currently_edited_script: &mut Option<EditScriptId>) {
+pub fn clear_script_selection(currently_edited_script: &mut Option<EditScriptId>) {
     *currently_edited_script = None;
+}
+
+pub fn shift_script_selection(app: &mut MainWindow, old_index: usize, new_index: usize) {
+    if let Some(cursor_script) = &mut app.window_state.cursor_script {
+        if old_index == cursor_script.idx {
+            if new_index <= old_index {
+                cursor_script.idx = new_index
+            } else {
+                cursor_script.idx = new_index - 1
+            }
+        } else if old_index < cursor_script.idx && new_index >= cursor_script.idx {
+            cursor_script.idx -= 1;
+        } else if old_index > cursor_script.idx && new_index <= cursor_script.idx {
+            cursor_script.idx += 1;
+        }
+    }
 }
 
 pub fn move_config_script_up(app: &mut MainWindow, index: usize) {
@@ -1510,7 +1526,7 @@ pub fn apply_execution_script_edit(
 
 pub fn clear_edited_scripts(app: &mut MainWindow) {
     app.execution_manager.clear_edited_scripts();
-    clean_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.cursor_script);
     // we could be dragging a script from the list
     cancel_all_drag_and_drop_operations(app);
 }
@@ -1537,7 +1553,7 @@ pub fn clear_execution_scripts(app: &mut MainWindow) {
     };
 
     remove_execution(app, execution_id);
-    clean_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.cursor_script);
 }
 
 pub fn enter_window_edit_mode(app: &mut MainWindow) {
@@ -1547,7 +1563,7 @@ pub fn enter_window_edit_mode(app: &mut MainWindow) {
 
     app.edit_data.window_edit_data = Some(WindowEditData::from_config(&app.app_config, None));
     app.edit_data.script_filter = String::new();
-    clean_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.cursor_script);
     update_config_cache(app);
     app.visual_caches.is_custom_title_editing = false;
     update_drag_and_drop_area_bounds(app);
@@ -1556,7 +1572,7 @@ pub fn enter_window_edit_mode(app: &mut MainWindow) {
 
 pub fn exit_window_edit_mode(app: &mut MainWindow) {
     app.edit_data.window_edit_data = None;
-    clean_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.cursor_script);
     apply_theme(app);
     keybind_editing::update_keybind_visual_caches(app, config::get_main_edit_mode(&app.app_config));
     update_config_cache(app);

@@ -500,6 +500,7 @@ impl MainWindow {
                     match drop_result {
                         drag_and_drop::DropResult::ItemChangedPosition(index, new_index) => {
                             move_config_script_to_index(self, index, new_index);
+                            shift_script_selection(self, index, new_index);
                         }
                         _ => {}
                     }
@@ -517,7 +518,7 @@ impl MainWindow {
                             index,
                             new_index,
                         );
-                        clean_script_selection(&mut self.window_state.cursor_script);
+                        shift_script_selection(self, index, new_index);
                     }
                     _ => {}
                 }
@@ -572,7 +573,7 @@ impl MainWindow {
                 if has_scheduled_new_script {
                     update_edited_execution_list_script_number(self);
                     update_drag_and_drop_area_bounds(self);
-                    clean_script_selection(&mut self.window_state.cursor_script);
+                    clear_script_selection(&mut self.window_state.cursor_script);
                 }
 
                 if added_new_edited_scripts {
@@ -860,7 +861,7 @@ impl MainWindow {
                 select_execution_script(self, script_idx);
             }
             WindowMessage::CloseScriptEditing => {
-                clean_script_selection(&mut self.window_state.cursor_script);
+                clear_script_selection(&mut self.window_state.cursor_script);
             }
             WindowMessage::DuplicateConfigScript(config_script_id) => {
                 let script_definition_list = config::get_script_definition_list_mut(
@@ -1194,7 +1195,7 @@ impl MainWindow {
                 config::populate_shared_scripts_from_config(&mut self.app_config);
                 apply_theme(self);
                 self.edit_data.is_dirty = false;
-                clean_script_selection(&mut self.window_state.cursor_script);
+                clear_script_selection(&mut self.window_state.cursor_script);
                 update_config_cache(self);
                 keybind_editing::update_keybinds(self);
                 let edit_mode = config::get_main_edit_mode(&self.app_config);
@@ -1664,7 +1665,7 @@ impl MainWindow {
             WindowMessage::ScriptFilterChanged(new_filter_value) => {
                 self.edit_data.script_filter = new_filter_value;
                 update_config_cache(self);
-                clean_script_selection(&mut self.window_state.cursor_script);
+                clear_script_selection(&mut self.window_state.cursor_script);
                 events::on_script_list_pane_content_height_decreased(self);
             }
             WindowMessage::RequestCloseApp => {
@@ -2898,10 +2899,12 @@ fn produce_execution_list_content<'a>(
                 }
 
                 let mut list_item = button(row(row_data)).width(Length::Fill).padding(4);
-                if is_selected {
-                    list_item = list_item.on_press(WindowMessage::CloseScriptEditing);
-                } else {
-                    list_item = list_item.on_press(WindowMessage::OpenScriptEditing(i));
+                if dragged_script_idx.is_none() {
+                    if is_selected {
+                        list_item = list_item.on_press(WindowMessage::CloseScriptEditing);
+                    } else {
+                        list_item = list_item.on_press(WindowMessage::OpenScriptEditing(i));
+                    }
                 }
 
                 let is_dragged = dragged_script_idx == Some(i);
