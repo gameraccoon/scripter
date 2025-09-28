@@ -14,6 +14,7 @@ pub(crate) fn on_script_list_pane_content_height_decreased(app: &mut MainWindow)
 
     // what we do instead is always reset the scroll offset, and then let it update down the line
     // when the on_scroll event is triggered
+    app.window_state.script_list_scroll_offset = 0.0;
     get_current_script_list_drag_and_drop(app).set_scroll_offset(0.0);
 }
 

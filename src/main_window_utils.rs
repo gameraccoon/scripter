@@ -1354,13 +1354,15 @@ pub fn shift_script_selection(app: &mut MainWindow, old_index: usize, new_index:
     }
 }
 
-pub fn move_config_script_up(app: &mut MainWindow, index: usize) {
+pub fn move_config_script_up(app: &mut MainWindow, index: usize) -> usize {
+    let mut new_position = index;
     if app.edit_data.window_edit_data.is_some() {
         match config::get_main_edit_mode(&app.app_config) {
             config::ConfigEditMode::Shared => {
                 if index >= 1 && index < app.app_config.script_definitions.len() {
                     app.app_config.script_definitions.swap(index, index - 1);
                     app.edit_data.is_dirty = true;
+                    new_position = index - 1;
                 }
             }
             config::ConfigEditMode::Local => {
@@ -1371,6 +1373,7 @@ pub fn move_config_script_up(app: &mut MainWindow, index: usize) {
                             &mut app.app_config,
                         );
                         app.edit_data.is_dirty = true;
+                        new_position = index - 1;
                     }
                 }
             }
@@ -1390,9 +1393,12 @@ pub fn move_config_script_up(app: &mut MainWindow, index: usize) {
     }
 
     update_config_cache(app);
+
+    new_position
 }
 
-pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
+pub fn move_config_script_down(app: &mut MainWindow, index: usize) -> usize {
+    let mut new_position = index;
     if app.edit_data.window_edit_data.is_some() {
         match config::get_main_edit_mode(&app.app_config) {
             config::ConfigEditMode::Shared => {
@@ -1400,6 +1406,7 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
                     app.app_config.script_definitions.swap(index, index + 1);
                     app.edit_data.is_dirty = true;
                 }
+                new_position = index + 1;
             }
             config::ConfigEditMode::Local => {
                 if let Some(local_config_body) = &mut app.app_config.local_config_body {
@@ -1409,6 +1416,7 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
                             &mut app.app_config,
                         );
                         app.edit_data.is_dirty = true;
+                        new_position = index + 1;
                     }
                 }
             }
@@ -1428,6 +1436,8 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) {
     }
 
     update_config_cache(app);
+
+    new_position
 }
 
 pub fn move_vec_element_to_index<T>(vec: &mut Vec<T>, index: usize, new_index: usize) {
@@ -1650,6 +1660,10 @@ pub fn should_autoclean_on_success(
     }
 
     false
+}
+
+pub(crate) fn get_script_list_script_offset(index: usize) -> f32 {
+    index as f32 * ONE_SCRIPT_LIST_ELEMENT_HEIGHT
 }
 
 pub(crate) fn for_each_drag_area(app: &mut MainWindow, mut f: impl FnMut(&mut DragAndDropList)) {

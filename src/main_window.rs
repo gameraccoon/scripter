@@ -22,7 +22,7 @@ use iced::event::listen_with;
 use iced::mouse::Event;
 use iced::theme::Theme;
 use iced::widget::pane_grid::{self, Configuration, PaneGrid};
-use iced::widget::scrollable::{RelativeOffset, Scrollbar};
+use iced::widget::scrollable::{AbsoluteOffset, RelativeOffset, Scrollbar};
 use iced::widget::text::LineHeight;
 use iced::widget::{
     button, checkbox, column, container, horizontal_rule, horizontal_space, image, image::Handle,
@@ -193,6 +193,7 @@ pub(crate) struct WindowState {
     pub(crate) drag_and_drop_lists: DragAndDropLists,
     pub(crate) drop_areas: DropAreas,
     pub(crate) dragged_script: Option<config::Guid>,
+    pub(crate) script_list_scroll_offset: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -433,6 +434,7 @@ impl MainWindow {
                     running_executions: Vec::new(),
                 },
                 dragged_script: None,
+                script_list_scroll_offset: 0.0,
             },
             keybinds: custom_keybinds::CustomKeybinds::new(),
             displayed_configs_list_cache: Vec::new(),
@@ -669,6 +671,7 @@ impl MainWindow {
             }
             WindowMessage::OnScriptListScroll(viewport) => {
                 let scroll_offset_y = viewport.absolute_offset().y;
+                self.window_state.script_list_scroll_offset = scroll_offset_y;
                 get_current_script_list_drag_and_drop(self).set_scroll_offset(scroll_offset_y);
             }
             WindowMessage::OnExecutionListScroll(viewport) => {
@@ -887,6 +890,7 @@ impl MainWindow {
                 }
                 update_config_cache(self);
                 self.edit_data.is_dirty = true;
+                return scroll_cursor_script_into_view(&self);
             }
             WindowMessage::RemoveConfigScript(config_script_id) => {
                 remove_config_script(self, config_script_id)
@@ -1471,6 +1475,7 @@ impl MainWindow {
                     self.edit_data.is_dirty = true;
                 }
                 update_config_cache(self);
+                return scroll_cursor_script_into_view(&self);
             }
             WindowMessage::MoveToShared(script_idx) => {
                 if let Some(config) = &mut self.app_config.local_config_body {
@@ -1699,9 +1704,11 @@ impl MainWindow {
             }
             WindowMessage::MoveCursorUp => {
                 move_cursor(self, true);
+                return scroll_cursor_script_into_view(&self);
             }
             WindowMessage::MoveCursorDown => {
                 move_cursor(self, false);
+                return scroll_cursor_script_into_view(&self);
             }
             WindowMessage::MoveScriptDown => {
                 let focused_pane = if let Some(focus) = self.window_state.pane_focus {
@@ -1710,10 +1717,14 @@ impl MainWindow {
                     return Task::none();
                 };
 
+                let mut config_script_scroll_offset = None;
+
                 if focused_pane == PaneVariant::ScriptList {
                     if self.edit_data.window_edit_data.is_some() {
                         if let Some(edited_script) = &self.window_state.cursor_script {
-                            move_config_script_down(self, edited_script.idx);
+                            let new_index = move_config_script_down(self, edited_script.idx);
+                            config_script_scroll_offset =
+                                scroll_config_script_into_view(self, new_index);
                         }
                     }
                 } else if focused_pane == PaneVariant::ExecutionList {
@@ -1731,6 +1742,16 @@ impl MainWindow {
                         }
                     }
                 }
+
+                if let Some(scroll_offset) = config_script_scroll_offset {
+                    return scrollable::scroll_to(
+                        SCRIPTS_PANE_SCROLL_ID.clone(),
+                        AbsoluteOffset {
+                            x: 0.0,
+                            y: scroll_offset,
+                        },
+                    );
+                }
             }
             WindowMessage::MoveScriptUp => {
                 let focused_pane = if let Some(focus) = self.window_state.pane_focus {
@@ -1739,10 +1760,14 @@ impl MainWindow {
                     return Task::none();
                 };
 
+                let mut config_script_scroll_offset = None;
+
                 if focused_pane == PaneVariant::ScriptList {
                     if self.edit_data.window_edit_data.is_some() {
                         if let Some(edited_script) = &self.window_state.cursor_script {
-                            move_config_script_up(self, edited_script.idx);
+                            let new_index = move_config_script_up(self, edited_script.idx);
+                            config_script_scroll_offset =
+                                scroll_config_script_into_view(self, new_index);
                         }
                     }
                 } else if focused_pane == PaneVariant::ExecutionList {
@@ -1757,6 +1782,16 @@ impl MainWindow {
                             select_execution_script(self, cursor_script.idx - 1);
                         }
                     }
+                }
+
+                if let Some(scroll_offset) = config_script_scroll_offset {
+                    return scrollable::scroll_to(
+                        SCRIPTS_PANE_SCROLL_ID.clone(),
+                        AbsoluteOffset {
+                            x: 0.0,
+                            y: scroll_offset,
+                        },
+                    );
                 }
             }
             WindowMessage::CursorConfirm => {
@@ -4261,4 +4296,61 @@ fn update_autorerun_count_text(
         }
     }
     new_autorerun_count
+}
+
+fn scroll_config_script_into_view(app: &MainWindow, index: usize) -> Option<f32> {
+    if app.window_state.has_maximized_pane {
+        return None;
+    }
+
+    let script_offset = get_script_list_script_offset(index);
+
+    let script_scroll_height = {
+        let regions = app
+            .panes
+            .layout()
+            .pane_regions(PANE_SPACING, app.window_state.full_window_size);
+
+        let script_list_pane = app.pane_by_pane_type[&PaneVariant::ScriptList];
+
+        let Some(script_list_pane_region) = regions.get(&script_list_pane) else {
+            return None;
+        };
+
+        script_list_pane_region.height - get_edited_script_list_content_offset_y(&app)
+    };
+
+    if script_offset < app.window_state.script_list_scroll_offset {
+        Some(script_offset - 10.0)
+    } else if script_offset + ONE_SCRIPT_LIST_ELEMENT_HEIGHT
+        > script_scroll_height + app.window_state.script_list_scroll_offset
+    {
+        Some(script_offset - script_scroll_height + ONE_SCRIPT_LIST_ELEMENT_HEIGHT + 10.0)
+    } else {
+        None
+    }
+}
+
+fn scroll_cursor_script_into_view(app: &MainWindow) -> Task<WindowMessage> {
+    let Some(cursor_script) = &app.window_state.cursor_script else {
+        return Task::none();
+    };
+
+    match cursor_script.script_type {
+        EditScriptType::ScriptConfig => {
+            let new_offset = scroll_config_script_into_view(app, cursor_script.idx);
+            if let Some(new_offset) = new_offset {
+                scrollable::scroll_to(
+                    SCRIPTS_PANE_SCROLL_ID.clone(),
+                    AbsoluteOffset {
+                        x: 0.0,
+                        y: new_offset,
+                    },
+                )
+            } else {
+                Task::none()
+            }
+        }
+        EditScriptType::ExecutionList => Task::none(),
+    }
 }
