@@ -1662,6 +1662,8 @@ impl MainWindow {
                     config::get_main_edit_mode(&self.app_config),
                     config::ScriptDefinition::Preset(preset),
                 );
+
+                return scrollable::snap_to(SCRIPTS_PANE_SCROLL_ID.clone(), RelativeOffset::END);
             }
             WindowMessage::ScriptFilterChanged(new_filter_value) => {
                 self.edit_data.script_filter = new_filter_value;
