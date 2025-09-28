@@ -1726,7 +1726,7 @@ impl MainWindow {
                         if let Some(edited_script) = &self.window_state.cursor_script {
                             let new_index = move_config_script_down(self, edited_script.idx);
                             config_script_scroll_offset =
-                                scroll_config_script_into_view(self, new_index);
+                                get_script_config_bring_into_view_scroll_offset(self, new_index);
                         }
                     }
                 } else if focused_pane == PaneVariant::ExecutionList {
@@ -1769,7 +1769,7 @@ impl MainWindow {
                         if let Some(edited_script) = &self.window_state.cursor_script {
                             let new_index = move_config_script_up(self, edited_script.idx);
                             config_script_scroll_offset =
-                                scroll_config_script_into_view(self, new_index);
+                                get_script_config_bring_into_view_scroll_offset(self, new_index);
                         }
                     }
                 } else if focused_pane == PaneVariant::ExecutionList {
@@ -4300,7 +4300,7 @@ fn update_autorerun_count_text(
     new_autorerun_count
 }
 
-fn scroll_config_script_into_view(app: &MainWindow, index: usize) -> Option<f32> {
+fn get_script_config_bring_into_view_scroll_offset(app: &MainWindow, index: usize) -> Option<f32> {
     if app.window_state.has_maximized_pane {
         return None;
     }
@@ -4340,7 +4340,8 @@ fn scroll_cursor_script_into_view(app: &MainWindow) -> Task<WindowMessage> {
 
     match cursor_script.script_type {
         EditScriptType::ScriptConfig => {
-            let new_offset = scroll_config_script_into_view(app, cursor_script.idx);
+            let new_offset =
+                get_script_config_bring_into_view_scroll_offset(app, cursor_script.idx);
             if let Some(new_offset) = new_offset {
                 scrollable::scroll_to(
                     SCRIPTS_PANE_SCROLL_ID.clone(),
