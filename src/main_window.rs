@@ -2083,7 +2083,7 @@ impl MainWindow {
             })
             .width(Length::Fill)
             .height(Length::Fill)
-            .spacing(1)
+            .spacing(PANE_SPACING)
             .on_click(WindowMessage::PaneHeaderClicked)
             .on_drag(WindowMessage::PaneHeaderDragged)
             .on_resize(10, WindowMessage::PaneResized)
