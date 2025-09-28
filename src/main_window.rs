@@ -584,6 +584,8 @@ impl MainWindow {
             WindowMessage::WindowOnMouseMove(position) => {
                 self.window_state.mouse_position = position;
 
+                let mut script_list_drop_pos = None;
+
                 if !self.edit_data.window_edit_data.is_some() {
                     let move_result = self
                         .window_state
@@ -618,6 +620,9 @@ impl MainWindow {
                                     Some(script.original_script_uid.clone());
                             }
                         }
+                        DragResult::DraggingReordering(drop_pos) => {
+                            script_list_drop_pos = Some(drop_pos);
+                        }
                         _ => {}
                     }
                 }
@@ -648,6 +653,10 @@ impl MainWindow {
 
                 for drop_area in &mut self.window_state.drop_areas.running_executions {
                     drop_area.on_mouse_move(position);
+                }
+
+                if let Some(script_list_drop_pos) = script_list_drop_pos {
+                    return adjust_script_list_scroll_for_drop_pos(self, script_list_drop_pos);
                 }
             }
             WindowMessage::WindowOnFileHovered => {}
@@ -1726,7 +1735,9 @@ impl MainWindow {
                         if let Some(edited_script) = &self.window_state.cursor_script {
                             let new_index = move_config_script_down(self, edited_script.idx);
                             config_script_scroll_offset =
-                                get_script_config_bring_into_view_scroll_offset(self, new_index);
+                                get_script_config_bring_into_view_scroll_offset(
+                                    self, new_index, 10.0,
+                                );
                         }
                     }
                 } else if focused_pane == PaneVariant::ExecutionList {
@@ -1769,7 +1780,9 @@ impl MainWindow {
                         if let Some(edited_script) = &self.window_state.cursor_script {
                             let new_index = move_config_script_up(self, edited_script.idx);
                             config_script_scroll_offset =
-                                get_script_config_bring_into_view_scroll_offset(self, new_index);
+                                get_script_config_bring_into_view_scroll_offset(
+                                    self, new_index, 10.0,
+                                );
                         }
                     }
                 } else if focused_pane == PaneVariant::ExecutionList {
@@ -4300,7 +4313,11 @@ fn update_autorerun_count_text(
     new_autorerun_count
 }
 
-fn get_script_config_bring_into_view_scroll_offset(app: &MainWindow, index: usize) -> Option<f32> {
+fn get_script_config_bring_into_view_scroll_offset(
+    app: &MainWindow,
+    index: usize,
+    spacing: f32,
+) -> Option<f32> {
     if app.window_state.has_maximized_pane {
         return None;
     }
@@ -4322,12 +4339,12 @@ fn get_script_config_bring_into_view_scroll_offset(app: &MainWindow, index: usiz
         script_list_pane_region.height - get_edited_script_list_content_offset_y(&app)
     };
 
-    if script_offset < app.window_state.script_list_scroll_offset {
-        Some(script_offset - 10.0)
+    if script_offset < app.window_state.script_list_scroll_offset + spacing {
+        Some(script_offset - spacing)
     } else if script_offset + ONE_SCRIPT_LIST_ELEMENT_HEIGHT
-        > script_scroll_height + app.window_state.script_list_scroll_offset
+        > script_scroll_height + app.window_state.script_list_scroll_offset - spacing
     {
-        Some(script_offset - script_scroll_height + ONE_SCRIPT_LIST_ELEMENT_HEIGHT + 10.0)
+        Some(script_offset - script_scroll_height + ONE_SCRIPT_LIST_ELEMENT_HEIGHT + spacing)
     } else {
         None
     }
@@ -4341,7 +4358,7 @@ fn scroll_cursor_script_into_view(app: &MainWindow) -> Task<WindowMessage> {
     match cursor_script.script_type {
         EditScriptType::ScriptConfig => {
             let new_offset =
-                get_script_config_bring_into_view_scroll_offset(app, cursor_script.idx);
+                get_script_config_bring_into_view_scroll_offset(app, cursor_script.idx, 10.0);
             if let Some(new_offset) = new_offset {
                 scrollable::scroll_to(
                     SCRIPTS_PANE_SCROLL_ID.clone(),
@@ -4355,5 +4372,27 @@ fn scroll_cursor_script_into_view(app: &MainWindow) -> Task<WindowMessage> {
             }
         }
         EditScriptType::ExecutionList => Task::none(),
+    }
+}
+
+fn adjust_script_list_scroll_for_drop_pos(
+    app: &mut MainWindow,
+    drop_pos: usize,
+) -> Task<WindowMessage> {
+    let new_offset = get_script_config_bring_into_view_scroll_offset(
+        app,
+        drop_pos,
+        ONE_SCRIPT_LIST_ELEMENT_HEIGHT + 10.0,
+    );
+    if let Some(new_offset) = new_offset {
+        scrollable::scroll_to(
+            SCRIPTS_PANE_SCROLL_ID.clone(),
+            AbsoluteOffset {
+                x: 0.0,
+                y: new_offset,
+            },
+        )
+    } else {
+        Task::none()
     }
 }

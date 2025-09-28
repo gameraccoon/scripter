@@ -24,7 +24,8 @@ enum DragOperation {
 pub(crate) enum DragResult {
     None,
     JustStartedDragging(usize),
-    Dragging,
+    DraggingReordering(usize),
+    DraggingFrom,
 }
 
 pub(crate) enum DropResult {
@@ -133,7 +134,7 @@ impl DragAndDropList {
                     }
                 }
             }
-            Some(DragOperation::Reordering(index, _hovered_index)) => {
+            Some(DragOperation::Reordering(index, hovered_index)) => {
                 if self.static_parameters.is_dragging_outside_allowed
                     && !self.is_position_in_bounds(position)
                 {
@@ -149,7 +150,7 @@ impl DragAndDropList {
                         }
                     }
                 }
-                DragResult::Dragging
+                DragResult::DraggingReordering(hovered_index)
             }
             Some(DragOperation::DraggingFrom(index)) => {
                 if self.is_position_in_bounds(position)
@@ -160,7 +161,7 @@ impl DragAndDropList {
                             Some(DragOperation::Reordering(index, hovered_index));
                     }
                 }
-                DragResult::Dragging
+                DragResult::DraggingFrom
             }
             None => DragResult::None,
         }
