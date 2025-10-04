@@ -182,6 +182,7 @@ pub(crate) struct DropAreas {
     pub(crate) execution_pane: DropArea,
     // indexed by the execution index
     pub(crate) running_executions: Vec<DropArea>,
+    pub(crate) new_execution: DropArea,
 }
 
 pub(crate) struct WindowState {
@@ -436,6 +437,7 @@ impl MainWindow {
                 drop_areas: DropAreas {
                     execution_pane: DropArea::new(),
                     running_executions: Vec::new(),
+                    new_execution: DropArea::new(),
                 },
                 dragged_script: None,
                 script_list_scroll_offset: 0.0,
@@ -541,12 +543,13 @@ impl MainWindow {
                 let mut added_new_edited_scripts = false;
                 if execution_edit_list_got_item_dropped {
                     if let Some(dragged_script) = dragged_script.take() {
-                        add_script_to_execution(self, dragged_script, true);
+                        add_script_to_edited_execution(self, dragged_script, true);
                         added_new_edited_scripts = true;
                     }
                 }
 
                 let mut has_scheduled_new_script = false;
+                let mut execution_to_extend = None;
                 for (i, drop_area) in &mut self
                     .window_state
                     .drop_areas
@@ -556,49 +559,61 @@ impl MainWindow {
                 {
                     let just_dropped = drop_area.on_mouse_up(mouse_pos);
                     if just_dropped {
-                        if let Some(dragged_script) = dragged_script.take() {
-                            if let Some(execution_id) =
-                                self.execution_manager.get_started_executions().get_key(i)
-                            {
-                                let is_dragging_multiple = if let Some(script_index) =
-                                    get_edited_execution_script_index_by_uid(
-                                        &self.execution_manager,
-                                        &dragged_script,
-                                    ) {
-                                    is_dragging_multiple_execution_scripts(
-                                        &self.window_state.selected_scripts,
-                                        script_index,
-                                    )
-                                } else {
-                                    false
-                                };
-                                if is_dragging_multiple {
-                                    let selected_scripts = get_selected_scripts(
-                                        &mut self.execution_manager,
-                                        &self.window_state.selected_scripts,
-                                    );
-                                    self.execution_manager
-                                        .add_execution_scripts_to_running_execution(
-                                            &mut self.app_config,
-                                            execution_id,
-                                            selected_scripts,
-                                        );
-                                    has_scheduled_new_script = true;
-                                } else {
-                                    if let Some(script) = take_edited_execution_script(
-                                        &mut self.execution_manager,
-                                        dragged_script,
-                                        |script| !is_original_script_missing_arguments(script),
-                                    ) {
-                                        self.execution_manager
-                                            .add_execution_scripts_to_running_execution(
-                                                &mut self.app_config,
-                                                execution_id,
-                                                vec![script],
-                                            );
-                                        has_scheduled_new_script = true;
-                                    }
-                                }
+                        execution_to_extend = Some(i);
+                    }
+                }
+
+                if let Some(execution_to_extend) = execution_to_extend {
+                    let scripts_to_schedule = get_schedulable_dragged_execution_scripts(
+                        &mut self.execution_manager,
+                        &self.window_state.selected_scripts,
+                        &mut dragged_script,
+                    );
+                    if can_start_scripts(&scripts_to_schedule) {
+                        if let Some(execution_id) = self
+                            .execution_manager
+                            .get_started_executions()
+                            .get_key(execution_to_extend)
+                        {
+                            add_scripts_to_started_execution(
+                                self,
+                                execution_id,
+                                scripts_to_schedule,
+                            );
+                            has_scheduled_new_script = true;
+                        }
+                    } else {
+                        // put the scripts back to the end of the execution
+                        for script in scripts_to_schedule {
+                            self.execution_manager
+                                .add_execution_script_to_edited_list(script);
+                        }
+                    }
+                }
+
+                {
+                    let just_dropped = self
+                        .window_state
+                        .drop_areas
+                        .new_execution
+                        .on_mouse_up(mouse_pos);
+                    if just_dropped {
+                        let scripts_to_schedule = get_schedulable_dragged_execution_scripts(
+                            &mut self.execution_manager,
+                            &self.window_state.selected_scripts,
+                            &mut dragged_script,
+                        );
+                        if can_start_scripts(&scripts_to_schedule) {
+                            start_new_execution_from_provided_execution_scripts(
+                                self,
+                                scripts_to_schedule,
+                            );
+                            has_scheduled_new_script = true;
+                        } else {
+                            // put the scripts back to the end of the execution
+                            for script in scripts_to_schedule {
+                                self.execution_manager
+                                    .add_execution_script_to_edited_list(script);
                             }
                         }
                     }
@@ -676,6 +691,10 @@ impl MainWindow {
                             for drop_area in &mut self.window_state.drop_areas.running_executions {
                                 drop_area.on_started_dragging_compatible_element();
                             }
+                            self.window_state
+                                .drop_areas
+                                .new_execution
+                                .on_started_dragging_compatible_element();
                             self.window_state.dragged_script = Some(script_idx.uid.clone());
                         }
                     }
@@ -690,6 +709,10 @@ impl MainWindow {
                 for drop_area in &mut self.window_state.drop_areas.running_executions {
                     drop_area.on_mouse_move(position);
                 }
+                self.window_state
+                    .drop_areas
+                    .new_execution
+                    .on_mouse_move(position);
 
                 if let Some(script_list_drop_pos) = script_list_drop_pos {
                     return adjust_script_list_scroll_for_drop_pos(self, script_list_drop_pos);
@@ -776,7 +799,7 @@ impl MainWindow {
                         try_add_script_to_execution_or_start_new(self, script_uid);
                     }
                 } else {
-                    add_script_to_execution(self, script_uid, true);
+                    add_script_to_edited_execution(self, script_uid, true);
                     return scrollable::snap_to(
                         EXECUTIONS_PANE_SCROLL_ID.clone(),
                         RelativeOffset::END,
@@ -784,7 +807,7 @@ impl MainWindow {
                 }
             }
             WindowMessage::AddScriptToExecutionWithoutRunning(script_uid) => {
-                add_script_to_execution(self, script_uid, true);
+                add_script_to_edited_execution(self, script_uid, true);
             }
             WindowMessage::RunEditedScriptsInParallel => {
                 if !self.edit_data.window_edit_data.is_some() {
@@ -795,7 +818,10 @@ impl MainWindow {
                 try_add_edited_scripts_to_execution_or_start_new(self);
             }
             WindowMessage::RunEditedScriptsWithExecution(execution_id) => {
-                add_edited_scripts_to_started_execution(self, execution_id);
+                if can_start_scripts(self.execution_manager.get_edited_scripts()) {
+                    let consumed_scripts = self.execution_manager.consume_edited_scripts();
+                    add_scripts_to_started_execution(self, execution_id, consumed_scripts);
+                }
             }
             WindowMessage::StopScripts(execution_id) => {
                 self.execution_manager.request_stop_execution(execution_id);
@@ -1002,6 +1028,7 @@ impl MainWindow {
             WindowMessage::RemoveExecutionListScript(script_idx) => {
                 remove_execution_list_scripts(self, SortedVec::from_one_value(script_idx));
                 events::on_execution_pane_content_height_decreased(self);
+                update_drag_and_drop_area_bounds(self);
             }
             WindowMessage::AddScriptToConfig => {
                 let script = config::OriginalScriptDefinition::default();
@@ -1955,7 +1982,7 @@ impl MainWindow {
                                     );
                                 }
                             } else {
-                                add_script_to_execution(
+                                add_script_to_edited_execution(
                                     self,
                                     script.original_script_uid.clone(),
                                     false,
@@ -1975,6 +2002,7 @@ impl MainWindow {
                 if let Some(scripts_to_remove) = &self.window_state.selected_scripts {
                     if scripts_to_remove.script_type == EditScriptType::ExecutionList {
                         remove_execution_list_scripts(self, scripts_to_remove.indexes.clone());
+                        update_drag_and_drop_area_bounds(self);
                     }
                 }
             }
@@ -2646,7 +2674,7 @@ fn produce_execution_list_content<'a>(
                         text("Drop here to run after")
                             .color(theme.extended_palette().secondary.strong.text)
                             .center()
-                            .width(bounds.width),
+                            .width(bounds.width)
                     )
                     .width(bounds.width)
                     .height(bounds.height)
@@ -2660,6 +2688,40 @@ fn produce_execution_list_content<'a>(
             )
         })
         .collect::<Vec<_>>();
+
+    let start_new_execution_drop_area: Column<'_, WindowMessage> = {
+        let state = window_state.drop_areas.new_execution.get_drop_area_state();
+        let mut bounds = window_state.drop_areas.new_execution.get_bounds_scrolled();
+
+        if state == DropAreaState::Inactive {
+            column![]
+        } else if bounds.height < 0.0 {
+            column![]
+        } else {
+            let is_hovered = state == DropAreaState::HoveredByItem;
+            let mut spacing_y = bounds.y - PANE_HEADER_HEIGHT;
+            if spacing_y < 0.0 {
+                bounds.height += spacing_y;
+                spacing_y = 0.0;
+            }
+            column![
+                vertical_space().height(spacing_y),
+                button(
+                    text("Drop here to start new execution")
+                        .color(theme.extended_palette().secondary.strong.text)
+                        .center()
+                        .width(bounds.width)
+                )
+                .width(bounds.width)
+                .height(bounds.height)
+                .style(if is_hovered {
+                    button::primary
+                } else {
+                    style::drop_area_button_style
+                })
+            ]
+        }
+    };
 
     let title_widget = if visual_caches.is_custom_title_editing {
         row![text_input(
@@ -3281,7 +3343,8 @@ fn produce_execution_list_content<'a>(
             main_drop_area
         } else {
             column(running_execution_drop_areas)
-        }
+        },
+        start_new_execution_drop_area,
     ]]
 }
 
@@ -4560,4 +4623,34 @@ fn is_dragging_multiple_execution_scripts(
     } else {
         false
     }
+}
+
+fn get_schedulable_dragged_execution_scripts(
+    execution_manager: &mut parallel_execution_manager::ParallelExecutionManager,
+    selected_scripts: &Option<SelectedScripts>,
+    dragged_script: &mut Option<config::Guid>,
+) -> Vec<execution_thread::ExecutionScript> {
+    if let Some(dragged_script) = dragged_script.take() {
+        let is_dragging_multiple = if let Some(script_index) =
+            get_edited_execution_script_index_by_uid(&execution_manager, &dragged_script)
+        {
+            is_dragging_multiple_execution_scripts(selected_scripts, script_index)
+        } else {
+            false
+        };
+        if is_dragging_multiple {
+            let selected_scripts = get_selected_scripts(execution_manager, selected_scripts);
+            return selected_scripts;
+        } else {
+            if let Some(script) =
+                take_edited_execution_script(execution_manager, dragged_script, |script| {
+                    !is_original_script_missing_arguments(script)
+                })
+            {
+                return vec![script];
+            }
+        }
+    }
+
+    Vec::new()
 }

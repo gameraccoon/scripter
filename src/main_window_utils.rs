@@ -408,8 +408,12 @@ pub fn try_add_edited_scripts_to_execution_or_start_new(app: &mut MainWindow) {
             .get_started_executions()
             .values()
             .next()
-            .unwrap();
-        add_edited_scripts_to_started_execution(app, execution_id.get_id());
+            .unwrap()
+            .get_id();
+        if can_start_scripts(app.execution_manager.get_edited_scripts()) {
+            let scripts = app.execution_manager.consume_edited_scripts();
+            add_scripts_to_started_execution(app, execution_id, scripts);
+        }
     } else if executions_number == 0 {
         // if there are no executions, then we can start a new one
         start_new_execution_from_edited_scripts(app);
@@ -714,6 +718,11 @@ pub(crate) fn set_execution_lists_scroll_offset(app: &mut MainWindow, new_offset
     for drop_area in &mut app.window_state.drop_areas.running_executions {
         drop_area.set_scroll_offset(new_offset);
     }
+
+    app.window_state
+        .drop_areas
+        .new_execution
+        .set_scroll_offset(new_offset);
 }
 
 pub fn remove_execution(
@@ -975,16 +984,7 @@ pub fn move_cursor(app: &mut MainWindow, is_up: bool) {
 }
 
 pub fn start_new_execution_from_edited_scripts(app: &mut MainWindow) {
-    if app.execution_manager.get_edited_scripts().is_empty() {
-        return;
-    }
-
-    if app
-        .execution_manager
-        .get_edited_scripts()
-        .iter()
-        .any(|script| is_original_script_missing_arguments(&script.original))
-    {
+    if !can_start_scripts(app.execution_manager.get_edited_scripts()) {
         return;
     }
 
@@ -1034,38 +1034,36 @@ pub fn start_new_execution_from_provided_execution_scripts(
     cancel_all_drag_and_drop_operations(app);
 }
 
-pub fn add_edited_scripts_to_started_execution(
-    app: &mut MainWindow,
-    execution_id: parallel_execution_manager::ExecutionId,
-) {
-    if app.execution_manager.get_edited_scripts().is_empty() {
-        return;
+pub fn can_start_scripts(scripts: &Vec<execution_thread::ExecutionScript>) -> bool {
+    if scripts.is_empty() {
+        return false;
     }
 
-    if app
-        .execution_manager
-        .get_edited_scripts()
+    if scripts
         .iter()
         .any(|script| is_original_script_missing_arguments(&script.original))
     {
-        return;
+        return false;
     }
 
+    true
+}
+
+pub fn add_scripts_to_started_execution(
+    app: &mut MainWindow,
+    execution_id: parallel_execution_manager::ExecutionId,
+    scripts: Vec<execution_thread::ExecutionScript>,
+) {
     clear_script_selection(&mut app.window_state.selected_scripts);
 
-    let scripts_to_execute = app.execution_manager.consume_edited_scripts();
     app.execution_manager
-        .add_execution_scripts_to_running_execution(
-            &app.app_config,
-            execution_id,
-            scripts_to_execute,
-        );
+        .add_execution_scripts_to_running_execution(&app.app_config, execution_id, scripts);
 
     cancel_all_drag_and_drop_operations(app);
     update_drag_and_drop_area_bounds(app);
 }
 
-pub fn add_script_to_execution(
+pub fn add_script_to_edited_execution(
     app: &mut MainWindow,
     script_uid: config::Guid,
     should_focus: bool,
@@ -1087,6 +1085,8 @@ pub fn add_script_to_execution(
     }
 
     update_edited_execution_list_script_number(app);
+
+    update_drag_and_drop_area_bounds(app);
 
     true
 }
@@ -1897,6 +1897,7 @@ pub(crate) fn for_each_drop_area(app: &mut MainWindow, mut f: impl FnMut(&mut Dr
     for drop_area in &mut app.window_state.drop_areas.running_executions {
         f(drop_area);
     }
+    f(&mut app.window_state.drop_areas.new_execution);
 }
 
 pub(crate) fn cancel_all_drag_and_drop_operations(app: &mut MainWindow) {
@@ -1994,7 +1995,7 @@ fn update_execution_list_drop_area_bounds(app: &mut MainWindow) {
         .pane_regions(PANE_SPACING, app.window_state.full_window_size);
 
     let execution_list_pane = app.pane_by_pane_type[&PaneVariant::ExecutionList];
-    let Some(script_list_pane_region) = regions.get(&execution_list_pane) else {
+    let Some(execution_list_pane_region) = regions.get(&execution_list_pane) else {
         return;
     };
 
@@ -2004,6 +2005,8 @@ fn update_execution_list_drop_area_bounds(app: &mut MainWindow) {
 
     let mut accumulated_height = PANE_HEADER_HEIGHT + get_execution_list_title_size_y(app);
 
+    println!("calculate");
+
     for (idx, execution) in app
         .execution_manager
         .get_started_executions()
@@ -2011,7 +2014,7 @@ fn update_execution_list_drop_area_bounds(app: &mut MainWindow) {
         .enumerate()
     {
         let drop_area = &mut app.window_state.drop_areas.running_executions[idx];
-        let mut content_region = script_list_pane_region.clone();
+        let mut content_region = execution_list_pane_region.clone();
         content_region.y += accumulated_height;
         content_region.height = ONE_EXECUTION_LIST_ELEMENT_HEIGHT
             * execution.get_scheduled_scripts_cache().len() as f32
@@ -2021,9 +2024,31 @@ fn update_execution_list_drop_area_bounds(app: &mut MainWindow) {
                 0.0
             }
             + EXECUTION_EDIT_BUTTONS_HEIGHT;
+        println!(
+            "Running scripts {}",
+            execution.get_scheduled_scripts_cache().len()
+        );
         content_region.width -= SCROLL_BAR_WIDTH;
         accumulated_height += content_region.height;
         drop_area.set_bounds(content_region);
+    }
+
+    {
+        let mut content_region = execution_list_pane_region.clone();
+        content_region.y += accumulated_height
+            + ONE_EXECUTION_LIST_ELEMENT_HEIGHT
+                * app.execution_manager.get_edited_scripts().len() as f32
+            + EXECUTION_EDIT_BUTTONS_HEIGHT;
+        println!(
+            "Edited scripts {}",
+            app.execution_manager.get_edited_scripts().len()
+        );
+        content_region.height = 100.0;
+        content_region.width -= SCROLL_BAR_WIDTH;
+        app.window_state
+            .drop_areas
+            .new_execution
+            .set_bounds(content_region);
     }
 }
 
