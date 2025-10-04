@@ -979,7 +979,7 @@ impl MainWindow {
                 remove_config_script(self, config_script_id)
             }
             WindowMessage::RemoveExecutionListScript(script_idx) => {
-                remove_execution_list_script(self, script_idx);
+                remove_execution_list_scripts(self, vec![script_idx]);
                 events::on_execution_pane_content_height_decreased(self);
             }
             WindowMessage::AddScriptToConfig => {
@@ -1951,11 +1951,9 @@ impl MainWindow {
                     }
                 }
 
-                if let Some((idx, script_type)) =
-                    get_only_selected_script(&self.window_state.selected_scripts)
-                {
-                    if script_type == EditScriptType::ExecutionList {
-                        remove_execution_list_script(self, idx);
+                if let Some(scripts_to_remove) = &self.window_state.selected_scripts {
+                    if scripts_to_remove.script_type == EditScriptType::ExecutionList {
+                        remove_execution_list_scripts(self, scripts_to_remove.indexes.clone());
                     }
                 }
             }

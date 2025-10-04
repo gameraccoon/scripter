@@ -1221,9 +1221,9 @@ pub fn remove_config_script(app: &mut MainWindow, config_script_id: ConfigScript
     keybind_editing::prune_unused_keybinds(app);
 }
 
-pub fn remove_execution_list_script(app: &mut MainWindow, script_idx: usize) {
+pub fn remove_execution_list_scripts(app: &mut MainWindow, sorted_indexes: Vec<usize>) {
     app.execution_manager
-        .remove_script_from_edited_list(script_idx);
+        .remove_scripts_from_edited_list(sorted_indexes);
     update_edited_execution_list_script_number(app);
     clear_script_selection(&mut app.window_state.selected_scripts);
 }

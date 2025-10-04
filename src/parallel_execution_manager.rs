@@ -498,8 +498,10 @@ impl ParallelExecutionManager {
         self.get_edited_scripts_mut().push(script);
     }
 
-    pub fn remove_script_from_edited_list(&mut self, idx: usize) {
-        self.get_edited_scripts_mut().remove(idx);
+    pub fn remove_scripts_from_edited_list(&mut self, sorted_indexes: Vec<usize>) {
+        for index in sorted_indexes.iter().rev() {
+            self.get_edited_scripts_mut().remove(*index);
+        }
     }
 
     pub fn get_edited_scripts(&self) -> &Vec<execution_thread::ExecutionScript> {
