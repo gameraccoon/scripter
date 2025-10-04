@@ -1383,26 +1383,25 @@ pub fn clear_script_selection(currently_edited_script: &mut Option<SelectedScrip
 }
 
 pub fn shift_script_selection(app: &mut MainWindow, old_index: usize, new_index: usize) {
-    if let Some((mut selected_script_idx, script_type)) =
-        get_only_selected_script(&mut app.window_state.selected_scripts)
-    {
-        if old_index == selected_script_idx {
-            if new_index <= old_index {
-                selected_script_idx = new_index
-            } else {
-                selected_script_idx = new_index - 1
-            }
-        } else if old_index < selected_script_idx && new_index > selected_script_idx {
-            selected_script_idx -= 1;
-        } else if old_index > selected_script_idx && new_index <= selected_script_idx {
-            selected_script_idx += 1;
-        }
+    let Some(selected_scripts) = &mut app.window_state.selected_scripts else {
+        return;
+    };
 
-        app.window_state.selected_scripts = Some(SelectedScripts {
-            indexes: SortedVec::from_one_value(selected_script_idx),
-            script_type,
-        });
-    }
+    selected_scripts.indexes.unsafe_modify(|unsafe_indexes| {
+        for selected_script_idx in unsafe_indexes.iter_mut() {
+            if old_index == *selected_script_idx {
+                if new_index <= old_index {
+                    *selected_script_idx = new_index
+                } else {
+                    *selected_script_idx = new_index - 1
+                }
+            } else if old_index < *selected_script_idx && new_index > *selected_script_idx {
+                *selected_script_idx -= 1;
+            } else if old_index > *selected_script_idx && new_index <= *selected_script_idx {
+                *selected_script_idx += 1;
+            }
+        }
+    });
 }
 
 pub fn move_config_script_up(app: &mut MainWindow, index: usize) -> usize {
