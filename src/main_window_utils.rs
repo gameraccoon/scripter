@@ -1103,6 +1103,35 @@ pub fn take_edited_execution_script(
         .and_then(|idx| Some(execution_manager.get_edited_scripts_mut().remove(idx)))
 }
 
+pub fn get_edited_execution_script_index_by_uid(
+    execution_manager: &parallel_execution_manager::ParallelExecutionManager,
+    uid: &config::Guid,
+) -> Option<usize> {
+    execution_manager
+        .get_edited_scripts()
+        .iter()
+        .position(|script| &script.uid == uid)
+}
+
+pub fn get_selected_scripts(
+    execution_manager: &mut parallel_execution_manager::ParallelExecutionManager,
+    selected_scripts: &Option<SelectedScripts>,
+) -> Vec<execution_thread::ExecutionScript> {
+    let Some(selected_scripts) = selected_scripts else {
+        return Vec::new();
+    };
+
+    let mut result = Vec::with_capacity(selected_scripts.indexes.len());
+    let edited_scripts = execution_manager.get_edited_scripts_mut();
+    for &idx in selected_scripts.indexes.iter().rev() {
+        result.push(edited_scripts.remove(idx));
+    }
+
+    result.reverse();
+
+    result
+}
+
 pub fn add_script_to_config(
     app: &mut MainWindow,
     edit_mode: config::ConfigEditMode,

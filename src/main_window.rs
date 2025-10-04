@@ -515,7 +515,10 @@ impl MainWindow {
                     .on_mouse_up(mouse_pos);
                 match drop_result {
                     drag_and_drop::DropResult::ItemChangedPosition(index, new_index) => {
-                        if is_dragging_multiple_execution_scripts(self, index) {
+                        if is_dragging_multiple_execution_scripts(
+                            &self.window_state.selected_scripts,
+                            index,
+                        ) {
                             move_selected_indexes_to_new_pos(self, new_index);
                         } else {
                             move_vec_element_to_index(
@@ -554,22 +557,47 @@ impl MainWindow {
                     let just_dropped = drop_area.on_mouse_up(mouse_pos);
                     if just_dropped {
                         if let Some(dragged_script) = dragged_script.take() {
-                            if let Some(script) = take_edited_execution_script(
-                                &mut self.execution_manager,
-                                dragged_script,
-                                |script| !is_original_script_missing_arguments(script),
-                            ) {
-                                let execution_id =
-                                    self.execution_manager.get_started_executions().get_key(i);
-
-                                if let Some(execution_id) = execution_id {
+                            if let Some(execution_id) =
+                                self.execution_manager.get_started_executions().get_key(i)
+                            {
+                                let is_dragging_multiple = if let Some(script_index) =
+                                    get_edited_execution_script_index_by_uid(
+                                        &self.execution_manager,
+                                        &dragged_script,
+                                    ) {
+                                    is_dragging_multiple_execution_scripts(
+                                        &self.window_state.selected_scripts,
+                                        script_index,
+                                    )
+                                } else {
+                                    false
+                                };
+                                if is_dragging_multiple {
+                                    let selected_scripts = get_selected_scripts(
+                                        &mut self.execution_manager,
+                                        &self.window_state.selected_scripts,
+                                    );
                                     self.execution_manager
                                         .add_execution_scripts_to_running_execution(
                                             &mut self.app_config,
                                             execution_id,
-                                            vec![script],
+                                            selected_scripts,
                                         );
                                     has_scheduled_new_script = true;
+                                } else {
+                                    if let Some(script) = take_edited_execution_script(
+                                        &mut self.execution_manager,
+                                        dragged_script,
+                                        |script| !is_original_script_missing_arguments(script),
+                                    ) {
+                                        self.execution_manager
+                                            .add_execution_scripts_to_running_execution(
+                                                &mut self.app_config,
+                                                execution_id,
+                                                vec![script],
+                                            );
+                                        has_scheduled_new_script = true;
+                                    }
                                 }
                             }
                         }
@@ -4513,8 +4541,11 @@ fn adjust_script_list_scroll_for_drop_pos(
     }
 }
 
-fn is_dragging_multiple_execution_scripts(app: &MainWindow, dragged_index: usize) -> bool {
-    if let Some(selected_scripts) = &app.window_state.selected_scripts {
+fn is_dragging_multiple_execution_scripts(
+    selected_scripts: &Option<SelectedScripts>,
+    dragged_index: usize,
+) -> bool {
+    if let Some(selected_scripts) = &selected_scripts {
         if selected_scripts.script_type == EditScriptType::ExecutionList
             && selected_scripts.indexes.len() > 1
             && selected_scripts
