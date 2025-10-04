@@ -2360,7 +2360,9 @@ fn produce_script_list_content<'a>(
                     Some(SelectedScripts {
                         indexes,
                         script_type,
-                    }) if indexes.contains(&i) && *script_type == EditScriptType::ScriptConfig => {
+                    }) if indexes.binary_search(&i).is_ok()
+                        && *script_type == EditScriptType::ScriptConfig =>
+                    {
                         true
                     }
                     _ => false,
@@ -2972,6 +2974,23 @@ fn produce_execution_list_content<'a>(
         .drag_and_drop_lists
         .execution_edit_list
         .get_dragged_element_index();
+    let dragged_script_indexes = if let Some(selected_scripts) = &window_state.selected_scripts {
+        if let Some(dragged_script_index) = dragged_script_idx {
+            if selected_scripts
+                .indexes
+                .binary_search(&dragged_script_index)
+                .is_ok()
+            {
+                selected_scripts.indexes.clone()
+            } else {
+                SortedVec::new()
+            }
+        } else {
+            SortedVec::new()
+        }
+    } else {
+        SortedVec::new()
+    };
     let insert_position_index = window_state
         .drag_and_drop_lists
         .execution_edit_list
@@ -2987,7 +3006,7 @@ fn produce_execution_list_content<'a>(
             .map(|(i, script)| {
                 let is_selected = match &window_state.selected_scripts {
                     Some(selected_script) => {
-                        selected_script.indexes.contains(&i)
+                        selected_script.indexes.binary_search(&i).is_ok()
                             && selected_script.script_type == EditScriptType::ExecutionList
                     }
                     None => false,
@@ -3040,7 +3059,9 @@ fn produce_execution_list_content<'a>(
                     list_item = list_item.on_press(WindowMessage::SelectExecutionScript(i));
                 }
 
-                let is_dragged = dragged_script_idx == Some(i);
+                let is_dragged = dragged_script_idx == Some(i)
+                    || (dragged_script_idx.is_some()
+                        && dragged_script_indexes.binary_search(&i).is_ok());
 
                 list_item = list_item.style(if is_dragged {
                     button::success

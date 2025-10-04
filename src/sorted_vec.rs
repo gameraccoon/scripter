@@ -16,6 +16,10 @@ impl<T> SortedVec<T>
 where
     T: Ord,
 {
+    pub fn new() -> Self {
+        Self { data: Vec::new() }
+    }
+
     pub fn from_one_value(value: T) -> Self {
         Self { data: vec![value] }
     }
