@@ -1346,7 +1346,7 @@ pub fn shift_script_selection(app: &mut MainWindow, old_index: usize, new_index:
             } else {
                 cursor_script.idx = new_index - 1
             }
-        } else if old_index < cursor_script.idx && new_index >= cursor_script.idx {
+        } else if old_index < cursor_script.idx && new_index > cursor_script.idx {
             cursor_script.idx -= 1;
         } else if old_index > cursor_script.idx && new_index <= cursor_script.idx {
             cursor_script.idx += 1;
