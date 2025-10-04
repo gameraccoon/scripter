@@ -10,6 +10,7 @@ use crate::config;
 use crate::execution_thread;
 use crate::file_utils;
 use crate::ring_buffer;
+use crate::sorted_vec::SortedVec;
 
 // one list of scripts, an execution can have multiple lists
 // in that case as soon as one list finishes, the next one starts immediately
@@ -498,8 +499,8 @@ impl ParallelExecutionManager {
         self.get_edited_scripts_mut().push(script);
     }
 
-    pub fn remove_scripts_from_edited_list(&mut self, sorted_indexes: Vec<usize>) {
-        for index in sorted_indexes.iter().rev() {
+    pub fn remove_scripts_from_edited_list(&mut self, indexes: SortedVec<usize>) {
+        for index in indexes.iter().rev() {
             self.get_edited_scripts_mut().remove(*index);
         }
     }

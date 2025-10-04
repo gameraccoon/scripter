@@ -12,6 +12,7 @@ use crate::style;
 use crate::{color_utils, execution_thread};
 
 use crate::config::get_current_rewritable_config;
+use crate::sorted_vec::SortedVec;
 use iced::advanced::image::Handle;
 use iced::widget::{pane_grid, text_input};
 use iced::window::resize;
@@ -1221,9 +1222,9 @@ pub fn remove_config_script(app: &mut MainWindow, config_script_id: ConfigScript
     keybind_editing::prune_unused_keybinds(app);
 }
 
-pub fn remove_execution_list_scripts(app: &mut MainWindow, sorted_indexes: Vec<usize>) {
+pub fn remove_execution_list_scripts(app: &mut MainWindow, indexes: SortedVec<usize>) {
     app.execution_manager
-        .remove_scripts_from_edited_list(sorted_indexes);
+        .remove_scripts_from_edited_list(indexes);
     update_edited_execution_list_script_number(app);
     clear_script_selection(&mut app.window_state.selected_scripts);
 }
@@ -1341,38 +1342,40 @@ fn set_selected_script(
     script_type: EditScriptType,
 ) {
     *currently_edited_script = Some(SelectedScripts {
-        indexes: vec![script_idx],
+        indexes: SortedVec::from_one_value(script_idx),
         script_type: script_type.clone(),
     });
 }
 
-pub fn extend_selection_range(indexes: &mut Vec<usize>, new_range_point: usize) {
+pub fn extend_selection_range(indexes: &mut SortedVec<usize>, new_range_point: usize) {
     if indexes.is_empty() {
         eprintln!("Should not call extend_selection_range with empty indexes");
         return;
     }
 
-    let first_index = indexes[0];
-    // add all indexes between the first and the new point
-    let mut insertion_idx = 1;
-    if new_range_point > first_index {
-        for idx in first_index + 1..=new_range_point {
-            match indexes.get(insertion_idx) {
-                None => indexes.push(idx),
-                Some(existing_idx) if existing_idx > &idx => {
-                    indexes.insert(insertion_idx, idx);
+    indexes.unsafe_modify(|indexes_unsafe: &mut Vec<usize>| {
+        let first_index = indexes_unsafe[0];
+        // add all indexes between the first and the new point
+        let mut insertion_idx = 1;
+        if new_range_point > first_index {
+            for idx in first_index + 1..=new_range_point {
+                match indexes_unsafe.get(insertion_idx) {
+                    None => indexes_unsafe.push(idx),
+                    Some(existing_idx) if existing_idx > &idx => {
+                        indexes_unsafe.insert(insertion_idx, idx);
+                    }
+                    _ => {}
                 }
-                _ => {}
+                insertion_idx += 1;
             }
-            insertion_idx += 1;
+        } else {
+            indexes_unsafe.reserve(first_index - new_range_point);
+            for new_idx in new_range_point..first_index {
+                indexes_unsafe.push(new_idx)
+            }
+            indexes_unsafe.rotate_right(first_index - new_range_point);
         }
-    } else {
-        indexes.reserve(first_index - new_range_point);
-        for new_idx in new_range_point..first_index {
-            indexes.push(new_idx)
-        }
-        indexes.rotate_right(first_index - new_range_point);
-    }
+    });
 }
 
 pub fn clear_script_selection(currently_edited_script: &mut Option<SelectedScripts>) {
@@ -1396,7 +1399,7 @@ pub fn shift_script_selection(app: &mut MainWindow, old_index: usize, new_index:
         }
 
         app.window_state.selected_scripts = Some(SelectedScripts {
-            indexes: vec![selected_script_idx],
+            indexes: SortedVec::from_one_value(selected_script_idx),
             script_type,
         });
     }

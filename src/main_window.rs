@@ -17,6 +17,7 @@ use crate::style;
 use crate::ui_icons;
 use drag_and_drop::DropAreaState;
 
+use crate::sorted_vec::SortedVec;
 use iced::alignment::{self, Alignment};
 use iced::event::listen_with;
 use iced::mouse::Event;
@@ -114,7 +115,7 @@ pub(crate) enum EditScriptType {
 #[derive(Debug, Clone)]
 pub(crate) struct SelectedScripts {
     // always asc sorted
-    pub(crate) indexes: Vec<usize>,
+    pub(crate) indexes: SortedVec<usize>,
     pub(crate) script_type: EditScriptType,
 }
 
@@ -915,13 +916,7 @@ impl MainWindow {
                             return Task::none();
                         };
 
-                        if let Ok(idx_to_remove) =
-                            selected_scripts.indexes.binary_search(&script_idx)
-                        {
-                            selected_scripts.indexes.remove(idx_to_remove);
-                        } else {
-                            eprintln!("The script is expected to be selected");
-                        }
+                        selected_scripts.indexes.remove_sorted(&script_idx);
                     } else {
                         clear_script_selection(&mut self.window_state.selected_scripts);
                     }
@@ -933,13 +928,7 @@ impl MainWindow {
                             return Task::none();
                         };
 
-                        if let Err(insertion_idx) =
-                            selected_scripts.indexes.binary_search(&script_idx)
-                        {
-                            selected_scripts.indexes.insert(insertion_idx, script_idx);
-                        } else {
-                            eprintln!("The script is not expected to be already selected");
-                        }
+                        selected_scripts.indexes.insert_unique_sorted(script_idx);
                     } else {
                         select_execution_script(self, script_idx);
                     }
@@ -967,7 +956,7 @@ impl MainWindow {
 
                 if let Some(idx) = idx {
                     self.window_state.selected_scripts = Some(SelectedScripts {
-                        indexes: vec![idx],
+                        indexes: SortedVec::from_one_value(idx),
                         script_type: EditScriptType::ScriptConfig,
                     });
                 }
@@ -979,7 +968,7 @@ impl MainWindow {
                 remove_config_script(self, config_script_id)
             }
             WindowMessage::RemoveExecutionListScript(script_idx) => {
-                remove_execution_list_scripts(self, vec![script_idx]);
+                remove_execution_list_scripts(self, SortedVec::from_one_value(script_idx));
                 events::on_execution_pane_content_height_decreased(self);
             }
             WindowMessage::AddScriptToConfig => {

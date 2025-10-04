@@ -21,6 +21,7 @@ mod main_window_utils;
 mod main_window_widgets;
 mod parallel_execution_manager;
 mod ring_buffer;
+mod sorted_vec;
 mod style;
 mod ui_icons;
 
