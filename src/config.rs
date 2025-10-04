@@ -334,7 +334,7 @@ pub enum AppAction {
     SwitchPaneFocusBackwards,
     MoveCursorDown,
     MoveCursorUp,
-    RemoveCursorScript,
+    RemoveSelectedScripts,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1077,7 +1077,7 @@ fn get_default_app_action_keybinds() -> Vec<AppActionKeybind> {
         },
     });
     keybinds.push(AppActionKeybind {
-        action: AppAction::RemoveCursorScript,
+        action: AppAction::RemoveSelectedScripts,
         keybind: CustomKeybind {
             key: CustomKeyCode::Delete,
             modifiers: CustomModifiers::empty(),

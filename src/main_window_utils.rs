@@ -380,7 +380,7 @@ pub fn get_window_message_from_app_action(app_action: config::AppAction) -> Wind
         config::AppAction::SwitchPaneFocusBackwards => WindowMessage::SwitchPaneFocus(false),
         config::AppAction::MoveCursorDown => WindowMessage::MoveCursorDown,
         config::AppAction::MoveCursorUp => WindowMessage::MoveCursorUp,
-        config::AppAction::RemoveCursorScript => WindowMessage::RemoveCursorScript,
+        config::AppAction::RemoveSelectedScripts => WindowMessage::RemoveSelectedScripts,
     }
 }
 
@@ -929,16 +929,16 @@ pub fn move_cursor(app: &mut MainWindow, is_up: bool) {
             return;
         }
 
-        let cursor_script_type = app
+        let selected_script_type = app
             .window_state
             .selected_scripts
             .as_ref()
             .map(|x| x.script_type);
-        let cursor_script_idx =
+        let selected_script_idx =
             get_only_selected_script(&app.window_state.selected_scripts).map(|(idx, _)| idx);
 
-        let next_selection = if cursor_script_idx.is_none()
-            || (cursor_script_idx.is_some() && cursor_script_type != Some(pane_script_type))
+        let next_selection = if selected_script_idx.is_none()
+            || (selected_script_idx.is_some() && selected_script_type != Some(pane_script_type))
         {
             if is_up {
                 scripts_count - 1
@@ -946,16 +946,16 @@ pub fn move_cursor(app: &mut MainWindow, is_up: bool) {
                 0
             }
         } else {
-            let cursor_script_idx = cursor_script_idx.unwrap_or_default();
+            let selected_script_idx = selected_script_idx.unwrap_or_default();
             if is_up {
-                if cursor_script_idx > 0 {
-                    cursor_script_idx - 1
+                if selected_script_idx > 0 {
+                    selected_script_idx - 1
                 } else {
                     scripts_count - 1
                 }
             } else {
-                if cursor_script_idx + 1 < scripts_count {
-                    cursor_script_idx + 1
+                if selected_script_idx + 1 < scripts_count {
+                    selected_script_idx + 1
                 } else {
                     0
                 }
@@ -1256,9 +1256,9 @@ fn add_script_to_local_config(
 }
 
 pub fn get_only_selected_script(
-    cursor_scripts: &Option<SelectedScripts>,
+    selected_scripts: &Option<SelectedScripts>,
 ) -> Option<(usize, EditScriptType)> {
-    match cursor_scripts {
+    match selected_scripts {
         Some(scripts) if scripts.indexes.len() == 1 => {
             Some((scripts.indexes[0], scripts.script_type))
         }
@@ -1380,23 +1380,23 @@ pub fn clear_script_selection(currently_edited_script: &mut Option<SelectedScrip
 }
 
 pub fn shift_script_selection(app: &mut MainWindow, old_index: usize, new_index: usize) {
-    if let Some((mut cursor_script_idx, script_type)) =
+    if let Some((mut selected_script_idx, script_type)) =
         get_only_selected_script(&mut app.window_state.selected_scripts)
     {
-        if old_index == cursor_script_idx {
+        if old_index == selected_script_idx {
             if new_index <= old_index {
-                cursor_script_idx = new_index
+                selected_script_idx = new_index
             } else {
-                cursor_script_idx = new_index - 1
+                selected_script_idx = new_index - 1
             }
-        } else if old_index < cursor_script_idx && new_index > cursor_script_idx {
-            cursor_script.idx -= 1;
-        } else if old_index > cursor_script_idx && new_index <= cursor_script_idx {
-            cursor_script.idx += 1;
+        } else if old_index < selected_script_idx && new_index > selected_script_idx {
+            selected_script_idx -= 1;
+        } else if old_index > selected_script_idx && new_index <= selected_script_idx {
+            selected_script_idx += 1;
         }
 
         app.window_state.selected_scripts = Some(SelectedScripts {
-            indexes: vec![cursor_script_idx],
+            indexes: vec![selected_script_idx],
             script_type,
         });
     }

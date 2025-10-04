@@ -306,7 +306,7 @@ pub(crate) enum WindowMessage {
     MoveScriptDown,
     MoveScriptUp,
     CursorConfirm,
-    RemoveCursorScript,
+    RemoveSelectedScripts,
     SwitchPaneFocus(bool),
     SetExecutionListTitleEditing(bool),
     EditExecutionListTitle(String),
@@ -973,7 +973,7 @@ impl MainWindow {
                 }
                 update_config_cache(self);
                 self.edit_data.is_dirty = true;
-                return scroll_cursor_script_into_view(&self);
+                return scroll_selected_script_into_view(&self);
             }
             WindowMessage::RemoveConfigScript(config_script_id) => {
                 remove_config_script(self, config_script_id)
@@ -1570,7 +1570,7 @@ impl MainWindow {
                     self.edit_data.is_dirty = true;
                 }
                 update_config_cache(self);
-                return scroll_cursor_script_into_view(&self);
+                return scroll_selected_script_into_view(&self);
             }
             WindowMessage::MoveToShared(script_idx) => {
                 if let Some(config) = &mut self.app_config.local_config_body {
@@ -1804,11 +1804,11 @@ impl MainWindow {
             }
             WindowMessage::MoveCursorUp => {
                 move_cursor(self, true);
-                return scroll_cursor_script_into_view(&self);
+                return scroll_selected_script_into_view(&self);
             }
             WindowMessage::MoveCursorDown => {
                 move_cursor(self, false);
-                return scroll_cursor_script_into_view(&self);
+                return scroll_selected_script_into_view(&self);
             }
             WindowMessage::MoveScriptDown => {
                 let focused_pane = if let Some(focus) = self.window_state.pane_focus {
@@ -1909,7 +1909,7 @@ impl MainWindow {
                     return Task::none();
                 }
 
-                let Some((cursor_script_idx, _)) =
+                let Some((selected_script_idx, _)) =
                     get_only_selected_script(&self.window_state.selected_scripts)
                 else {
                     return Task::none();
@@ -1919,7 +1919,7 @@ impl MainWindow {
                     if &self.panes.panes[&focus].variant == &PaneVariant::ScriptList {
                         let scripts = &self.displayed_configs_list_cache;
 
-                        if let Some(script) = scripts.get(cursor_script_idx) {
+                        if let Some(script) = scripts.get(selected_script_idx) {
                             if self.window_state.is_command_key_down {
                                 if self.window_state.is_alt_key_down {
                                     let scripts = get_resulting_scripts_from_guid(
@@ -1944,7 +1944,7 @@ impl MainWindow {
                     }
                 }
             }
-            WindowMessage::RemoveCursorScript => {
+            WindowMessage::RemoveSelectedScripts => {
                 if let Some(focus) = self.window_state.pane_focus {
                     if &self.panes.panes[&focus].variant != &PaneVariant::ExecutionList {
                         return Task::none();
@@ -1973,8 +1973,8 @@ impl MainWindow {
                 if new_selection == PaneVariant::Parameters {
                     if let Some(focus) = self.window_state.pane_focus {
                         if self.panes.panes[&focus].variant != PaneVariant::Parameters {
-                            if let Some(cursor_script) = &self.window_state.selected_scripts {
-                                match cursor_script.script_type {
+                            if let Some(selected_script) = &self.window_state.selected_scripts {
+                                match selected_script.script_type {
                                     EditScriptType::ScriptConfig => {
                                         should_select_arguments =
                                             self.edit_data.window_edit_data.is_some();
@@ -4182,7 +4182,7 @@ fn produce_settings_edit_content<'a>(
         window_edit,
         visual_caches,
         "Remove selected script:",
-        keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::RemoveCursorScript),
+        keybind_editing::KeybindAssociatedData::AppAction(config::AppAction::RemoveSelectedScripts),
     );
 
     keybind_editing::populate_keybind_editing_content(
@@ -4452,17 +4452,17 @@ fn get_script_config_bring_into_view_scroll_offset(
     }
 }
 
-fn scroll_cursor_script_into_view(app: &MainWindow) -> Task<WindowMessage> {
-    let Some((cursor_script_idx, cursor_script_type)) =
+fn scroll_selected_script_into_view(app: &MainWindow) -> Task<WindowMessage> {
+    let Some((selected_script_idx, selected_script_type)) =
         get_only_selected_script(&app.window_state.selected_scripts)
     else {
         return Task::none();
     };
 
-    match cursor_script_type {
+    match selected_script_type {
         EditScriptType::ScriptConfig => {
             let new_offset =
-                get_script_config_bring_into_view_scroll_offset(app, cursor_script_idx, 10.0);
+                get_script_config_bring_into_view_scroll_offset(app, selected_script_idx, 10.0);
             if let Some(new_offset) = new_offset {
                 scrollable::scroll_to(
                     SCRIPTS_PANE_SCROLL_ID.clone(),
