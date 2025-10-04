@@ -1404,6 +1404,143 @@ pub fn shift_script_selection(app: &mut MainWindow, old_index: usize, new_index:
     });
 }
 
+pub fn move_selected_indexes_to_new_pos(app: &mut MainWindow, new_index: usize) {
+    let Some(selected_scripts) = &mut app.window_state.selected_scripts else {
+        return;
+    };
+
+    let Some(&first_index) = selected_scripts.indexes.first() else {
+        return;
+    };
+
+    let edited_scripts = app.execution_manager.get_edited_scripts_mut();
+
+    let mut new_index_shift = 0;
+    let mut next_index_idx = 0;
+    if first_index < new_index {
+        new_index_shift += 1;
+        next_index_idx += 1;
+
+        // [0][1][2][3][4][5][6][7]
+        // [*][*][_][*][_][_][_][_]
+        //                    ^
+        //                  target
+
+        // [2][0][1][3][4][5][6][7]
+        // [_][*][*][*][_][_][_][_]
+        // [ -> -> ]          ^
+
+        // [2][4][5][6][0][1][3][7]
+        // [_][_][_][_][*][*][*][_]
+        //    [ -> -> -> -> -> ]
+
+        let mut movable_start = first_index;
+        let mut movable_end = first_index + 1;
+        let mut move_to_end = first_index + 1;
+        let mut idx = first_index + 1;
+        loop {
+            if next_index_idx >= selected_scripts.indexes.len() || idx >= new_index {
+                if movable_end != new_index {
+                    let rotate_steps = new_index - movable_end;
+                    edited_scripts[movable_start..new_index].rotate_right(rotate_steps);
+                }
+                break;
+            }
+
+            let next_selected_idx = selected_scripts.indexes[next_index_idx];
+            if idx == next_selected_idx {
+                next_index_idx += 1;
+
+                if movable_end == move_to_end {
+                    // this element is right after other elements to move
+                    // add this element to the moved bunch
+                    movable_end += 1;
+                    move_to_end += 1;
+                } else {
+                    // we found a moveable element pass some elements that we need to shift
+                    // do the rotation
+                    let rotate_steps = move_to_end - movable_end;
+                    edited_scripts[movable_start..move_to_end].rotate_right(rotate_steps);
+                    movable_start += rotate_steps;
+                    movable_end += rotate_steps + 1;
+                    move_to_end = movable_end;
+                }
+                new_index_shift += 1;
+                idx += 1;
+            } else {
+                // we found an element that we need to shift
+                let shift = std::cmp::min(next_selected_idx, new_index) - idx;
+                move_to_end += shift;
+                idx += shift;
+            }
+        }
+    }
+
+    let new_index_shift = new_index_shift;
+
+    if next_index_idx < selected_scripts.indexes.len() {
+        // [0][1][2][3][4][5][6][7]
+        // [_][_][_][*][_][*][*][_]
+        //     ^
+        //   target
+
+        // [0][1][3][2][4][5][6][7]
+        // [_][_][*][_][_][*][*][_]
+        //     ^ [ <- ]
+
+        // [0][1][3][5][6][2][4][7]
+        // [_][_][*][*][*][_][_][_]
+        //     ^    [ <- <- <- ]
+
+        let mut move_to_start = new_index;
+        let mut movable_start = move_to_start;
+        let mut movable_end = movable_start;
+        let mut idx = move_to_start;
+        loop {
+            if next_index_idx >= selected_scripts.indexes.len() {
+                if movable_start != movable_end {
+                    let rotate_steps = movable_start - move_to_start;
+                    edited_scripts[move_to_start..movable_end].rotate_left(rotate_steps);
+                }
+                break;
+            }
+
+            let next_selected_idx = selected_scripts.indexes[next_index_idx];
+            if idx == next_selected_idx {
+                next_index_idx += 1;
+
+                if move_to_start == movable_start {
+                    // this element doesn't need to be moved, shift all indexes
+                    move_to_start += 1;
+                    movable_start += 1;
+                } else if movable_start == movable_end {
+                    // this is the first element to be moved
+                    movable_start = idx;
+                    movable_end = movable_start;
+                }
+                movable_end += 1;
+                idx += 1;
+            } else {
+                // if we have elements to move before
+                if movable_start > move_to_start {
+                    let rotate_steps = movable_start - move_to_start;
+                    edited_scripts[move_to_start..movable_end].rotate_left(rotate_steps);
+                    move_to_start = movable_end - rotate_steps;
+                }
+                movable_start = next_selected_idx;
+                movable_end = movable_start;
+                idx = next_selected_idx;
+            }
+        }
+    }
+
+    let result_index_start = new_index - new_index_shift;
+    let result_index_end = result_index_start + selected_scripts.indexes.len();
+
+    selected_scripts.indexes =
+        SortedVec::from_sorted_vec((result_index_start..result_index_end).collect());
+}
+
 pub fn move_config_script_up(app: &mut MainWindow, index: usize) -> usize {
     let mut new_position = index;
     if app.edit_data.window_edit_data.is_some() {

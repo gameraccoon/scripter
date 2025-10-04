@@ -24,6 +24,14 @@ where
         Self { data: vec![value] }
     }
 
+    pub fn from_sorted_vec(vec: Vec<T>) -> Self {
+        if !vec.is_sorted() {
+            panic!("The vec should be sorted when passing to from_sorted_vec");
+        }
+
+        Self { data: vec }
+    }
+
     pub fn remove_sorted(&mut self, value: &T) {
         if let Ok(idx_to_remove) = self.data.binary_search(value) {
             self.data.remove(idx_to_remove);

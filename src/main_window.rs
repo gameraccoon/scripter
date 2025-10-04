@@ -515,12 +515,16 @@ impl MainWindow {
                     .on_mouse_up(mouse_pos);
                 match drop_result {
                     drag_and_drop::DropResult::ItemChangedPosition(index, new_index) => {
-                        move_vec_element_to_index(
-                            self.execution_manager.get_edited_scripts_mut(),
-                            index,
-                            new_index,
-                        );
-                        shift_script_selection(self, index, new_index);
+                        if is_dragging_multiple_execution_scripts(self, index) {
+                            move_selected_indexes_to_new_pos(self, new_index);
+                        } else {
+                            move_vec_element_to_index(
+                                self.execution_manager.get_edited_scripts_mut(),
+                                index,
+                                new_index,
+                            );
+                            shift_script_selection(self, index, new_index);
+                        }
                     }
                     _ => {}
                 }
@@ -4506,5 +4510,23 @@ fn adjust_script_list_scroll_for_drop_pos(
         )
     } else {
         Task::none()
+    }
+}
+
+fn is_dragging_multiple_execution_scripts(app: &MainWindow, dragged_index: usize) -> bool {
+    if let Some(selected_scripts) = &app.window_state.selected_scripts {
+        if selected_scripts.script_type == EditScriptType::ExecutionList
+            && selected_scripts.indexes.len() > 1
+            && selected_scripts
+                .indexes
+                .binary_search(&dragged_index)
+                .is_ok()
+        {
+            true
+        } else {
+            false
+        }
+    } else {
+        false
     }
 }
