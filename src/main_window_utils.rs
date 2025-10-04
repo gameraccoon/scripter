@@ -300,7 +300,7 @@ pub fn get_next_pane_selection(app: &MainWindow, is_forward: bool) -> PaneVarian
         let is_editing = app.edit_data.window_edit_data.is_some();
         let selected_script_type = app
             .window_state
-            .cursor_script
+            .selected_scripts
             .as_ref()
             .map(|s| &s.script_type);
 
@@ -759,7 +759,7 @@ pub fn remove_execution(
 }
 
 pub fn switch_to_editing_settings_config(app: &mut MainWindow, edit_mode: config::ConfigEditMode) {
-    clear_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.selected_scripts);
     app.edit_data.window_edit_data = Some(WindowEditData::from_config(
         &app.app_config,
         Some(edit_mode),
@@ -775,7 +775,7 @@ pub fn maximize_pane(
     window_size: Size,
 ) -> Task<WindowMessage> {
     if app.window_state.pane_focus != Some(pane) {
-        clear_script_selection(&mut app.window_state.cursor_script);
+        clear_script_selection(&mut app.window_state.selected_scripts);
     }
     app.window_state.pane_focus = Some(pane);
     app.panes.maximize(pane);
@@ -931,10 +931,11 @@ pub fn move_cursor(app: &mut MainWindow, is_up: bool) {
 
         let cursor_script_type = app
             .window_state
-            .cursor_script
+            .selected_scripts
             .as_ref()
             .map(|x| x.script_type);
-        let cursor_script_idx = app.window_state.cursor_script.as_ref().map(|x| x.idx);
+        let cursor_script_idx =
+            get_only_selected_script(&app.window_state.selected_scripts).map(|(idx, _)| idx);
 
         let next_selection = if cursor_script_idx.is_none()
             || (cursor_script_idx.is_some() && cursor_script_type != Some(pane_script_type))
@@ -1016,7 +1017,7 @@ pub fn start_new_execution_from_provided_execution_scripts(
         return;
     }
 
-    clear_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.selected_scripts);
     let new_execution_id = app
         .execution_manager
         .start_new_execution(&app.app_config, scripts);
@@ -1049,7 +1050,7 @@ pub fn add_edited_scripts_to_started_execution(
         return;
     }
 
-    clear_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.selected_scripts);
 
     let scripts_to_execute = app.execution_manager.consume_edited_scripts();
     app.execution_manager
@@ -1216,7 +1217,7 @@ pub fn remove_config_script(app: &mut MainWindow, config_script_id: ConfigScript
 
     config::populate_shared_scripts_from_config(&mut app.app_config);
     update_config_cache(app);
-    clear_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.selected_scripts);
     keybind_editing::prune_unused_keybinds(app);
 }
 
@@ -1224,7 +1225,7 @@ pub fn remove_execution_list_script(app: &mut MainWindow, script_idx: usize) {
     app.execution_manager
         .remove_script_from_edited_list(script_idx);
     update_edited_execution_list_script_number(app);
-    clear_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.selected_scripts);
 }
 
 fn add_script_to_shared_config(
@@ -1254,9 +1255,20 @@ fn add_script_to_local_config(
     }
 }
 
+pub fn get_only_selected_script(
+    cursor_scripts: &Option<SelectedScripts>,
+) -> Option<(usize, EditScriptType)> {
+    match cursor_scripts {
+        Some(scripts) if scripts.indexes.len() == 1 => {
+            Some((scripts.indexes[0], scripts.script_type))
+        }
+        _ => None,
+    }
+}
+
 pub fn select_edited_script(app: &mut MainWindow, config_script_id: ConfigScriptId) {
     set_selected_script(
-        &mut app.window_state.cursor_script,
+        &mut app.window_state.selected_scripts,
         config_script_id.idx,
         EditScriptType::ScriptConfig,
     );
@@ -1302,7 +1314,7 @@ pub fn select_edited_script(app: &mut MainWindow, config_script_id: ConfigScript
 
 pub fn select_execution_script(app: &mut MainWindow, script_idx: usize) {
     set_selected_script(
-        &mut app.window_state.cursor_script,
+        &mut app.window_state.selected_scripts,
         script_idx,
         EditScriptType::ExecutionList,
     );
@@ -1324,33 +1336,69 @@ fn select_script_by_type(
 }
 
 fn set_selected_script(
-    currently_edited_script: &mut Option<EditScriptId>,
+    currently_edited_script: &mut Option<SelectedScripts>,
     script_idx: usize,
     script_type: EditScriptType,
 ) {
-    *currently_edited_script = Some(EditScriptId {
-        idx: script_idx,
+    *currently_edited_script = Some(SelectedScripts {
+        indexes: vec![script_idx],
         script_type: script_type.clone(),
     });
 }
 
-pub fn clear_script_selection(currently_edited_script: &mut Option<EditScriptId>) {
+pub fn extend_selection_range(indexes: &mut Vec<usize>, new_range_point: usize) {
+    if indexes.is_empty() {
+        eprintln!("Should not call extend_selection_range with empty indexes");
+        return;
+    }
+
+    let first_index = indexes[0];
+    // add all indexes between the first and the new point
+    let mut insertion_idx = 1;
+    if new_range_point > first_index {
+        for idx in first_index + 1..=new_range_point {
+            match indexes.get(insertion_idx) {
+                None => indexes.push(idx),
+                Some(existing_idx) if existing_idx > &idx => {
+                    indexes.insert(insertion_idx, idx);
+                }
+                _ => {}
+            }
+            insertion_idx += 1;
+        }
+    } else {
+        indexes.reserve(first_index - new_range_point);
+        for new_idx in new_range_point..first_index {
+            indexes.push(new_idx)
+        }
+        indexes.rotate_right(first_index - new_range_point);
+    }
+}
+
+pub fn clear_script_selection(currently_edited_script: &mut Option<SelectedScripts>) {
     *currently_edited_script = None;
 }
 
 pub fn shift_script_selection(app: &mut MainWindow, old_index: usize, new_index: usize) {
-    if let Some(cursor_script) = &mut app.window_state.cursor_script {
-        if old_index == cursor_script.idx {
+    if let Some((mut cursor_script_idx, script_type)) =
+        get_only_selected_script(&mut app.window_state.selected_scripts)
+    {
+        if old_index == cursor_script_idx {
             if new_index <= old_index {
-                cursor_script.idx = new_index
+                cursor_script_idx = new_index
             } else {
-                cursor_script.idx = new_index - 1
+                cursor_script_idx = new_index - 1
             }
-        } else if old_index < cursor_script.idx && new_index > cursor_script.idx {
+        } else if old_index < cursor_script_idx && new_index > cursor_script_idx {
             cursor_script.idx -= 1;
-        } else if old_index > cursor_script.idx && new_index <= cursor_script.idx {
+        } else if old_index > cursor_script_idx && new_index <= cursor_script_idx {
             cursor_script.idx += 1;
         }
+
+        app.window_state.selected_scripts = Some(SelectedScripts {
+            indexes: vec![cursor_script_idx],
+            script_type,
+        });
     }
 }
 
@@ -1380,8 +1428,8 @@ pub fn move_config_script_up(app: &mut MainWindow, index: usize) -> usize {
         }
     }
 
-    if let Some(edited_script) = &app.window_state.cursor_script {
-        if edited_script.idx == index && index > 0 {
+    if let Some((idx, _)) = get_only_selected_script(&app.window_state.selected_scripts) {
+        if idx == index && index > 0 {
             select_edited_script(
                 app,
                 ConfigScriptId {
@@ -1423,8 +1471,8 @@ pub fn move_config_script_down(app: &mut MainWindow, index: usize) -> usize {
         }
     }
 
-    if let Some(edited_script) = &app.window_state.cursor_script {
-        if edited_script.idx == index && index + 1 < app.displayed_configs_list_cache.len() {
+    if let Some((idx, _)) = get_only_selected_script(&app.window_state.selected_scripts) {
+        if idx == index && index + 1 < app.displayed_configs_list_cache.len() {
             select_edited_script(
                 app,
                 ConfigScriptId {
@@ -1534,7 +1582,7 @@ pub fn apply_execution_script_edit(
 
 pub fn clear_edited_scripts(app: &mut MainWindow) {
     app.execution_manager.clear_edited_scripts();
-    clear_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.selected_scripts);
     // we could be dragging a script from the list
     cancel_all_drag_and_drop_operations(app);
 }
@@ -1561,7 +1609,7 @@ pub fn clear_execution_scripts(app: &mut MainWindow) {
     };
 
     remove_execution(app, execution_id);
-    clear_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.selected_scripts);
 }
 
 pub fn enter_window_edit_mode(app: &mut MainWindow) {
@@ -1571,7 +1619,7 @@ pub fn enter_window_edit_mode(app: &mut MainWindow) {
 
     app.edit_data.window_edit_data = Some(WindowEditData::from_config(&app.app_config, None));
     app.edit_data.script_filter = String::new();
-    clear_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.selected_scripts);
     update_config_cache(app);
     app.visual_caches.is_custom_title_editing = false;
     update_drag_and_drop_area_bounds(app);
@@ -1580,7 +1628,7 @@ pub fn enter_window_edit_mode(app: &mut MainWindow) {
 
 pub fn exit_window_edit_mode(app: &mut MainWindow) {
     app.edit_data.window_edit_data = None;
-    clear_script_selection(&mut app.window_state.cursor_script);
+    clear_script_selection(&mut app.window_state.selected_scripts);
     apply_theme(app);
     keybind_editing::update_keybind_visual_caches(app, config::get_main_edit_mode(&app.app_config));
     update_config_cache(app);
