@@ -23,7 +23,8 @@ scripter is not a tool that forces you to build your workflow around it, it is j
 - Specify arguments, retry count, and some other parameters if needed
 - See the state of the execution, or open the complete logs to see the details
 - Save often-used script combinations into presets, and run a preset in just one or two clicks
-- Set up quick buttons for scripts like "open project in IDE" that are always visible
+- Set up quick buttons for scripts like "open project in IDE" that are always visible and ready to be started with one click
+- Set hotkeys to scheduling specific scripts or presets
 
 ## Getting Started
 
@@ -89,6 +90,21 @@ This allows to use scripter with differently configured projects without the nee
 
 ![20230823_215456_scripter_CEVt1P](https://github.com/gameraccoon/scripter/assets/24990031/2d5fc8e0-f4ae-4919-b108-bbd475f03a70)
 ![Screenshot from 2023-08-24 21-54-48](https://github.com/gameraccoon/scripter/assets/24990031/80478ade-fa2e-483b-90d3-ea6340222e18)
+
+## Versioning
+
+The releases follow semantic versioning:  
+`[Major version].[Minor version].[Patch]`
+
+`[Major version]` - almost never changes, TBD what changing this version means.  
+`[Minor version]` - changes when some new feature added that can affect user experience substantially.  
+`[Patch]` - changes when some bugfixes or improvements are made.
+
+Usually (but not always) versions with higher Patch numbers are more stable within the same Minor number.
+
+Upgrading to newer versions is supported from all older versions (unless in the future a new major version would need to break compatibility), downgrading to the olders versions is not supported and generally prohibited.
+
+Config files keep their own versioning, and config schema version may not match the application version.
 
 ## License
 
