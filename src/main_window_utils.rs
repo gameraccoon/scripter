@@ -2007,8 +2007,6 @@ fn update_execution_list_drop_area_bounds(app: &mut MainWindow) {
 
     let mut accumulated_height = PANE_HEADER_HEIGHT + get_execution_list_title_size_y(app);
 
-    println!("calculate");
-
     for (idx, execution) in app
         .execution_manager
         .get_started_executions()
@@ -2026,10 +2024,6 @@ fn update_execution_list_drop_area_bounds(app: &mut MainWindow) {
                 0.0
             }
             + EXECUTION_EDIT_BUTTONS_HEIGHT;
-        println!(
-            "Running scripts {}",
-            execution.get_scheduled_scripts_cache().len()
-        );
         content_region.width -= SCROLL_BAR_WIDTH;
         accumulated_height += content_region.height;
         drop_area.set_bounds(content_region);
@@ -2041,10 +2035,6 @@ fn update_execution_list_drop_area_bounds(app: &mut MainWindow) {
             + ONE_EXECUTION_LIST_ELEMENT_HEIGHT
                 * app.execution_manager.get_edited_scripts().len() as f32
             + EXECUTION_EDIT_BUTTONS_HEIGHT;
-        println!(
-            "Edited scripts {}",
-            app.execution_manager.get_edited_scripts().len()
-        );
         content_region.height = 100.0;
         content_region.width -= SCROLL_BAR_WIDTH;
         app.window_state
