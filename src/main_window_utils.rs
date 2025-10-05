@@ -1753,6 +1753,8 @@ pub fn clear_edited_scripts(app: &mut MainWindow) {
     clear_script_selection(&mut app.window_state.selected_scripts);
     // we could be dragging a script from the list
     cancel_all_drag_and_drop_operations(app);
+    update_drag_and_drop_area_bounds(app);
+    events::on_execution_pane_content_height_decreased(app);
 }
 
 pub fn clear_execution_scripts(app: &mut MainWindow) {
