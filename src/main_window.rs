@@ -315,6 +315,7 @@ pub(crate) enum WindowMessage {
     OpenWithDefaultApplication(PathBuf),
     OpenUrl(String),
     OpenLogFolder(parallel_execution_manager::ExecutionId),
+    OpenLogRootFolder,
     ProcessKeyPress(keyboard::Key, keyboard::Modifiers),
     StartRecordingKeybind(keybind_editing::KeybindAssociatedData),
     StopRecordingKeybind,
@@ -2068,6 +2069,15 @@ impl MainWindow {
                     open::that_in_background(execution.get_log_folder_path());
                 }
             }
+            WindowMessage::OpenLogRootFolder => {
+                match std::fs::exists(&self.app_config.paths.logs_path) {
+                    Ok(true) => {}
+                    _ => {
+                        let _ = std::fs::create_dir_all(&self.app_config.paths.logs_path);
+                    }
+                }
+                open::that_in_background(&self.app_config.paths.logs_path);
+            }
             WindowMessage::ProcessKeyPress(iced_key, iced_modifiers) => {
                 self.window_state.is_command_key_down = iced_modifiers.command();
                 self.window_state.is_alt_key_down = iced_modifiers.alt();
@@ -3354,10 +3364,6 @@ fn produce_log_output_content<'a>(
     main_config: &config::RewritableConfig,
     visual_caches: &VisualCaches,
 ) -> Column<'a, WindowMessage> {
-    if !execution_lists.has_any_execution_started() {
-        return Column::new();
-    }
-
     let tabs = if execution_lists.get_started_executions().len() > 1 {
         let tabs = row(execution_lists
             .get_started_executions()
@@ -3387,6 +3393,13 @@ fn produce_log_output_content<'a>(
         execution_lists.get_started_executions().get(execution_id)
     } else {
         None
+    };
+
+    let open_logs_root_btn = || {
+        main_button(
+            "Open logs root directory",
+            Some(WindowMessage::OpenLogRootFolder),
+        )
     };
 
     if let Some(selected_execution) = selected_execution {
@@ -3433,20 +3446,20 @@ fn produce_log_output_content<'a>(
             }
         }
 
-        let logs = if selected_execution.has_non_skipped_scripts() {
+        let logs_button = if selected_execution.has_non_skipped_scripts() {
             column![main_button(
                 "Open log directory",
                 Some(WindowMessage::OpenLogFolder(selected_execution.get_id())),
             )]
         } else {
-            column![]
+            column![open_logs_root_btn()]
         };
 
         let data: Element<_> = column(data_lines).spacing(10).width(Length::Fill).into();
 
         column![
             tabs,
-            logs,
+            logs_button.width(Length::Fill).align_x(Alignment::Center),
             stack![
                 scrollable(data)
                     .style(style::log_scrollable_style)
@@ -3455,7 +3468,12 @@ fn produce_log_output_content<'a>(
             ]
         ]
     } else {
-        column![tabs]
+        column![
+            tabs,
+            column![open_logs_root_btn()]
+                .width(Length::Fill)
+                .align_x(Alignment::Center)
+        ]
     }
     .width(Length::Fill)
     .height(Length::Fill)
