@@ -43,6 +43,8 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 static EMPTY_STRING: String = String::new();
+static EDITING_TITLE: std::sync::LazyLock<String> =
+    std::sync::LazyLock::new(|| format!("Scripter [Editing] v{}", env!("CARGO_PKG_VERSION")));
 
 const CONFIG_UPDATE_BEHAVIOR_PICK_LIST: &[config::ConfigUpdateBehavior] = &[
     config::ConfigUpdateBehavior::OnStartup,
@@ -458,7 +460,7 @@ impl MainWindow {
 
     pub(crate) fn title(&self) -> String {
         if self.edit_data.window_edit_data.is_some() {
-            "scripter [Editing]".to_string()
+            EDITING_TITLE.clone()
         } else if self.execution_manager.has_any_execution_started() {
             if self.execution_manager.has_all_executions_finished() {
                 if self.execution_manager.has_any_execution_failed() {
