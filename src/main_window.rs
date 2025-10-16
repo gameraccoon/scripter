@@ -866,6 +866,7 @@ impl MainWindow {
                         });
                 }
                 update_edited_execution_list_script_number(self);
+                update_drag_and_drop_area_bounds(self);
             }
             WindowMessage::RescheduleScriptsHotkey => {
                 // use the same script that we hinted visually
@@ -891,6 +892,7 @@ impl MainWindow {
                                 self.execution_manager
                                     .add_execution_script_to_edited_list(record.script);
                             });
+                        update_drag_and_drop_area_bounds(self);
                     }
                 }
             }
