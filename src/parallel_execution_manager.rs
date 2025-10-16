@@ -314,12 +314,7 @@ impl Execution {
             eprintln!("The execution has already finished all lists, can't start it again");
         }
 
-        let had_failures_before =
-            if let Some(last_script) = self.get_previous_execution_list_status() {
-                last_script.has_script_failed() || last_script.has_script_been_skipped()
-            } else {
-                false
-            };
+        let had_failures_before = self.has_failed_scripts();
 
         let execution_list = &mut self.execution_lists[self.current_execution_list_index];
 
@@ -335,23 +330,6 @@ impl Execution {
             self.recent_logs.clone(),
             execution_list.first_cache_index,
         );
-    }
-
-    fn get_previous_execution_list_status(
-        &self,
-    ) -> Option<&execution_thread::ScriptExecutionStatus> {
-        if self.current_execution_list_index > 0 {
-            let previous_execution_list =
-                &self.execution_lists[self.current_execution_list_index - 1];
-            Some(
-                &self.scheduled_scripts_cache[previous_execution_list.first_cache_index
-                    + previous_execution_list.execution_data.scripts_to_run.len()
-                    - 1]
-                .status,
-            )
-        } else {
-            None
-        }
     }
 
     fn try_join_execution_thread(&mut self, list_idx: usize) -> bool {
