@@ -15,6 +15,7 @@ use iced::widget::{
 use iced::{alignment, Alignment, Element, Length, Theme};
 
 pub(crate) const COMMAND_HELP_TEXT: &str = "This can be a relative or an absolute path to a script file, or you can use a command name directly (e.g. \"echo\").";
+pub(crate) const DEFAULT_ARGUMENTS_REQUIREMENT_HELP_TEXT: &str = "Optional - arguments can be empty.\nRequired - arguments are not allowed to be empty and have to be filled in before the script can be run.\nHidden - arguments are hidden from editing (useful when they can't be changed, or when argument placeholders are used).\n";
 pub(crate) const EXECUTOR_ARGUMENTS_HELP_TEXT: &str =
     "Arguments passed to the executor after the command with its arguments.";
 pub(crate) const ARGUMENT_PLACEHOLDERS_HELP_TEXT: &str = "Some scripts or commands can have massive lists of arguments, you can use argument placeholders to make it easier to edit them.";
@@ -22,6 +23,12 @@ pub(crate) const RETRY_COUNT_HELP_TEXT: &str =
     "If the script fails, it will be retried this many times before failing the whole execution.";
 pub(crate) const CUSTOM_EXECUTOR_HELP_TEXT: &str = "By default, the script will be run using the shell of the operating system (e.g. cmd.exe on Windows, sh on Linux), this option allows to override this behavior to run the script using python, powershell, etc.";
 pub(crate) const IGNORE_OUTPUT_HELP_TEXT: &str = "Avoid attaching to stdout/stderr of the script which is used for reading the logs. Useful in cases when you want to run a script that detaches its child when you don't want it to be blocked by io redirections.";
+pub(crate) const WINDOW_STATUS_REACTIONS_HELP_TEXT: &str =
+    "Allow blinking the icon in the task bar when the execution is finished.";
+pub(crate) const KEEP_WINDOW_SIZE_HELP_TEXT: &str = "Disallow changing the size of the window when entering the Focus mode.\nCan be useful when used with tiled window managers.";
+pub(crate) const ALLOW_EDIT_CUSTOM_TITLE_HELP_TEXT: &str = "Enables the ability to edit the secondary title of the window.\nUseful for leaving notes for yourself about the context of the execution.";
+pub(crate) const SHOW_CURRENT_GIT_BRANCH_HELP_TEXT: &str = "Enables showing and tracking of the current git branch if the working directory is inside a git repository.";
+pub(crate) const LOCAL_CONFIG_PATH_HELP_TEXT: &str = "Setting this option splits the config into shared and local.\nShared is supposed to be shared with other devs, e.g. added under version control.\nLocal is supposed to be excluded from version control.";
 
 pub(crate) const PATH_TYPE_PICK_LIST: &[config::PathType] = &[
     config::PathType::WorkingDirRelative,

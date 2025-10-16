@@ -3906,7 +3906,7 @@ fn populate_original_script_config_edit_content<'a>(
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-    parameters.push(text("Argument hint:").into());
+    parameters.push(text("Arguments hint:").into());
     parameters.push(
         text_input("", &script.arguments_hint)
             .on_input(move |new_value| {
@@ -3914,6 +3914,27 @@ fn populate_original_script_config_edit_content<'a>(
             })
             .padding(5)
             .into(),
+    );
+
+    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+    parameters.push(
+        row![
+            text("Default args requirement:"),
+            help_icon(
+                DEFAULT_ARGUMENTS_REQUIREMENT_HELP_TEXT,
+                visual_caches,
+                theme
+            )
+        ]
+        .into(),
+    );
+    parameters.push(
+        pick_list(
+            ARGUMENT_REQUIREMENT_PICK_LIST,
+            Some(script.arguments_requirement.clone()),
+            move |val| WindowMessage::EditArgumentsRequirement(config_script_id, val),
+        )
+        .into(),
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -3930,17 +3951,6 @@ fn populate_original_script_config_edit_content<'a>(
         parameters,
         &script.argument_placeholders,
         config_script_id,
-    );
-
-    parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-    parameters.push(text("Are arguments required:").into());
-    parameters.push(
-        pick_list(
-            ARGUMENT_REQUIREMENT_PICK_LIST,
-            Some(script.arguments_requirement.clone()),
-            move |val| WindowMessage::EditArgumentsRequirement(config_script_id, val),
-        )
-        .into(),
     );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -4072,6 +4082,7 @@ fn produce_settings_edit_content<'a>(
     window_edit: &WindowEditData,
     visual_caches: &VisualCaches,
     edit_mode: config::ConfigEditMode,
+    theme: &Theme,
 ) -> Column<'a, WindowMessage> {
     let mut header_elements: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> =
         Vec::with_capacity(4);
@@ -4105,18 +4116,26 @@ fn produce_settings_edit_content<'a>(
 
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
-        checkbox(
-            "Window status reactions",
-            rewritable_config.window_status_reactions,
-        )
-        .on_toggle(move |val| WindowMessage::SettingsToggleWindowStatusReactions(edit_mode, val))
+        row![
+            checkbox(
+                "Window status reactions",
+                rewritable_config.window_status_reactions,
+            )
+            .on_toggle(
+                move |val| WindowMessage::SettingsToggleWindowStatusReactions(edit_mode, val)
+            ),
+            help_icon(WINDOW_STATUS_REACTIONS_HELP_TEXT, visual_caches, theme)
+        ]
         .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
-        checkbox("Keep window size", rewritable_config.keep_window_size)
-            .on_toggle(move |val| WindowMessage::SettingsToggleKeepWindowSize(edit_mode, val))
-            .into(),
+        row![
+            checkbox("Keep window size", rewritable_config.keep_window_size)
+                .on_toggle(move |val| WindowMessage::SettingsToggleKeepWindowSize(edit_mode, val)),
+            help_icon(KEEP_WINDOW_SIZE_HELP_TEXT, visual_caches, theme)
+        ]
+        .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
@@ -4138,11 +4157,14 @@ fn produce_settings_edit_content<'a>(
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
-        checkbox(
-            "Allow edit custom title",
-            rewritable_config.enable_title_editing,
-        )
-        .on_toggle(move |val| WindowMessage::SettingsToggleTitleEditing(edit_mode, val))
+        row![
+            checkbox(
+                "Allow edit custom title",
+                rewritable_config.enable_title_editing,
+            )
+            .on_toggle(move |val| WindowMessage::SettingsToggleTitleEditing(edit_mode, val)),
+            help_icon(ALLOW_EDIT_CUSTOM_TITLE_HELP_TEXT, visual_caches, theme)
+        ]
         .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -4157,11 +4179,16 @@ fn produce_settings_edit_content<'a>(
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     list_elements.push(
-        checkbox(
-            "Show current git branch",
-            rewritable_config.show_current_git_branch,
-        )
-        .on_toggle(move |val| WindowMessage::SettingsToggleShowCurrentGitBranch(edit_mode, val))
+        row![
+            checkbox(
+                "Show current git branch",
+                rewritable_config.show_current_git_branch,
+            )
+            .on_toggle(
+                move |val| WindowMessage::SettingsToggleShowCurrentGitBranch(edit_mode, val)
+            ),
+            help_icon(SHOW_CURRENT_GIT_BRANCH_HELP_TEXT, visual_caches, theme)
+        ]
         .into(),
     );
     list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
@@ -4344,7 +4371,13 @@ fn produce_settings_edit_content<'a>(
 
     if edit_mode == config::ConfigEditMode::Shared {
         list_elements.push(horizontal_rule(SEPARATOR_HEIGHT).into());
-        list_elements.push(text("Local config path:").into());
+        list_elements.push(
+            row![
+                text("Local config path:"),
+                help_icon(LOCAL_CONFIG_PATH_HELP_TEXT, visual_caches, theme)
+            ]
+            .into(),
+        );
         populate_path_editing_content(
             "path/to/config.json",
             &config.local_config_path,
@@ -4404,7 +4437,13 @@ fn view_content<'a>(
         PaneVariant::Parameters => match &edit_data.window_edit_data {
             Some(window_edit_data) if window_edit_data.settings_edit_mode.is_some() => {
                 let edit_mode = window_edit_data.settings_edit_mode.unwrap();
-                produce_settings_edit_content(config, window_edit_data, visual_caches, edit_mode)
+                produce_settings_edit_content(
+                    config,
+                    window_edit_data,
+                    visual_caches,
+                    edit_mode,
+                    theme,
+                )
             }
             _ => produce_script_edit_content(
                 execution_lists,
