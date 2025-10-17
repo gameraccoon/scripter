@@ -3399,13 +3399,6 @@ fn produce_log_output_content<'a>(
         None
     };
 
-    let open_logs_root_btn = || {
-        main_button(
-            "Open logs root directory",
-            Some(WindowMessage::OpenLogRootFolder),
-        )
-    };
-
     if let Some(selected_execution) = selected_execution {
         let mut data_lines: Vec<Element<'_, WindowMessage, Theme, iced::Renderer>> = Vec::new();
         if let Ok(logs) = selected_execution.get_recent_logs().try_lock() {
@@ -3456,7 +3449,7 @@ fn produce_log_output_content<'a>(
                 Some(WindowMessage::OpenLogFolder(selected_execution.get_id())),
             )]
         } else {
-            column![open_logs_root_btn()]
+            column![]
         };
 
         let data: Element<_> = column(data_lines).spacing(10).width(Length::Fill).into();
@@ -3472,12 +3465,7 @@ fn produce_log_output_content<'a>(
             ]
         ]
     } else {
-        column![
-            tabs,
-            column![open_logs_root_btn()]
-                .width(Length::Fill)
-                .align_x(Alignment::Center)
-        ]
+        column![tabs]
     }
     .width(Length::Fill)
     .height(Length::Fill)
@@ -4555,6 +4543,19 @@ fn view_controls<'a>(
         };
 
         row = row.push(toggle);
+    }
+
+    if *variant == PaneVariant::LogOutput {
+        row = row.push(
+            button(
+                text("All logs dir")
+                    .size(14)
+                    .line_height(LineHeight::Absolute(iced::Pixels(14.0))),
+            )
+            .style(button::secondary)
+            .padding(3)
+            .on_press(WindowMessage::OpenLogRootFolder),
+        )
     }
 
     row.into()
