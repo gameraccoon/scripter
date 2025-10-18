@@ -21,7 +21,8 @@ use std::path::PathBuf;
 
 pub(crate) const ONE_EXECUTION_LIST_ELEMENT_HEIGHT: f32 = 30.0;
 pub(crate) const ONE_SCRIPT_LIST_ELEMENT_HEIGHT: f32 = 30.0;
-const ONE_TITLE_LINE_HEIGHT: f32 = 20.0;
+const ONE_TITLE_LINE_HEIGHT: f32 = 20.8;
+const TITLE_EDIT_FIELD_HEIGHT: f32 = 30.8;
 const ONE_EXECUTION_NAME_HEIGHT: f32 = 32.0;
 const EMPTY_EXECUTION_LIST_HEIGHT: f32 = 70.0;
 const EXECUTION_EDIT_BUTTONS_HEIGHT: f32 = 50.0;
@@ -2119,31 +2120,34 @@ pub(crate) fn get_edited_script_list_content_offset_y(_app: &MainWindow) -> f32 
 }
 
 pub(crate) fn get_execution_list_title_size_y(app: &MainWindow) -> f32 {
-    let mut title_lines = if app.visual_caches.is_custom_title_editing {
-        // for now the edit field is only one line high
-        1
-    } else if let Some(custom_title) = app.app_config.custom_title.as_ref() {
-        custom_title.lines().count() as u32
-    } else {
-        0
-    };
-
     let config = get_current_rewritable_config(&app.app_config);
 
+    let mut title_lines_height = if config.show_working_directory {
+        ONE_TITLE_LINE_HEIGHT
+    } else {
+        0.0
+    };
+
+    let mut has_custom_title_lines = false;
+    if app.visual_caches.is_custom_title_editing {
+        has_custom_title_lines = true;
+        // for now the edit field is only one line high
+        title_lines_height += TITLE_EDIT_FIELD_HEIGHT;
+    } else if let Some(custom_title) = app.app_config.custom_title.as_ref() {
+        has_custom_title_lines = !custom_title.is_empty();
+        title_lines_height += custom_title.lines().count() as f32 * ONE_TITLE_LINE_HEIGHT;
+    }
+
     // if title editing enabled, we can't have less than 1 line
-    if title_lines == 0 && config.enable_title_editing {
-        title_lines = 1;
+    if !has_custom_title_lines && config.enable_title_editing {
+        title_lines_height += ONE_TITLE_LINE_HEIGHT;
     }
 
     if app.visual_caches.git_branch_requester.is_some() {
-        title_lines += 1;
+        title_lines_height += ONE_TITLE_LINE_HEIGHT;
     }
 
-    if config.show_working_directory {
-        title_lines += 1;
-    }
-
-    FIRST_EXECUTION_ELEMENT_OFFSET_Y + title_lines as f32 * ONE_TITLE_LINE_HEIGHT
+    FIRST_EXECUTION_ELEMENT_OFFSET_Y + title_lines_height - 0.2
 }
 
 pub(crate) fn get_started_execution_list_size_y(app: &MainWindow) -> f32 {
