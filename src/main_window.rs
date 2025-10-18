@@ -2050,6 +2050,7 @@ impl MainWindow {
             }
             WindowMessage::SetExecutionListTitleEditing(is_editing) => {
                 self.visual_caches.is_custom_title_editing = is_editing;
+                update_drag_and_drop_area_bounds(self);
             }
             WindowMessage::EditExecutionListTitle(new_title) => {
                 self.app_config.custom_title = Some(new_title);
@@ -3078,6 +3079,11 @@ fn produce_execution_list_content<'a>(
         .width(Length::Fill)
         .align_x(Alignment::Start);
 
+    let hovered_script_idx = window_state
+        .drag_and_drop_lists
+        .execution_edit_list
+        .get_hovered_element_index();
+
     let dragged_script_idx = window_state
         .drag_and_drop_lists
         .execution_edit_list
@@ -3120,6 +3126,8 @@ fn produce_execution_list_content<'a>(
                     None => false,
                 };
 
+                let is_focused = dragged_script_idx.is_none() && hovered_script_idx == Some(i);
+
                 let color = if is_selected {
                     theme.extended_palette().primary.strong.text
                 } else {
@@ -3141,7 +3149,7 @@ fn produce_execution_list_content<'a>(
                 }
                 row_data.push(text(script.original.name.clone()).color(color).into());
 
-                if is_selected {
+                if is_focused {
                     row_data.push(horizontal_space().into());
                     row_data.push(Space::with_width(30).into());
                     row_data.push(
@@ -3160,6 +3168,7 @@ fn produce_execution_list_content<'a>(
                         .style(container::bordered_box)
                         .into(),
                     );
+                    row_data.push(Space::with_width(10).into());
                 }
 
                 let mut list_item = button(row(row_data)).width(Length::Fill).padding(4);

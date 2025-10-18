@@ -43,6 +43,7 @@ pub(crate) struct StaticDragAreaParameters {
 
 pub(crate) struct DragAndDropList {
     number_of_elements: usize,
+    hovered_element_idx: Option<usize>,
     current_operation: Option<DragOperation>,
     static_parameters: StaticDragAreaParameters,
 
@@ -57,6 +58,7 @@ impl DragAndDropList {
     ) -> Self {
         Self {
             number_of_elements,
+            hovered_element_idx: None,
             current_operation: None,
             static_parameters,
 
@@ -93,6 +95,8 @@ impl DragAndDropList {
     }
 
     pub(crate) fn on_mouse_move(&mut self, position: iced::Point) -> DragResult {
+        self.hovered_element_idx = self.get_hovered_index(position);
+
         match self.current_operation.clone() {
             Some(DragOperation::PreparingForDragging(index, start_time)) => {
                 if self.static_parameters.is_dragging_outside_allowed
@@ -109,7 +113,7 @@ impl DragAndDropList {
                         if self.static_parameters.is_reordering_allowed {
                             self.current_operation = Some(DragOperation::Reordering(
                                 index,
-                                self.get_hovered_index(position).unwrap_or(index),
+                                self.hovered_element_idx.unwrap_or(index),
                             ));
                         } else if self.static_parameters.is_dragging_outside_allowed {
                             self.current_operation = Some(DragOperation::DraggingFrom(index));
@@ -118,7 +122,7 @@ impl DragAndDropList {
                         }
                         DragResult::JustStartedDragging(index)
                     } else if self.static_parameters.is_reordering_allowed {
-                        if let Some(hovered_index) = self.get_hovered_index(position) {
+                        if let Some(hovered_index) = self.hovered_element_idx {
                             if hovered_index != index {
                                 self.current_operation =
                                     Some(DragOperation::Reordering(index, hovered_index));
@@ -198,6 +202,10 @@ impl DragAndDropList {
 
     pub(crate) fn cancel_operations(&mut self) {
         self.current_operation = None;
+    }
+
+    pub(crate) fn get_hovered_element_index(&self) -> Option<usize> {
+        self.hovered_element_idx
     }
 
     pub(crate) fn get_dragged_element_index(&self) -> Option<usize> {
