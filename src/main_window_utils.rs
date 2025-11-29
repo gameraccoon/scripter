@@ -11,7 +11,7 @@ use crate::parallel_execution_manager;
 use crate::style;
 use crate::{color_utils, execution_thread};
 
-use crate::config::get_current_rewritable_config;
+use crate::config::{get_current_rewritable_config, ScriptKeybindType};
 use crate::sorted_vec::SortedVec;
 use iced::advanced::image::Handle;
 use iced::widget::{pane_grid, text_input};
@@ -214,22 +214,22 @@ pub fn get_resulting_scripts_from_guid(
 
 fn find_script_idx_by_id(
     script_definitions: &Vec<config::ScriptDefinition>,
-    script_id: &config::Guid,
+    script_uid: &config::Guid,
 ) -> Option<usize> {
     for i in 0..script_definitions.len() {
         match &script_definitions[i] {
             config::ScriptDefinition::Original(script) => {
-                if script.uid == *script_id {
+                if script.uid == *script_uid {
                     return Some(i);
                 }
             }
             config::ScriptDefinition::Preset(preset) => {
-                if preset.uid == *script_id {
+                if preset.uid == *script_uid {
                     return Some(i);
                 }
             }
             config::ScriptDefinition::ReferenceToShared(reference) => {
-                if reference.uid == *script_id {
+                if reference.uid == *script_uid {
                     return Some(i);
                 }
             }
@@ -389,14 +389,22 @@ pub fn get_window_message_from_app_action(app_action: config::AppAction) -> Wind
 pub fn get_run_script_window_message_from_guid(
     app_config: &config::AppConfig,
     script_uid: &config::Guid,
+    keybind_type: ScriptKeybindType,
 ) -> Option<WindowMessage> {
     let original_script = config::get_original_script_definition_by_uid(app_config, &script_uid);
-    if original_script.is_some() {
-        return Some(WindowMessage::AddScriptToExecutionWithoutRunning(
-            script_uid.clone(),
-        ));
+
+    if original_script.is_none() {
+        return None;
     }
-    None
+
+    match keybind_type {
+        ScriptKeybindType::Schedule => Some(WindowMessage::AddScriptToExecutionWithoutRunning(
+            script_uid.clone(),
+        )),
+        ScriptKeybindType::ImmediatelyRun => {
+            Some(WindowMessage::RunScriptInParallel(script_uid.clone()))
+        }
+    }
 }
 
 pub fn try_add_edited_scripts_to_execution_or_start_new(app: &mut MainWindow) {
