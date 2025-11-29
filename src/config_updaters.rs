@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "1.1.0";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "1.1.0";
+pub static LATEST_CONFIG_VERSION: &str = "1.1.3";
+pub static LATEST_LOCAL_CONFIG_VERSION: &str = "1.1.3";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[VERSION_FIELD_NAME].as_str();
@@ -148,6 +148,7 @@ fn register_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("1.0.2", v1_0_2_add_file_associations);
     json_config_updater
         .add_update_function("1.1.0", v1_1_0_rename_cursor_script_to_selected_scripts);
+    json_config_updater.add_update_function("1.1.3", v1_1_3_add_immediate_script_keybind);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -238,6 +239,7 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     json_config_updater.add_update_function("1.0.2", v1_0_2_add_file_associations);
     json_config_updater
         .add_update_function("1.1.0", v1_1_0_rename_cursor_script_to_selected_scripts);
+    json_config_updater.add_update_function("1.1.3", v1_1_3_add_immediate_script_keybind);
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
 
@@ -740,6 +742,16 @@ fn v1_1_0_rename_cursor_script_to_selected_scripts(config_json: &mut JsonValue) 
             if keybind["action"].as_str() == Some("RemoveCursorScript") {
                 keybind["action"] = json!("RemoveSelectedScripts");
                 break;
+            }
+        }
+    }
+}
+
+fn v1_1_3_add_immediate_script_keybind(config_json: &mut JsonValue) {
+    if let Some(rewritable_config) = config_json["rewritable"].as_object_mut() {
+        if let Some(script_keybinds) = rewritable_config["script_keybinds"].as_array_mut() {
+            for keybind in script_keybinds {
+                keybind["keybind_type"] = json!("Schedule");
             }
         }
     }

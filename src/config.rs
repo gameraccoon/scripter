@@ -349,10 +349,17 @@ pub struct AppActionKeybind {
     pub keybind: CustomKeybind,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ScriptKeybindType {
+    Schedule,
+    ImmediatelyRun,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScriptKeybind {
     pub script_uid: Guid,
     pub keybind: CustomKeybind,
+    pub keybind_type: ScriptKeybindType,
 }
 
 pub fn get_app_config_copy() -> AppConfig {

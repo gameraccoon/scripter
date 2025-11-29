@@ -221,6 +221,7 @@ pub(crate) enum WindowMessage {
     MaximizeOrRestoreExecutionPane,
     AddScriptToExecutionOrRun(config::Guid),
     AddScriptToExecutionWithoutRunning(config::Guid),
+    RunScriptInParallel(config::Guid),
     RunEditedScriptsInParallel,
     RunEditedScriptsAfterExecutionHotkey,
     RunEditedScriptsWithExecution(parallel_execution_manager::ExecutionId),
@@ -811,6 +812,10 @@ impl MainWindow {
             }
             WindowMessage::AddScriptToExecutionWithoutRunning(script_uid) => {
                 add_script_to_edited_execution(self, script_uid, true);
+            }
+            WindowMessage::RunScriptInParallel(script_uid) => {
+                let scripts = get_resulting_scripts_from_guid(&self.app_config, script_uid);
+                start_new_execution_from_provided_scripts(self, scripts);
             }
             WindowMessage::RunEditedScriptsInParallel => {
                 if !self.edit_data.window_edit_data.is_some() {
@@ -2104,9 +2109,13 @@ impl MainWindow {
                     keybind_editing::KeybindAssociatedData::AppAction(action) => {
                         Some(get_window_message_from_app_action(action))
                     }
-                    keybind_editing::KeybindAssociatedData::Script(guid) => {
+                    keybind_editing::KeybindAssociatedData::Script(guid, keybind_type) => {
                         if self.edit_data.window_edit_data.is_none() {
-                            get_run_script_window_message_from_guid(&self.app_config, &guid)
+                            get_run_script_window_message_from_guid(
+                                &self.app_config,
+                                &guid,
+                                keybind_type,
+                            )
                         } else {
                             None
                         }
@@ -3564,7 +3573,22 @@ fn produce_script_config_edit_content<'a>(
                 &window_edit_data,
                 visual_caches,
                 "Keybind to schedule:",
-                keybind_editing::KeybindAssociatedData::Script(script.uid.clone()),
+                keybind_editing::KeybindAssociatedData::Script(
+                    script.uid.clone(),
+                    config::ScriptKeybindType::Schedule,
+                ),
+            );
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            keybind_editing::populate_keybind_editing_content(
+                &mut parameters,
+                &window_edit_data,
+                visual_caches,
+                "Keybind to immediately run in parallel:",
+                keybind_editing::KeybindAssociatedData::Script(
+                    script.uid.clone(),
+                    config::ScriptKeybindType::ImmediatelyRun,
+                ),
             );
             populate_quick_launch_edit_button(&mut parameters, &visual_caches, &script.uid);
 
@@ -3653,7 +3677,22 @@ fn produce_script_config_edit_content<'a>(
                 &window_edit,
                 visual_caches,
                 "Keybind to schedule:",
-                keybind_editing::KeybindAssociatedData::Script(reference.uid.clone()),
+                keybind_editing::KeybindAssociatedData::Script(
+                    reference.uid.clone(),
+                    config::ScriptKeybindType::Schedule,
+                ),
+            );
+
+            parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+            keybind_editing::populate_keybind_editing_content(
+                &mut parameters,
+                &window_edit,
+                visual_caches,
+                "Keybind to immediately run in parallel",
+                keybind_editing::KeybindAssociatedData::Script(
+                    reference.uid.clone(),
+                    config::ScriptKeybindType::ImmediatelyRun,
+                ),
             );
 
             populate_quick_launch_edit_button(&mut parameters, &visual_caches, &reference.uid);
@@ -3694,7 +3733,22 @@ fn produce_script_config_edit_content<'a>(
                     &window_edit_data,
                     visual_caches,
                     "Keybind to schedule:",
-                    keybind_editing::KeybindAssociatedData::Script(preset.uid.clone()),
+                    keybind_editing::KeybindAssociatedData::Script(
+                        preset.uid.clone(),
+                        config::ScriptKeybindType::Schedule,
+                    ),
+                );
+
+                parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
+                keybind_editing::populate_keybind_editing_content(
+                    &mut parameters,
+                    &window_edit_data,
+                    visual_caches,
+                    "Keybind to immediately run in parallel",
+                    keybind_editing::KeybindAssociatedData::Script(
+                        preset.uid.clone(),
+                        config::ScriptKeybindType::ImmediatelyRun,
+                    ),
                 );
 
                 populate_quick_launch_edit_button(&mut parameters, &visual_caches, &preset.uid);

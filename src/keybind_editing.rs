@@ -15,7 +15,7 @@ use crate::main_window;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum KeybindAssociatedData {
     AppAction(config::AppAction),
-    Script(config::Guid),
+    Script(config::Guid, config::ScriptKeybindType),
 }
 
 #[derive(Debug, Clone)]
@@ -54,8 +54,8 @@ pub fn process_key_press(
                 KeybindAssociatedData::AppAction(app_action) => {
                     clear_app_action_keybind(app, &app_action);
                 }
-                KeybindAssociatedData::Script(guid) => {
-                    clear_script_keybind(app, &guid);
+                KeybindAssociatedData::Script(guid, keybind_type) => {
+                    clear_script_keybind(app, &guid, keybind_type);
                 }
             }
             app.edit_data.is_dirty = true;
@@ -81,8 +81,13 @@ pub fn process_key_press(
                         config::CustomKeybind { key, modifiers },
                     );
                 }
-                KeybindAssociatedData::Script(guid) => {
-                    set_script_keybind(app, &guid, config::CustomKeybind { key, modifiers });
+                KeybindAssociatedData::Script(guid, keybind_type) => {
+                    set_script_keybind(
+                        app,
+                        &guid,
+                        config::CustomKeybind { key, modifiers },
+                        keybind_type,
+                    );
                 }
             }
 
@@ -147,12 +152,16 @@ fn set_app_action_keybind(
     update_keybind_visual_caches(app, edit_mode);
 }
 
-fn clear_script_keybind(app: &mut main_window::MainWindow, guid: &config::Guid) {
+fn clear_script_keybind(
+    app: &mut main_window::MainWindow,
+    guid: &config::Guid,
+    keybind_type: config::ScriptKeybindType,
+) {
     let rewritable_config = config::get_main_rewritable_config_mut(&mut app.app_config);
     // remove all keybinds with the same action
     rewritable_config
         .script_keybinds
-        .retain(|x| x.script_uid != *guid);
+        .retain(|x| x.script_uid != *guid || x.keybind_type != keybind_type);
 
     update_keybinds(app);
     update_keybind_visual_caches(app, config::get_main_edit_mode(&app.app_config));
@@ -162,18 +171,20 @@ fn set_script_keybind(
     app: &mut main_window::MainWindow,
     guid: &config::Guid,
     keybind: config::CustomKeybind,
+    keybind_type: config::ScriptKeybindType,
 ) {
     let rewritable_config = config::get_main_rewritable_config_mut(&mut app.app_config);
     // remove all keybinds with the same action
     rewritable_config
         .script_keybinds
-        .retain(|x| x.script_uid != *guid);
+        .retain(|x| x.script_uid != *guid || x.keybind_type != keybind_type);
     // add new keybind
     rewritable_config
         .script_keybinds
         .push(config::ScriptKeybind {
             script_uid: guid.clone(),
             keybind,
+            keybind_type,
         });
 
     update_keybinds(app);
@@ -224,7 +235,7 @@ pub fn update_keybinds(app: &mut main_window::MainWindow) {
         app.keybinds.add_keybind(
             key,
             modifiers,
-            KeybindAssociatedData::Script(script_bind.script_uid.clone()),
+            KeybindAssociatedData::Script(script_bind.script_uid.clone(), script_bind.keybind_type),
         );
     }
 }
@@ -250,7 +261,7 @@ pub fn update_keybind_visual_caches(
 
     for script_bind in &rewritable_config.script_keybinds {
         app.visual_caches.keybind_hints.insert(
-            KeybindAssociatedData::Script(script_bind.script_uid.clone()),
+            KeybindAssociatedData::Script(script_bind.script_uid.clone(), script_bind.keybind_type),
             format!(
                 "{}",
                 key_mapping::get_readable_keybind_name(
