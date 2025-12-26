@@ -11,7 +11,24 @@ pub struct AppArguments {
     pub custom_work_path: Option<String>,
     pub env_vars: Vec<(OsString, OsString)>,
     pub custom_title: Option<String>,
+    pub scenario: Option<String>,
+    pub run_script: Option<String>,
     pub read_error: Option<String>,
+}
+
+impl AppArguments {
+    fn with_read_error(read_error: String) -> AppArguments {
+        AppArguments {
+            custom_config_path: None,
+            custom_logs_path: None,
+            custom_work_path: None,
+            env_vars: Vec::new(),
+            custom_title: None,
+            scenario: None,
+            run_script: None,
+            read_error: Some(read_error),
+        }
+    }
 }
 
 struct ArgumentDefinition {
@@ -65,6 +82,18 @@ pub fn get_app_arguments() -> AppArguments {
             description: "Set custom window title",
             number_of_args: 1,
         },
+        ArgumentDefinition {
+            name: "--scenario",
+            syntax: "--scenario <path>",
+            description: "Run the scripts or presets from the given scenario file",
+            number_of_args: 1,
+        },
+        ArgumentDefinition {
+            name: "--run",
+            syntax: "--run <uid>",
+            description: "Run the script or preset with the gived uid",
+            number_of_args: 1,
+        },
     ];
 
     let mut custom_config_path = None;
@@ -72,6 +101,8 @@ pub fn get_app_arguments() -> AppArguments {
     let mut custom_work_path = None;
     let mut env_vars = Vec::new();
     let mut custom_title = None;
+    let mut scenario = None;
+    let mut run_script = None;
 
     let args: Vec<String> = std::env::args().collect();
 
@@ -88,31 +119,17 @@ pub fn get_app_arguments() -> AppArguments {
         };
 
         let Some(found_arg) = found_arg else {
-            return AppArguments {
-                custom_config_path: None,
-                custom_logs_path: None,
-                custom_work_path: None,
-                env_vars: Vec::new(),
-                custom_title: None,
-                read_error: Some(format!(
-                    "Unknown argument: {}\nUse --help to see the list of supported arguments",
-                    arg
-                )),
-            };
+            return AppArguments::with_read_error(format!(
+                "Unknown argument: {}\nUse --help to see the list of supported arguments",
+                arg
+            ));
         };
 
         if found_arg.number_of_args > 0 && i + found_arg.number_of_args >= args.len() {
-            return AppArguments {
-                custom_config_path: None,
-                custom_logs_path: None,
-                custom_work_path: None,
-                env_vars: Vec::new(),
-                custom_title: None,
-                read_error: Some(format!(
-                    "Not enough arguments for {}\nUse --help to see the list of supported arguments",
-                    arg
-                )),
-            };
+            return AppArguments::with_read_error(format!(
+                "Not enough arguments for {}\nUse --help to see the list of supported arguments",
+                arg
+            ));
         }
 
         if arg == "--help" {
@@ -131,24 +148,10 @@ pub fn get_app_arguments() -> AppArguments {
             }
             help_text.push_str("\n");
             help_text.push_str("Example: scripter --config-path C:\\config.json --logs-path C:\\logs --work-path C:\\work --env VAR1 value1 --env VAR2 value2");
-            return AppArguments {
-                custom_config_path: None,
-                custom_logs_path: None,
-                custom_work_path: None,
-                env_vars: Vec::new(),
-                custom_title: None,
-                read_error: Some(help_text),
-            };
+            return AppArguments::with_read_error(help_text);
         }
         if arg == "--version" {
-            return AppArguments {
-                custom_config_path: None,
-                custom_logs_path: None,
-                custom_work_path: None,
-                env_vars: Vec::new(),
-                custom_title: None,
-                read_error: Some(env!("CARGO_PKG_VERSION").to_string()),
-            };
+            return AppArguments::with_read_error(env!("CARGO_PKG_VERSION").to_string());
         }
         if arg == "--config-path" {
             if i + 1 < args.len() {
@@ -173,6 +176,14 @@ pub fn get_app_arguments() -> AppArguments {
             if i + 1 < args.len() {
                 custom_title = Some(args[i + 1].clone());
             }
+        } else if arg == "--scenario" {
+            if i + 1 < args.len() {
+                scenario = Some(args[i + 1].clone());
+            }
+        } else if arg == "--run" {
+            if i + 1 < args.len() {
+                run_script = Some(args[i + 1].clone());
+            }
         }
 
         i += 1 + found_arg.number_of_args;
@@ -184,6 +195,8 @@ pub fn get_app_arguments() -> AppArguments {
         custom_work_path,
         env_vars,
         custom_title,
+        scenario,
+        run_script,
         read_error: None,
     }
 }

@@ -13,6 +13,7 @@ use crate::keybind_editing;
 use crate::main_window_utils::*;
 use crate::main_window_widgets::*;
 use crate::parallel_execution_manager;
+use crate::scenario;
 use crate::style;
 use crate::ui_icons;
 use drag_and_drop::DropAreaState;
@@ -200,6 +201,7 @@ pub(crate) struct WindowState {
     pub(crate) drop_areas: DropAreas,
     pub(crate) dragged_script: Option<config::Guid>,
     pub(crate) script_list_scroll_offset: f32,
+    pub(crate) errors_to_show: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -333,6 +335,7 @@ pub(crate) struct MainWindow {
     pub(crate) pane_by_pane_type: HashMap<PaneVariant, pane_grid::Pane>,
     pub(crate) execution_manager: parallel_execution_manager::ParallelExecutionManager,
     pub(crate) app_config: config::AppConfig,
+    pub(crate) scenario: Option<Result<scenario::Scenario, String>>,
     pub(crate) theme: Theme,
     pub(crate) visual_caches: VisualCaches,
     pub(crate) edit_data: EditData,
@@ -372,12 +375,15 @@ impl MainWindow {
         let show_current_git_branch =
             config::get_current_rewritable_config(&app_config).show_current_git_branch;
 
+        let scenario = scenario::get_scenario_copy();
+
         let mut main_window = MainWindow {
             panes,
             pane_by_pane_type,
             execution_manager: parallel_execution_manager::ParallelExecutionManager::new(),
             theme: get_theme(&app_config),
             app_config,
+            scenario,
             visual_caches: VisualCaches {
                 autorerun_count: String::new(),
                 is_custom_title_editing: false,
@@ -445,6 +451,7 @@ impl MainWindow {
                 },
                 dragged_script: None,
                 script_list_scroll_offset: 0.0,
+                errors_to_show: Vec::new(),
             },
             keybinds: custom_keybinds::CustomKeybinds::new(),
             displayed_configs_list_cache: Vec::new(),
@@ -455,6 +462,8 @@ impl MainWindow {
         keybind_editing::update_keybinds(&mut main_window);
         let edit_mode = config::get_main_edit_mode(&main_window.app_config);
         keybind_editing::update_keybind_visual_caches(&mut main_window, edit_mode);
+
+        init_from_scenario(&mut main_window);
 
         (main_window, Task::none())
     }
@@ -2389,6 +2398,15 @@ fn produce_script_list_content<'a>(
 ) -> Column<'a, WindowMessage> {
     if let Some(error) = &config.config_read_error {
         return get_config_error_content(error, theme);
+    }
+
+    if !window_state.errors_to_show.is_empty() {
+        return column(
+            window_state
+                .errors_to_show
+                .iter()
+                .map(|err| text(err.clone()).into()),
+        );
     }
 
     let is_editing = edit_data.window_edit_data.is_some();
@@ -4778,4 +4796,59 @@ fn get_schedulable_dragged_execution_scripts(
     }
 
     Vec::new()
+}
+
+fn init_from_scenario(app: &mut MainWindow) {
+    let scenario = match &app.scenario {
+        None => {
+            return;
+        }
+        Some(Err(err)) => {
+            eprintln!("{}", err);
+            app.window_state.errors_to_show.push(err.clone());
+            return;
+        }
+        Some(Ok(scenario)) => scenario.clone(),
+    };
+
+    let mut missing_scripts = Vec::new();
+
+    for execution in scenario.parallel_executions {
+        let scripts = execution
+            .scripts
+            .iter()
+            .map(|script| {
+                let scripts = get_resulting_scripts_from_guid(&app.app_config, script.uid.clone());
+                if scripts.is_empty() {
+                    missing_scripts.push(script.uid.clone());
+                }
+
+                scripts
+            })
+            .flatten()
+            .collect();
+
+        if !missing_scripts.is_empty() {
+            // unfortunate extra allocation and string copies because of the extra collect() call
+            let formatted_script_uids = missing_scripts
+                .iter()
+                .map(|uid| format!("'{}'", uid.to_string()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            eprintln!(
+                "Some scripts specified in the scenario are missing: {}",
+                formatted_script_uids
+            );
+            app.window_state.errors_to_show.push(format!(
+                "Some scripts specified in the scenario are missing: {}",
+                formatted_script_uids
+            ));
+            return;
+        }
+
+        start_new_execution_from_provided_scripts(app, scripts);
+        update_edited_execution_list_script_number(app);
+        update_drag_and_drop_area_bounds(app);
+        clear_script_selection(&mut app.window_state.selected_scripts);
+    }
 }

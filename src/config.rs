@@ -4,7 +4,7 @@
 use crate::app_arguments::{self, AppArguments};
 use crate::config_updaters::{
     update_config_to_the_latest_version, update_local_config_to_the_latest_version,
-    LATEST_CONFIG_VERSION, LATEST_LOCAL_CONFIG_VERSION,
+    LATEST_CONFIG_FORMAT_VERSION, LATEST_LOCAL_CONFIG_FORMAT_VERSION,
 };
 use crate::json_file_updater::{JsonFileUpdaterError, UpdateResult};
 use crate::key_mapping::{CustomKeyCode, CustomModifiers};
@@ -12,6 +12,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
 use std::mem::swap;
+use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 
 const DEFAULT_CONFIG_NAME: &str = "scripter_config.json";
@@ -247,23 +248,14 @@ pub struct Guid {
 
 impl Serialize for Guid {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        // extra dashes at the end not to reallocate the string
-        let mut string = format!("{:032x}----", self.data);
-        string.truncate(32);
-        string.insert(8, '-');
-        string.insert(13, '-');
-        string.insert(18, '-');
-        string.insert(23, '-');
-        serializer.serialize_str(&string)
+        serializer.serialize_str(&self.to_string())
     }
 }
 
 impl<'de> Deserialize<'de> for Guid {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let mut s = String::deserialize(deserializer)?;
-        s.retain(|c| c != '-');
-        let data = u128::from_str_radix(&s, 16).map_err(serde::de::Error::custom)?;
-        Ok(Guid { data })
+        let s = String::deserialize(deserializer)?;
+        Guid::from_string(s).map_err(serde::de::Error::custom)
     }
 }
 
@@ -278,6 +270,23 @@ impl Guid {
         Guid {
             data: u128::from_be_bytes(bytes),
         }
+    }
+
+    pub fn from_string(mut str: String) -> Result<Guid, ParseIntError> {
+        str.retain(|c| c != '-');
+        let data = u128::from_str_radix(&str, 16)?;
+        Ok(Guid { data })
+    }
+
+    pub fn to_string(self: &Guid) -> String {
+        // extra dashes at the end not to reallocate the string
+        let mut string = format!("{:032x}----", self.data);
+        string.truncate(32);
+        string.insert(8, '-');
+        string.insert(13, '-');
+        string.insert(18, '-');
+        string.insert(23, '-');
+        string
     }
 }
 
@@ -435,7 +444,7 @@ pub fn get_full_optional_path(paths: &PathCaches, path_config: &PathConfig) -> O
 
 fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppConfig {
     AppConfig {
-        version: LATEST_CONFIG_VERSION.to_string(),
+        version: LATEST_CONFIG_FORMAT_VERSION.to_string(),
         rewritable: RewritableConfig {
             window_status_reactions: true,
             keep_window_size: false,
@@ -488,7 +497,7 @@ fn get_default_config(app_arguments: AppArguments, config_path: PathBuf) -> AppC
 
 pub fn get_default_local_config(shared_config: &AppConfig) -> LocalConfig {
     LocalConfig {
-        version: LATEST_LOCAL_CONFIG_VERSION.to_string(),
+        version: LATEST_LOCAL_CONFIG_FORMAT_VERSION.to_string(),
         rewritable: shared_config.rewritable.clone(),
         script_definitions: Vec::new(),
     }

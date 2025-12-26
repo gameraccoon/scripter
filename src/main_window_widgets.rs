@@ -286,6 +286,7 @@ pub fn get_pane_name_from_variant(variant: &PaneVariant) -> &str {
         PaneVariant::Parameters => "Parameters",
     }
 }
+
 pub fn get_config_error_content<'a>(
     error: &config::ConfigReadError,
     _theme: &Theme,

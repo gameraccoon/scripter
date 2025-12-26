@@ -5,14 +5,14 @@ use crate::config;
 use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
-static VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_VERSION: &str = "1.1.3";
-pub static LATEST_LOCAL_CONFIG_VERSION: &str = "1.1.3";
+static FORMAT_VERSION_FIELD_NAME: &str = "version";
+pub static LATEST_CONFIG_FORMAT_VERSION: &str = "1.1.3";
+pub static LATEST_LOCAL_CONFIG_FORMAT_VERSION: &str = "1.1.3";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
-    let version = config_json[VERSION_FIELD_NAME].as_str();
+    let version = config_json[FORMAT_VERSION_FIELD_NAME].as_str();
     if let Some(version) = version {
-        if version == LATEST_CONFIG_VERSION {
+        if version == LATEST_CONFIG_FORMAT_VERSION {
             return UpdateResult::NoUpdateNeeded;
         }
     }
@@ -22,9 +22,9 @@ pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> Updat
 }
 
 pub fn update_local_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
-    let version = config_json[VERSION_FIELD_NAME].as_str();
+    let version = config_json[FORMAT_VERSION_FIELD_NAME].as_str();
     if let Some(version) = version {
-        if version == LATEST_LOCAL_CONFIG_VERSION {
+        if version == LATEST_LOCAL_CONFIG_FORMAT_VERSION {
             return UpdateResult::NoUpdateNeeded;
         }
     }
@@ -34,7 +34,7 @@ pub fn update_local_config_to_the_latest_version(config_json: &mut JsonValue) ->
 }
 
 fn register_config_updaters() -> JsonFileUpdater {
-    let mut json_config_updater = JsonFileUpdater::new(VERSION_FIELD_NAME);
+    let mut json_config_updater = JsonFileUpdater::new(FORMAT_VERSION_FIELD_NAME);
 
     json_config_updater.add_update_function("0.6.0", |config_json| {
         // keep the old behavior of the "window_status_reactions" field since the default changed
@@ -156,7 +156,7 @@ fn register_config_updaters() -> JsonFileUpdater {
 }
 
 fn register_local_config_updaters() -> JsonFileUpdater {
-    let mut json_config_updater = JsonFileUpdater::new(VERSION_FIELD_NAME);
+    let mut json_config_updater = JsonFileUpdater::new(FORMAT_VERSION_FIELD_NAME);
 
     json_config_updater.add_update_function("0.7.2", |_config_json| {
         // empty updater to have a name for the first version
