@@ -4814,7 +4814,7 @@ fn init_from_scenario(app: &mut MainWindow) {
     let mut missing_scripts = Vec::new();
 
     for execution in scenario.parallel_executions {
-        let scripts = execution
+        let scripts: Vec<_> = execution
             .scripts
             .iter()
             .map(|script| {
@@ -4846,7 +4846,16 @@ fn init_from_scenario(app: &mut MainWindow) {
             return;
         }
 
-        start_new_execution_from_provided_scripts(app, scripts);
+        if scripts
+            .iter()
+            .any(|script| is_original_script_missing_arguments(&script))
+        {
+            for script in scripts {
+                app.execution_manager.add_script_to_edited_list(script);
+            }
+        } else {
+            start_new_execution_from_provided_scripts(app, scripts);
+        }
         update_edited_execution_list_script_number(app);
         update_drag_and_drop_area_bounds(app);
         clear_script_selection(&mut app.window_state.selected_scripts);
