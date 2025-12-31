@@ -32,6 +32,7 @@ pub enum ConfigUpdateBehavior {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PathConfig {
     pub path: String,
     pub path_type: PathType,
@@ -47,6 +48,7 @@ impl Default for PathConfig {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct FileAssociation {
     pub extension: String,
     pub executor: Vec<String>,
@@ -55,6 +57,7 @@ pub struct FileAssociation {
 
 // Part of the config that can be fully overridden by the local config
 #[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct RewritableConfig {
     pub window_status_reactions: bool,
     pub keep_window_size: bool,
@@ -104,6 +107,7 @@ pub enum ConfigReadError {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct AppConfig {
     pub version: String,
     pub rewritable: RewritableConfig,
@@ -126,6 +130,7 @@ pub struct AppConfig {
 }
 
 #[derive(Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct LocalConfig {
     pub version: String,
     pub rewritable: RewritableConfig,
@@ -133,6 +138,7 @@ pub struct LocalConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ReferenceToSharedScript {
     pub uid: Guid,
     pub is_hidden: bool,
@@ -145,6 +151,7 @@ pub enum ArgumentsType {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct ArgumentPlaceholder {
     pub placeholder: String,
     pub name: String,
@@ -170,6 +177,7 @@ pub enum ReactionToPreviousFailures {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct OriginalScriptDefinition {
     pub uid: Guid,
     pub name: String,
@@ -216,6 +224,7 @@ impl Default for OriginalScriptDefinition {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PresetItem {
     pub uid: Guid,
     // possible overrides
@@ -229,6 +238,7 @@ pub struct PresetItem {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ScriptPreset {
     pub uid: Guid,
     pub name: String,
@@ -306,6 +316,7 @@ pub struct PathCaches {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CustomTheme {
     pub background: [f32; 3],
     pub text: [f32; 3],
@@ -352,12 +363,14 @@ pub enum AppAction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CustomKeybind {
     pub key: CustomKeyCode,
     pub modifiers: CustomModifiers,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AppActionKeybind {
     pub action: AppAction,
     pub keybind: CustomKeybind,
@@ -370,6 +383,7 @@ pub enum ScriptKeybindType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ScriptKeybind {
     pub script_uid: Guid,
     pub keybind: CustomKeybind,
