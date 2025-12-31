@@ -363,6 +363,35 @@ pub fn get_config_error_content<'a>(
                     .into(),
             );
         }
+        config::ConfigReadError::UpdaterValidatorError {
+            file_path,
+            error,
+            version,
+        } => {
+            content.push(
+                text(format!(
+                    "Version check failed on version '{}' with error: {}",
+                    version, error
+                ))
+                .into(),
+            );
+            content.push(
+                text("If you made any manual edits to the file, make sure they are correct").into(),
+            );
+            content.push(
+                button("Open file")
+                    .on_press(WindowMessage::OpenWithDefaultApplication(file_path.clone()))
+                    .into(),
+            );
+            content.push(text("If you believe this is a bug in scripter, please report it").into());
+            content.push(
+                button("Report bug")
+                    .on_press(WindowMessage::OpenUrl(
+                        "https://github.com/gameraccoon/scripter/labels/bug".to_string(),
+                    ))
+                    .into(),
+            );
+        }
         config::ConfigReadError::ConfigDeserializeError { file_path, error } => {
             content.push(
                 text(format!(

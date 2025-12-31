@@ -23,9 +23,38 @@ fn register_scenario_updaters() -> JsonFileUpdater {
     let mut json_scenario_updater = JsonFileUpdater::new(FORMAT_VERSION_FIELD_NAME);
 
     json_scenario_updater.add_update_function("1", |_| {});
-    json_scenario_updater.add_update_function("2", |_| {});
+    json_scenario_updater.add_update_function_with_validator(
+        "2",
+        |_| {},
+        v2_validate_no_only_schedule_field,
+    );
     // add update functions above this line
     // don't forget to update LATEST_SCENARIO_FORMAT_VERSION at the beginning of the file
 
     json_scenario_updater
+}
+
+fn for_each_parallel_execution_validate(
+    json: &JsonValue,
+    loop_fn: fn(&JsonValue) -> Result<(), String>,
+) -> Result<(), String> {
+    if let Some(parallel_executions) = json.get("parallel_executions") {
+        if let Some(parallel_executions) = parallel_executions.as_array() {
+            for parallel_execution in parallel_executions {
+                loop_fn(parallel_execution)?
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn v2_validate_no_only_schedule_field(json: &JsonValue) -> Result<(), String> {
+    for_each_parallel_execution_validate(json, |parallel_execution| {
+        if let Some(_) = parallel_execution["only_schedule"].as_bool() {
+            return Err(format!("'only_schedule' field introduced in format version '2', but earlier version of the format is used"));
+        }
+
+        Ok(())
+    })
 }

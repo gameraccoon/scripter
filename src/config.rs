@@ -85,6 +85,11 @@ pub enum ConfigReadError {
         version: String,
         latest_version: String,
     },
+    UpdaterValidatorError {
+        file_path: PathBuf,
+        error: String,
+        version: String,
+    },
     ConfigDeserializeError {
         file_path: PathBuf,
         error: String,
@@ -649,6 +654,14 @@ pub fn read_config() -> AppConfig {
                     latest_version,
                 },
             ),
+            JsonFileUpdaterError::ValidatorError { error, version } => default_config_with_error(
+                &default_config,
+                ConfigReadError::UpdaterValidatorError {
+                    file_path,
+                    error,
+                    version,
+                },
+            ),
         };
     }
 
@@ -832,6 +845,13 @@ fn read_local_config(
                 version,
                 latest_version,
             }),
+            JsonFileUpdaterError::ValidatorError { error, version } => {
+                Err(ConfigReadError::UpdaterValidatorError {
+                    file_path: config_path,
+                    error,
+                    version,
+                })
+            }
         };
     }
 

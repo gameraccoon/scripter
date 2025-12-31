@@ -96,8 +96,17 @@ fn read_scenario() -> Option<Result<Scenario, String>> {
                     "Scenario loaded from file '{}' has unexpected format version {}. Latest known version is {}. You may need to update scripter.",
                     scenario_path.to_str().unwrap_or(""),
                     version,
-                    latest_version
+                    latest_version,
                 ))),
+                JsonFileUpdaterError::ValidatorError{
+                    version,
+                    error,
+                } => Some(Err(format!(
+                    "Scenario loaded from file '{}' encountered validation error (version={}). Error: {}",
+                    scenario_path.to_str().unwrap_or(""),
+                    version,
+                    error,
+                )))
             };
         }
 

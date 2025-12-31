@@ -112,6 +112,10 @@ pub enum JsonFileUpdaterError {
         version: String,
         latest_version: String,
     },
+    ValidatorError {
+        error: String,
+        version: String,
+    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -123,6 +127,7 @@ pub enum UpdateResult {
 
 struct Patcher {
     version_to: String,
+    validator: Option<fn(&JsonValue) -> Result<(), String>>,
     function: fn(&mut JsonValue),
 }
 
@@ -140,6 +145,23 @@ impl JsonFileUpdater {
         let version_string = version_to.to_string();
         self.patchers.push(Patcher {
             version_to: version_string.clone(),
+            validator: None,
+            function: patcher_function,
+        });
+        self.latest_version = version_string;
+    }
+
+    #[allow(dead_code)]
+    pub fn add_update_function_with_validator(
+        &mut self,
+        version_to: &str,
+        patcher_function: fn(&mut JsonValue),
+        validator_function: fn(&JsonValue) -> Result<(), String>,
+    ) {
+        let version_string = version_to.to_string();
+        self.patchers.push(Patcher {
+            version_to: version_string.clone(),
+            validator: Some(validator_function),
             function: patcher_function,
         });
         self.latest_version = version_string;
@@ -179,6 +201,15 @@ impl JsonFileUpdater {
         }
 
         for patcher in &self.patchers[first_patcher_idx..] {
+            if let Some(validator) = patcher.validator {
+                if let Err(error) = validator(json) {
+                    return UpdateResult::Error(JsonFileUpdaterError::ValidatorError {
+                        error,
+                        version: patcher.version_to.clone(),
+                    });
+                }
+            }
+
             (patcher.function)(json);
         }
 
