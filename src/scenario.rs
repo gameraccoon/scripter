@@ -13,17 +13,21 @@ use std::path::PathBuf;
 thread_local!(static GLOBAL_SCENARIO: Option<Result<Scenario, String>> = read_scenario());
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Scenario {
     pub format_version: String,
     pub parallel_executions: Vec<Execution>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Execution {
     pub scripts: Vec<Script>,
+    pub only_schedule: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Script {
     pub uid: Guid,
 }
@@ -89,7 +93,7 @@ fn read_scenario() -> Option<Result<Scenario, String>> {
                     version,
                     latest_version,
                 } => Some(Err(format!(
-                    "Scenario loaded from file '{}' has unexpected version {}. Latest version is {}",
+                    "Scenario loaded from file '{}' has unexpected format version {}. Latest known version is {}. You may need to update scripter.",
                     scenario_path.to_str().unwrap_or(""),
                     version,
                     latest_version
@@ -118,6 +122,7 @@ fn read_scenario() -> Option<Result<Scenario, String>> {
             format_version: LATEST_SCENARIO_FORMAT_VERSION.to_string(),
             parallel_executions: vec![Execution {
                 scripts: vec![Script { uid }],
+                only_schedule: None,
             }],
         }
     };

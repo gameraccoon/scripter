@@ -4846,9 +4846,10 @@ fn init_from_scenario(app: &mut MainWindow) {
             return;
         }
 
-        if scripts
-            .iter()
-            .any(|script| is_original_script_missing_arguments(&script))
+        if execution.only_schedule == Some(true)
+            || scripts
+                .iter()
+                .any(|script| is_original_script_missing_arguments(&script))
         {
             for script in scripts {
                 app.execution_manager.add_script_to_edited_list(script);
