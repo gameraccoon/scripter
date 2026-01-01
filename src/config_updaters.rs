@@ -55,12 +55,12 @@ fn register_config_updaters() -> JsonFileUpdater {
     });
     json_config_updater.add_update_function("0.7.2", |config_json| {
         let mut rewritable = json!({});
-        rewritable["always_on_top"] = config_json["always_on_top"].take();
-        rewritable["window_status_reactions"] = config_json["window_status_reactions"].take();
+        rewritable["always_on_top"] = take_field(config_json, "always_on_top");
+        rewritable["window_status_reactions"] = take_field(config_json, "window_status_reactions");
         rewritable["icon_path_relative_to_scripter"] =
-            config_json["icon_path_relative_to_scripter"].take();
-        rewritable["keep_window_size"] = config_json["keep_window_size"].take();
-        rewritable["custom_theme"] = config_json["custom_theme"].take();
+            take_field(config_json, "icon_path_relative_to_scripter");
+        rewritable["keep_window_size"] = take_field(config_json, "keep_window_size");
+        rewritable["custom_theme"] = take_field(config_json, "custom_theme");
         config_json["rewritable"] = rewritable;
     });
     json_config_updater.add_update_function("0.9.3", |config_json| {
@@ -71,16 +71,12 @@ fn register_config_updaters() -> JsonFileUpdater {
         }
     });
     json_config_updater.add_update_function("0.9.4", |config_json| {
-        let was_icon_path_relative_to_scripter =
-            if let Some(rewritable_config) = config_json["rewritable"].as_object_mut() {
-                rewritable_config
-                    .get("icon_path_relative_to_scripter")
-                    .unwrap_or(&json!(false))
-                    .as_bool()
-                    .unwrap_or_default()
-            } else {
-                false
-            };
+        let was_icon_path_relative_to_scripter = take_field(
+            &mut config_json["rewritable"],
+            "icon_path_relative_to_scripter",
+        )
+        .as_bool()
+        .unwrap_or_default();
 
         if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
             for script in script_definitions {
@@ -88,7 +84,7 @@ fn register_config_updaters() -> JsonFileUpdater {
                     convert_path_0_9_4(script["icon"].take(), was_icon_path_relative_to_scripter);
                 script["command"] = convert_path_0_9_4(
                     script["command"].take(),
-                    script["path_relative_to_scripter"]
+                    take_field(script, "path_relative_to_scripter")
                         .as_bool()
                         .unwrap_or(false),
                 );
@@ -167,21 +163,19 @@ fn register_local_config_updaters() -> JsonFileUpdater {
         });
     });
     json_config_updater.add_update_function("0.9.4", |config_json| {
-        let was_icon_path_relative_to_scripter =
-            if let Some(rewritable_config) = config_json["rewritable"].as_object_mut() {
-                rewritable_config["icon_path_relative_to_scripter"]
-                    .as_bool()
-                    .unwrap_or(false)
-            } else {
-                false
-            };
+        let was_icon_path_relative_to_scripter = take_field(
+            &mut config_json["rewritable"],
+            "icon_path_relative_to_scripter",
+        )
+        .as_bool()
+        .unwrap_or(false);
 
         for_each_script_added_definition_pre_0_10_0(config_json, |script| {
             script["icon"] =
                 convert_path_0_9_4(script["icon"].take(), was_icon_path_relative_to_scripter);
             script["command"] = convert_path_0_9_4(
                 script["command"].take(),
-                script["path_relative_to_scripter"]
+                take_field(script, "path_relative_to_scripter")
                     .as_bool()
                     .unwrap_or(false),
             );
@@ -197,7 +191,7 @@ fn register_local_config_updaters() -> JsonFileUpdater {
             for script in script_definitions {
                 if !script["Parent"].is_null() {
                     *script = json!({
-                        "ReferenceToParent": script["Parent"].take(),
+                        "ReferenceToParent": take_field(script, "Parent"),
                     });
                 }
             }
@@ -244,6 +238,32 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
 
     json_config_updater
+}
+
+fn remove_field(json: &mut JsonValue, field_name: &str) {
+    if let Some(json_object) = json.as_object_mut() {
+        if json_object.contains_key(field_name) {
+            json_object.remove(field_name);
+        }
+    }
+}
+
+fn take_field(json: &mut JsonValue, field_name: &str) -> JsonValue {
+    if let Some(json_object) = json.as_object_mut() {
+        if json_object.contains_key(field_name) {
+            return json_object.remove(field_name).unwrap_or(JsonValue::Null);
+        }
+    }
+
+    json!(JsonValue::Null)
+}
+
+fn rename_field(json: &mut JsonValue, old_field_name: &str, new_field_name: &str) {
+    if let Some(json_object) = json.as_object_mut() {
+        if let Some(value) = json_object.remove(old_field_name) {
+            json_object.insert(new_field_name.to_string(), value);
+        };
+    }
 }
 
 fn convert_path_0_9_4(old_path: JsonValue, is_relative_to_scripter: bool) -> JsonValue {
@@ -343,19 +363,11 @@ fn v0_12_1_add_enable_title_editing_option(config_json: &mut JsonValue) {
 fn v0_12_2_rename_child_to_local_and_parent_to_shared(config_json: &mut JsonValue) {
     if let Some(script_definitions) = config_json["script_definitions"].as_array_mut() {
         for script in script_definitions {
-            if let Some(obj) = script.as_object_mut() {
-                if obj.get("ReferenceToParent").is_some() {
-                    obj.insert("ReferenceToShared".to_string(), serde_json::Value::Null);
-                    obj["ReferenceToShared"] = obj["ReferenceToParent"].take();
-                    obj.remove("ReferenceToParent");
-                }
-            }
+            rename_field(script, "ReferenceToParent", "ReferenceToShared");
         }
     }
 
-    if config_json.get("child_config_path").is_some() {
-        config_json["local_config_path"] = config_json["child_config_path"].take();
-    }
+    rename_field(config_json, "child_config_path", "local_config_path");
 }
 
 fn v0_13_0_added_custom_working_directory(config_json: &mut JsonValue) {
@@ -585,7 +597,7 @@ fn v0_17_0_add_custom_executor_field(config_json: &mut JsonValue) {
         // there were two preview versions that had this field but were missing the updater
         // so keep the value if it was set
         if script["custom_executor"].is_null() {
-            script["custom_executor"] = json!(None::<bool>);
+            script["custom_executor"] = json!(JsonValue::Null);
         }
     });
 }
@@ -596,8 +608,7 @@ fn v0_17_2_add_argument_placeholders_field_and_arg_requirement(config_json: &mut
             script["argument_placeholders"] = json!([]);
         }
 
-        let are_arguments_required = script["requires_arguments"]
-            .take()
+        let are_arguments_required = take_field(script, "requires_arguments")
             .as_bool()
             .unwrap_or(false);
         script["arguments_requirement"] = if are_arguments_required {
@@ -642,7 +653,8 @@ fn v0_18_4_added_autoclean_on_success_for_presets(config_json: &mut JsonValue) {
 
 fn v0_18_5_refined_previous_failure_choices(config_json: &mut JsonValue) {
     for_each_script_original_definition_post_0_10_0(config_json, |script| {
-        if let Some(ignore_previous_failures) = script["ignore_previous_failures"].take().as_bool()
+        if let Some(ignore_previous_failures) =
+            take_field(script, "ignore_previous_failures").as_bool()
         {
             script["reaction_to_previous_failures"] = if ignore_previous_failures {
                 json!("ExecuteOnSuccessOrFailureTurnToSuccess")
@@ -656,7 +668,7 @@ fn v0_18_5_refined_previous_failure_choices(config_json: &mut JsonValue) {
         if let Some(items) = preset["items"].as_array_mut() {
             for item in items {
                 if let Some(ignore_previous_failures) =
-                    item["ignore_previous_failures"].take().as_bool()
+                    take_field(item, "ignore_previous_failures").as_bool()
                 {
                     item["reaction_to_previous_failures"] = if ignore_previous_failures {
                         json!("ExecuteOnSuccessOrFailureTurnToSuccess")
@@ -664,7 +676,7 @@ fn v0_18_5_refined_previous_failure_choices(config_json: &mut JsonValue) {
                         json!("SkipOnFailure")
                     };
                 } else {
-                    item["reaction_to_previous_failures"] = JsonValue::Null;
+                    remove_field(item, "reaction_to_previous_failures");
                 }
             }
         }
@@ -673,7 +685,7 @@ fn v0_18_5_refined_previous_failure_choices(config_json: &mut JsonValue) {
 
 fn v0_19_3_add_use_advanced_arguments_fields(config_json: &mut JsonValue) {
     let update_item_fn = |item: &mut JsonValue| {
-        item["arguments_line"] = item["arguments"].take();
+        rename_field(item, "arguments", "arguments_line");
         item["use_advanced_arguments"] = json!(false);
         item["advanced_arguments"] = json!([]);
     };
@@ -689,14 +701,15 @@ fn v0_19_3_add_use_advanced_arguments_fields(config_json: &mut JsonValue) {
 
 fn v1_0_1_rename_advanced_args_to_executor_args(config_json: &mut JsonValue) {
     let update_item_fn = |item: &mut JsonValue| {
-        if item["use_advanced_arguments"]
-            .take()
+        if take_field(item, "use_advanced_arguments")
             .as_bool()
             .unwrap_or(false)
         {
-            item["executor_arguments"] = item["advanced_arguments"].take();
+            rename_field(item, "advanced_arguments", "executor_arguments");
+            println!("{:?}", item);
         } else {
             item["executor_arguments"] = json!([]);
+            remove_field(item, "advanced_arguments")
         }
     };
 
