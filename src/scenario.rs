@@ -8,6 +8,7 @@ use crate::scenario_updaters::{
     update_scenario_to_the_latest_version, LATEST_SCENARIO_FORMAT_VERSION,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 thread_local!(static GLOBAL_SCENARIO: Option<Result<Scenario, String>> = read_scenario());
@@ -30,6 +31,18 @@ pub struct Execution {
 #[serde(deny_unknown_fields)]
 pub struct Script {
     pub uid: Guid,
+    pub arguments: Option<String>,
+    pub placeholders: Option<HashMap<String, String>>,
+}
+
+impl Script {
+    fn with_uid(uid: Guid) -> Script {
+        Self {
+            uid,
+            arguments: None,
+            placeholders: None,
+        }
+    }
 }
 
 fn read_scenario() -> Option<Result<Scenario, String>> {
@@ -130,7 +143,7 @@ fn read_scenario() -> Option<Result<Scenario, String>> {
         Scenario {
             format_version: LATEST_SCENARIO_FORMAT_VERSION.to_string(),
             parallel_executions: vec![Execution {
-                scripts: vec![Script { uid }],
+                scripts: vec![Script::with_uid(uid)],
                 only_schedule: None,
             }],
         }

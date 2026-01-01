@@ -4799,16 +4799,20 @@ fn get_schedulable_dragged_execution_scripts(
 }
 
 fn init_from_scenario(app: &mut MainWindow) {
-    let scenario = match &app.scenario {
+    let log_error = |app: &mut MainWindow, error| {
+        eprintln!("{}", &error);
+        app.window_state.errors_to_show.push(error);
+    };
+
+    let scenario = match app.scenario.clone() {
         None => {
             return;
         }
         Some(Err(err)) => {
-            eprintln!("{}", err);
-            app.window_state.errors_to_show.push(err.clone());
+            log_error(app, err);
             return;
         }
-        Some(Ok(scenario)) => scenario.clone(),
+        Some(Ok(scenario)) => scenario,
     };
 
     let mut missing_scripts = Vec::new();
@@ -4816,11 +4820,45 @@ fn init_from_scenario(app: &mut MainWindow) {
     for execution in scenario.parallel_executions {
         let scripts: Vec<_> = execution
             .scripts
-            .iter()
-            .map(|script| {
-                let scripts = get_resulting_scripts_from_guid(&app.app_config, script.uid.clone());
+            .into_iter()
+            .map(|mut script| {
+                let mut scripts =
+                    get_resulting_scripts_from_guid(&app.app_config, script.uid.clone());
                 if scripts.is_empty() {
                     missing_scripts.push(script.uid.clone());
+                }
+
+                if scripts.len() == 1 {
+                    if let Some(arguments) = script.arguments.take() {
+                        scripts[0].arguments_line = arguments;
+                    }
+
+                    if let Some(placeholders) = script.placeholders.take() {
+                        let result_script = &mut scripts[0];
+                        for (placeholder_tag, value) in placeholders {
+                            // let mut is_found = false;
+                            match result_script
+                                .argument_placeholders
+                                .iter_mut()
+                                .find(|placeholder| placeholder.placeholder == placeholder_tag)
+                            {
+                                Some(placeholder) => {
+                                    placeholder.value = value;
+                                }
+                                None => {
+                                    result_script.argument_placeholders.push(
+                                        config::ArgumentPlaceholder {
+                                            name: placeholder_tag.clone(),
+                                            placeholder: placeholder_tag.clone(),
+                                            value,
+                                            hint: String::new(),
+                                            is_required: false,
+                                        },
+                                    );
+                                }
+                            }
+                        }
+                    }
                 }
 
                 scripts
@@ -4835,14 +4873,13 @@ fn init_from_scenario(app: &mut MainWindow) {
                 .map(|uid| format!("'{}'", uid.to_string()))
                 .collect::<Vec<_>>()
                 .join(", ");
-            eprintln!(
-                "Some scripts specified in the scenario are missing: {}",
-                formatted_script_uids
+            log_error(
+                app,
+                format!(
+                    "Some scripts specified in the scenario are missing: {}",
+                    formatted_script_uids
+                ),
             );
-            app.window_state.errors_to_show.push(format!(
-                "Some scripts specified in the scenario are missing: {}",
-                formatted_script_uids
-            ));
             return;
         }
 
