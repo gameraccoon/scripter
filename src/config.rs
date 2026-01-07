@@ -144,12 +144,6 @@ pub struct ReferenceToSharedScript {
     pub is_hidden: bool,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
-pub enum ArgumentsType {
-    SpaceSeparatedLine,
-    List,
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ArgumentPlaceholder {
