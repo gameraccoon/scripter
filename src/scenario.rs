@@ -17,6 +17,7 @@ thread_local!(static GLOBAL_SCENARIO: Option<Result<Scenario, String>> = read_sc
 #[serde(deny_unknown_fields)]
 pub struct Scenario {
     pub format_version: String,
+    pub start_focused: Option<bool>,
     pub parallel_executions: Vec<Execution>,
 }
 
@@ -144,6 +145,7 @@ fn read_scenario() -> Option<Result<Scenario, String>> {
 
         Scenario {
             format_version: LATEST_SCENARIO_FORMAT_VERSION.to_string(),
+            start_focused: None,
             parallel_executions: vec![Execution {
                 scripts: vec![Script::with_uid(uid)],
                 only_schedule: None,

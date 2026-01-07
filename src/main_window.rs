@@ -463,9 +463,12 @@ impl MainWindow {
         let edit_mode = config::get_main_edit_mode(&main_window.app_config);
         keybind_editing::update_keybind_visual_caches(&mut main_window, edit_mode);
 
-        init_from_scenario(&mut main_window);
-
-        (main_window, Task::none())
+        let task = init_from_scenario(&mut main_window);
+        if let Some(task) = task {
+            (main_window, task)
+        } else {
+            (main_window, Task::none())
+        }
     }
 
     pub(crate) fn title(&self) -> String {
@@ -4798,7 +4801,7 @@ fn get_schedulable_dragged_execution_scripts(
     Vec::new()
 }
 
-fn init_from_scenario(app: &mut MainWindow) {
+fn init_from_scenario(app: &mut MainWindow) -> Option<Task<WindowMessage>> {
     let log_error = |app: &mut MainWindow, error| {
         eprintln!("{}", &error);
         app.window_state.errors_to_show.push(error);
@@ -4806,11 +4809,11 @@ fn init_from_scenario(app: &mut MainWindow) {
 
     let scenario = match app.scenario.clone() {
         None => {
-            return;
+            return None;
         }
         Some(Err(err)) => {
             log_error(app, err);
-            return;
+            return None;
         }
         Some(Ok(scenario)) => scenario,
     };
@@ -4884,7 +4887,7 @@ fn init_from_scenario(app: &mut MainWindow) {
                     formatted_script_uids
                 ),
             );
-            return;
+            return None;
         }
 
         if execution.only_schedule == Some(true)
@@ -4901,5 +4904,15 @@ fn init_from_scenario(app: &mut MainWindow) {
         update_edited_execution_list_script_number(app);
         update_drag_and_drop_area_bounds(app);
         clear_script_selection(&mut app.window_state.selected_scripts);
+    }
+
+    if scenario.start_focused == Some(true) {
+        return Some(maximize_pane(
+            app,
+            app.pane_by_pane_type[&PaneVariant::ExecutionList],
+            app.window_state.full_window_size,
+        ));
+    } else {
+        None
     }
 }

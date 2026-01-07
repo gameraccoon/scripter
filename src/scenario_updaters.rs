@@ -5,7 +5,7 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::Value as JsonValue;
 
 static FORMAT_VERSION_FIELD_NAME: &str = "format_version";
-pub static LATEST_SCENARIO_FORMAT_VERSION: &str = "4";
+pub static LATEST_SCENARIO_FORMAT_VERSION: &str = "5";
 
 pub fn update_scenario_to_the_latest_version(scenario_json: &mut JsonValue) -> UpdateResult {
     let version = scenario_json[FORMAT_VERSION_FIELD_NAME].as_str();
@@ -37,6 +37,11 @@ fn register_scenario_updaters() -> JsonFileUpdater {
         "4",
         |_| {},
         v4_validate_no_name_before,
+    );
+    json_scenario_updater.add_update_function_with_validator(
+        "5",
+        |_| {},
+        v5_validate_no_start_focused_before,
     );
     // add update functions above this line
     // don't forget to update LATEST_SCENARIO_FORMAT_VERSION at the beginning of the file
@@ -116,4 +121,12 @@ fn v4_validate_no_name_before(json: &JsonValue) -> Result<(), String> {
 
         Ok(())
     })
+}
+
+fn v5_validate_no_start_focused_before(json: &JsonValue) -> Result<(), String> {
+    if json["start_focused"].is_boolean() {
+        return get_wrong_field_version_err("start_focused", "5");
+    }
+
+    Ok(())
 }
