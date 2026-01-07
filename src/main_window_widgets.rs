@@ -98,7 +98,7 @@ impl std::fmt::Display for config::ReactionToPreviousFailures {
     }
 }
 
-pub fn edit_button(label: &str, message: WindowMessage) -> Button<WindowMessage> {
+pub fn edit_button(label: &str, message: WindowMessage) -> Button<'_, WindowMessage> {
     button(text(label).align_y(alignment::Vertical::Center).size(16))
         .padding(4)
         .on_press(message)
@@ -165,7 +165,7 @@ pub fn inline_icon_button<'a, Message>(
     .on_press(message)
 }
 
-pub fn quick_launch_button(button_description: &QuickLaunchButton) -> Element<WindowMessage> {
+pub fn quick_launch_button(button_description: &QuickLaunchButton) -> Element<'_, WindowMessage> {
     tooltip(
         button(
             image(button_description.icon.clone())
@@ -188,7 +188,7 @@ pub fn main_icon_button(
     icon_handle: Handle,
     label: &str,
     message: Option<WindowMessage>,
-) -> Button<WindowMessage> {
+) -> Button<'_, WindowMessage> {
     let new_button = button(
         row![
             image(icon_handle)
@@ -234,7 +234,7 @@ pub fn main_icon_button_string(
     }
 }
 
-pub fn main_button(label: &str, message: Option<WindowMessage>) -> Button<WindowMessage> {
+pub fn main_button(label: &str, message: Option<WindowMessage>) -> Button<'_, WindowMessage> {
     let new_button = button(row![text(label).width(Length::Shrink).size(16)])
         .width(Length::Shrink)
         .padding(8);

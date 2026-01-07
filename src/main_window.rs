@@ -2200,7 +2200,7 @@ impl MainWindow {
         Task::none()
     }
 
-    pub(crate) fn view(&self) -> Element<WindowMessage> {
+    pub(crate) fn view(&self) -> Element<'_, WindowMessage> {
         let focus = self.window_state.pane_focus;
         let total_panes = self.panes.len();
 
