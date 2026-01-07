@@ -4829,6 +4829,10 @@ fn init_from_scenario(app: &mut MainWindow) {
                 }
 
                 if scripts.len() == 1 {
+                    if let Some(name) = script.name.take() {
+                        scripts[0].name = name;
+                    }
+
                     if let Some(arguments) = script.arguments.take() {
                         scripts[0].arguments_line = arguments;
                     }

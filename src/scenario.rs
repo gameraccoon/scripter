@@ -31,6 +31,7 @@ pub struct Execution {
 #[serde(deny_unknown_fields)]
 pub struct Script {
     pub uid: Guid,
+    pub name: Option<String>,
     pub arguments: Option<String>,
     pub placeholders: Option<HashMap<String, String>>,
 }
@@ -39,6 +40,7 @@ impl Script {
     fn with_uid(uid: Guid) -> Script {
         Self {
             uid,
+            name: None,
             arguments: None,
             placeholders: None,
         }

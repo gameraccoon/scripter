@@ -5,7 +5,7 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::Value as JsonValue;
 
 static FORMAT_VERSION_FIELD_NAME: &str = "format_version";
-pub static LATEST_SCENARIO_FORMAT_VERSION: &str = "3";
+pub static LATEST_SCENARIO_FORMAT_VERSION: &str = "4";
 
 pub fn update_scenario_to_the_latest_version(scenario_json: &mut JsonValue) -> UpdateResult {
     let version = scenario_json[FORMAT_VERSION_FIELD_NAME].as_str();
@@ -26,12 +26,17 @@ fn register_scenario_updaters() -> JsonFileUpdater {
     json_scenario_updater.add_update_function_with_validator(
         "2",
         |_| {},
-        v2_validate_no_only_schedule_field,
+        v2_validate_no_only_schedule_field_before,
     );
     json_scenario_updater.add_update_function_with_validator(
         "3",
         |_| {},
-        v3_validate_no_arguments_or_placeholders,
+        v3_validate_no_arguments_or_placeholders_before,
+    );
+    json_scenario_updater.add_update_function_with_validator(
+        "4",
+        |_| {},
+        v4_validate_no_name_before,
     );
     // add update functions above this line
     // don't forget to update LATEST_SCENARIO_FORMAT_VERSION at the beginning of the file
@@ -75,24 +80,38 @@ fn for_each_script_validate(
     Ok(())
 }
 
-fn v2_validate_no_only_schedule_field(json: &JsonValue) -> Result<(), String> {
+fn get_wrong_field_version_err(field: &str, version: &str) -> Result<(), String> {
+    Err(format!("'{field}' field introduced in format version '{version}', but an earlier version of the format is used. Please make sure you set the right format version in the scenario file."))
+}
+
+fn v2_validate_no_only_schedule_field_before(json: &JsonValue) -> Result<(), String> {
     for_each_parallel_execution_validate(json, |parallel_execution: &JsonValue| {
         if let Some(_) = parallel_execution["only_schedule"].as_bool() {
-            return Err(format!("'only_schedule' field introduced in format version '2', but earlier version of the format is used"));
+            return get_wrong_field_version_err("only_schedule", "2");
         }
 
         Ok(())
     })
 }
 
-fn v3_validate_no_arguments_or_placeholders(json: &JsonValue) -> Result<(), String> {
+fn v3_validate_no_arguments_or_placeholders_before(json: &JsonValue) -> Result<(), String> {
     for_each_script_validate(json, |script| {
         if script["arguments"].is_string() {
-            return Err(format!("'arguments' field introduced in format version '3', but earlier version of the format is used"));
+            return get_wrong_field_version_err("arguments", "3");
         }
 
         if let Some(_) = script["placeholders"].as_array() {
-            return Err(format!("'placeholders' field introduced in format version '3', but earlier version of the format is used"));
+            return get_wrong_field_version_err("placeholders", "3");
+        }
+
+        Ok(())
+    })
+}
+
+fn v4_validate_no_name_before(json: &JsonValue) -> Result<(), String> {
+    for_each_script_validate(json, |script| {
+        if script["name"].is_string() {
+            return get_wrong_field_version_err("name", "4");
         }
 
         Ok(())
