@@ -643,28 +643,5 @@ impl ParallelExecutionManager {
 }
 
 fn get_tooltip_for_script(script: &config::OriginalScriptDefinition) -> String {
-    let mut tooltip = String::new();
-
-    if let Some(custom_executor) = &script.custom_executor {
-        tooltip.push_str(format!("[{}]", custom_executor.join("][")).as_str());
-    }
-
-    if script.arguments_line.is_empty() {
-        tooltip.push_str(format!("[{}]", script.command.path).as_str());
-    } else {
-        let mut arguments_line = script.arguments_line.clone();
-        execution_thread::replace_placeholders(&mut arguments_line, &script.argument_placeholders);
-        tooltip.push_str(format!("[{} {}]", script.command.path, arguments_line).as_str());
-    }
-
-    for advanced_argument in &script.executor_arguments {
-        let mut advanced_argument = advanced_argument.clone();
-        execution_thread::replace_placeholders(
-            &mut advanced_argument,
-            &script.argument_placeholders,
-        );
-        tooltip.push_str(format!("[{}]", advanced_argument).as_str());
-    }
-
-    tooltip
+    execution_thread::get_script_to_execute_description(script)
 }

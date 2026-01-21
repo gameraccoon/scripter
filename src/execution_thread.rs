@@ -143,6 +143,12 @@ pub fn run_scripts(
     execution_data.thread_join_handle = Some(std::thread::spawn(move || {
         let mut has_previous_script_failed = had_failures_before;
         let mut kill_requested = false;
+
+        let _ = std::fs::create_dir_all(&log_directory);
+
+        let mut execution_log_writer =
+            create_or_append_to_file(log_directory.join("execution_steps.log"));
+
         for script_idx in 0..scripts_to_run.len() {
             let mut disconnect_requested = false;
             let script = &scripts_to_run[script_idx].original;
@@ -158,9 +164,23 @@ pub fn run_scripts(
                 script_state.result = ScriptResultStatus::Skipped;
                 script_state.finish_time = Some(Instant::now());
                 send_script_execution_status(&progress_sender, script_idx, script_state.clone());
+
+                write_to_execution_log(
+                    &mut execution_log_writer,
+                    &format!("'{}' skipped", script.name),
+                );
+
                 continue;
             }
             send_script_execution_status(&progress_sender, script_idx, script_state.clone());
+            write_to_execution_log(
+                &mut execution_log_writer,
+                &format!(
+                    "'{}' started as {}",
+                    script.name,
+                    get_script_to_execute_description(&script)
+                ),
+            );
 
             'retry_loop: loop {
                 if kill_requested {
@@ -168,8 +188,6 @@ pub fn run_scripts(
                 }
 
                 let command_line = get_script_with_arguments(&script, &path_caches);
-
-                let _ = std::fs::create_dir_all(&log_directory);
 
                 let output_file = std::fs::File::create(file_utils::get_script_output_path(
                     log_directory.clone(),
@@ -302,15 +320,19 @@ pub fn run_scripts(
                             let error_text = format!("Failed to start the process: {}", err);
                             let mut output_writer = std::io::BufWriter::new(output_file);
                             send_log_line(
+                                &mut output_writer,
+                                &recent_logs,
                                 OutputLine {
                                     text: error_text,
                                     output_type: OutputType::Error,
                                     timestamp: chrono::Local::now(),
                                 },
-                                &recent_logs,
-                                &mut output_writer,
                             );
                         }
+                        write_to_execution_log(
+                            &mut execution_log_writer,
+                            &format!("'{}' failed to start the process: {}", script.name, err,),
+                        );
                         // it doesn't make sense to retry if something is broken on this level
                         script_state.result = ScriptResultStatus::Failed;
                         script_state.finish_time = Some(Instant::now());
@@ -363,6 +385,10 @@ pub fn run_scripts(
                                 has_previous_script_failed = false;
                             }
                             join_threads(threads_to_join);
+                            write_to_execution_log(
+                                &mut execution_log_writer,
+                                &format!("'{}' finished successfully", script.name),
+                            );
                             break 'retry_loop;
                         } else {
                             if script_state.retry_count < script.autorerun_count && !kill_requested
@@ -373,6 +399,15 @@ pub fn run_scripts(
                                     &progress_sender,
                                     script_idx,
                                     script_state.clone(),
+                                );
+                                write_to_execution_log(
+                                    &mut execution_log_writer,
+                                    &format!(
+                                        "'{}' failed, retrying (retry {} out of {})",
+                                        script.name,
+                                        script_state.retry_count,
+                                        script.autorerun_count,
+                                    ),
                                 );
                                 break;
                             } else {
@@ -386,6 +421,10 @@ pub fn run_scripts(
                                 );
                                 has_previous_script_failed = true;
                                 join_threads(threads_to_join);
+                                write_to_execution_log(
+                                    &mut execution_log_writer,
+                                    &format!("'{}' failed", script.name),
+                                );
                                 break 'retry_loop;
                             }
                         }
@@ -396,6 +435,10 @@ pub fn run_scripts(
                         if requested_action_raw == REQUESTED_ACTION_STOP {
                             kill_process(&mut child);
                             kill_requested = true;
+                            write_to_execution_log(
+                                &mut execution_log_writer,
+                                "Requested execution stop",
+                            );
                         } else if requested_action_raw == REQUESTED_ACTION_DISCONNECT {
                             let first_disconnected_script_idx = script_idx + 1;
                             let size_of_script_list = if disconnect_requested {
@@ -629,12 +672,12 @@ fn join_and_split_output(
         loop {
             crossbeam_channel::select! {
                 recv(receiver_out) -> log => {
-                    if try_split_log(log, OutputType::StdOut, &recent_logs, &mut output_writer).is_err() {
+                    if try_split_log(&mut output_writer, &recent_logs, OutputType::StdOut, log).is_err() {
                         break;
                     }
                 },
                 recv(receiver_err) -> log => {
-                    if try_split_log(log, OutputType::StdErr, &recent_logs, &mut output_writer).is_err() {
+                    if try_split_log(&mut output_writer, &recent_logs, OutputType::StdErr, log).is_err() {
                         break;
                     }
                 }
@@ -660,23 +703,23 @@ fn read_one_stdio<R: std::io::Read>(stdio: R, out_channel: Sender<(String, bool)
 }
 
 fn try_split_log(
-    log: Result<(String, bool), RecvError>,
-    output_type: OutputType,
-    recent_logs: &Arc<Mutex<LogBuffer>>,
     output_writer: &mut std::io::BufWriter<std::fs::File>,
+    recent_logs: &Arc<Mutex<LogBuffer>>,
+    output_type: OutputType,
+    log: Result<(String, bool), RecvError>,
 ) -> Result<(), ()> {
     if let Ok((text, should_exit)) = log {
         if should_exit {
             return Err(());
         } else {
             send_log_line(
+                output_writer,
+                recent_logs,
                 OutputLine {
                     text,
                     output_type,
                     timestamp: chrono::Local::now(),
                 },
-                recent_logs,
-                output_writer,
             );
         }
     } else {
@@ -686,14 +729,53 @@ fn try_split_log(
 }
 
 fn send_log_line(
-    line: OutputLine,
-    recent_logs: &Arc<Mutex<LogBuffer>>,
     output_writer: &mut std::io::BufWriter<std::fs::File>,
+    recent_logs: &Arc<Mutex<LogBuffer>>,
+    line: OutputLine,
 ) {
     let _ = write!(output_writer, "{}", line.text);
     let _ = output_writer.flush();
 
     recent_logs.lock().unwrap().push(line); // it is fine to panic on a poisoned mutex
+}
+
+pub fn create_or_append_to_file(
+    file_path: std::path::PathBuf,
+) -> Option<std::io::BufWriter<std::fs::File>> {
+    // is this seriously not a thing in Rust?
+    let mut execution_log_file = std::fs::OpenOptions::new();
+    let execution_log_file = match std::fs::exists(&file_path) {
+        Ok(true) => execution_log_file.append(true),
+        _ => execution_log_file.write(true).create_new(true),
+    }
+    .open(&file_path);
+
+    match execution_log_file {
+        Ok(file) => Some(std::io::BufWriter::new(file)),
+        Err(err) => {
+            println!(
+                "Could not create {}: '{}'",
+                file_path.to_string_lossy(),
+                err
+            );
+            None
+        }
+    }
+}
+
+fn write_to_execution_log(
+    output_writer: &mut Option<std::io::BufWriter<std::fs::File>>,
+    line: &str,
+) {
+    if let Some(writer) = output_writer {
+        let _ = write!(
+            writer,
+            "{}: {}\n",
+            chrono::Local::now().format("%Y:%m:%d %H:%M:%S"),
+            line
+        );
+        let _ = writer.flush();
+    }
 }
 
 fn join_threads(threads: Vec<std::thread::JoinHandle<()>>) {
@@ -736,4 +818,28 @@ pub fn should_turn_failure_to_success(
         config::ReactionToPreviousFailures::SkipOnSuccessExecuteOnFailure => false,
         config::ReactionToPreviousFailures::SkipOnSuccessExecuteOnFailureTurnToSuccess => true,
     }
+}
+
+pub fn get_script_to_execute_description(script: &config::OriginalScriptDefinition) -> String {
+    let mut description = String::new();
+
+    if let Some(custom_executor) = &script.custom_executor {
+        description.push_str(format!("[{}]", custom_executor.join("][")).as_str());
+    }
+
+    if script.arguments_line.is_empty() {
+        description.push_str(format!("[{}]", script.command.path).as_str());
+    } else {
+        let mut arguments_line = script.arguments_line.clone();
+        replace_placeholders(&mut arguments_line, &script.argument_placeholders);
+        description.push_str(format!("[{} {}]", script.command.path, arguments_line).as_str());
+    }
+
+    for advanced_argument in &script.executor_arguments {
+        let mut advanced_argument = advanced_argument.clone();
+        replace_placeholders(&mut advanced_argument, &script.argument_placeholders);
+        description.push_str(format!("[{}]", advanced_argument).as_str());
+    }
+
+    description
 }
