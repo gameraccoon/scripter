@@ -6,8 +6,8 @@ use crate::json_file_updater::{JsonFileUpdater, UpdateResult};
 use serde_json::{json, Value as JsonValue};
 
 static FORMAT_VERSION_FIELD_NAME: &str = "version";
-pub static LATEST_CONFIG_FORMAT_VERSION: &str = "1.1.3";
-pub static LATEST_LOCAL_CONFIG_FORMAT_VERSION: &str = "1.1.3";
+pub static LATEST_CONFIG_FORMAT_VERSION: &str = "1.2.4";
+pub static LATEST_LOCAL_CONFIG_FORMAT_VERSION: &str = "1.2.4";
 
 pub fn update_config_to_the_latest_version(config_json: &mut JsonValue) -> UpdateResult {
     let version = config_json[FORMAT_VERSION_FIELD_NAME].as_str();
@@ -145,6 +145,7 @@ fn register_config_updaters() -> JsonFileUpdater {
     json_config_updater
         .add_update_function("1.1.0", v1_1_0_rename_cursor_script_to_selected_scripts);
     json_config_updater.add_update_function("1.1.3", v1_1_3_add_immediate_script_keybind);
+    json_config_updater.add_update_function("1.2.4", v1_2_4_add_autorerun_delay_field);
     // add update functions above this line
     // don't forget to update LATEST_CONFIG_VERSION at the beginning of the file
 
@@ -234,6 +235,7 @@ fn register_local_config_updaters() -> JsonFileUpdater {
     json_config_updater
         .add_update_function("1.1.0", v1_1_0_rename_cursor_script_to_selected_scripts);
     json_config_updater.add_update_function("1.1.3", v1_1_3_add_immediate_script_keybind);
+    json_config_updater.add_update_function("1.2.4", v1_2_4_add_autorerun_delay_field);
     // add update functions above this line
     // don't forget to update LATEST_LOCAL_CONFIG_VERSION at the beginning of the file
 
@@ -768,4 +770,18 @@ fn v1_1_3_add_immediate_script_keybind(config_json: &mut JsonValue) {
             }
         }
     }
+}
+
+fn v1_2_4_add_autorerun_delay_field(config_json: &mut JsonValue) {
+    let update_item_fn = |item: &mut JsonValue| {
+        item["autorerun_delay_sec"] = json!(0.0);
+    };
+
+    for_each_script_original_definition_post_0_10_0(config_json, update_item_fn);
+
+    for_each_script_preset(config_json, |preset| {
+        if let Some(items) = preset["items"].as_array_mut() {
+            items.iter_mut().for_each(update_item_fn);
+        }
+    });
 }

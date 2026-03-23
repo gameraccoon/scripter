@@ -185,6 +185,10 @@ pub fn get_resulting_scripts_from_guid(
                                 script.autorerun_count = autorerun_count;
                             }
 
+                            if let Some(autorerun_delay_sec) = preset_item.autorerun_delay_sec {
+                                script.autorerun_delay_sec = autorerun_delay_sec;
+                            }
+
                             if let Some(reaction_to_previous_failures) =
                                 preset_item.reaction_to_previous_failures
                             {
@@ -1319,29 +1323,36 @@ pub fn select_edited_script(app: &mut MainWindow, config_script_id: ConfigScript
         match script {
             config::ScriptDefinition::Original(script) => {
                 app.visual_caches.autorerun_count = script.autorerun_count.to_string();
+                app.visual_caches.autorerun_delay_sec = script.autorerun_delay_sec.to_string();
             }
             config::ScriptDefinition::ReferenceToShared(reference) => {
                 let Some((script, _idx)) =
                     config::get_original_script_definition_by_uid(&app.app_config, &reference.uid)
                 else {
                     app.visual_caches.autorerun_count = "Error 1".to_string();
+                    app.visual_caches.autorerun_delay_sec = "Error 1".to_string();
                     return;
                 };
 
                 match script {
                     config::ScriptDefinition::Original(script) => {
                         app.visual_caches.autorerun_count = script.autorerun_count.to_string();
+                        app.visual_caches.autorerun_delay_sec =
+                            script.autorerun_delay_sec.to_string();
                     }
                     config::ScriptDefinition::ReferenceToShared(_) => {
                         app.visual_caches.autorerun_count = "Error 2".to_string();
+                        app.visual_caches.autorerun_delay_sec = "Error 2".to_string();
                     }
                     config::ScriptDefinition::Preset(_) => {
                         app.visual_caches.autorerun_count = "Error 3".to_string();
+                        app.visual_caches.autorerun_delay_sec = "Error 3".to_string();
                     }
                 }
             }
             config::ScriptDefinition::Preset(_) => {
                 app.visual_caches.autorerun_count = "Error 4".to_string();
+                app.visual_caches.autorerun_delay_sec = "Error 4".to_string();
             }
         }
     }
@@ -1360,6 +1371,7 @@ pub fn select_execution_script(app: &mut MainWindow, script_idx: usize) {
 
     if let Some(script) = &app.execution_manager.get_edited_scripts().get(script_idx) {
         app.visual_caches.autorerun_count = script.original.autorerun_count.to_string();
+        app.visual_caches.autorerun_delay_sec = script.original.autorerun_delay_sec.to_string();
     }
 }
 
@@ -2222,6 +2234,7 @@ mod tests {
                             arguments_line: "".to_string(),
                             argument_placeholders: Vec::new(),
                             autorerun_count: 0,
+                            autorerun_delay_sec: 0.0,
                             reaction_to_previous_failures:
                                 config::ReactionToPreviousFailures::SkipOnFailure,
                             arguments_requirement: config::ArgumentRequirement::Optional,
@@ -2241,6 +2254,7 @@ mod tests {
                             arguments_line: "".to_string(),
                             argument_placeholders: Vec::new(),
                             autorerun_count: 0,
+                            autorerun_delay_sec: 0.0,
                             reaction_to_previous_failures:
                                 config::ReactionToPreviousFailures::SkipOnFailure,
                             arguments_requirement: config::ArgumentRequirement::Optional,
@@ -2263,6 +2277,7 @@ mod tests {
                                     executor_arguments: None,
                                     overridden_placeholder_values: std::collections::HashMap::new(),
                                     autorerun_count: None,
+                                    autorerun_delay_sec: None,
                                     reaction_to_previous_failures: None,
                                     autoclean_on_success: None,
                                 },
@@ -2273,6 +2288,7 @@ mod tests {
                                     executor_arguments: None,
                                     overridden_placeholder_values: std::collections::HashMap::new(),
                                     autorerun_count: None,
+                                    autorerun_delay_sec: None,
                                     reaction_to_previous_failures: None,
                                     autoclean_on_success: None,
                                 },
@@ -2339,6 +2355,7 @@ mod tests {
                                 arguments_line: "".to_string(),
                                 argument_placeholders: Vec::new(),
                                 autorerun_count: 0,
+                                autorerun_delay_sec: 0.0,
                                 reaction_to_previous_failures:
                                     config::ReactionToPreviousFailures::SkipOnFailure,
                                 arguments_requirement: config::ArgumentRequirement::Optional,

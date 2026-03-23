@@ -366,7 +366,7 @@ pub fn run_scripts(
                     }
                 }
 
-                loop {
+                'script_wait_loop: loop {
                     if let Ok(Some(status)) = child.try_wait() {
                         if status.success() {
                             // successfully finished the script, jump to the next script
@@ -409,6 +409,28 @@ pub fn run_scripts(
                                         script.autorerun_count,
                                     ),
                                 );
+
+                                if script.autorerun_delay_sec > 0.0 {
+                                    let end_time = Instant::now()
+                                        + Duration::from_secs_f32(script.autorerun_delay_sec);
+                                    let mut time_left = end_time - Instant::now();
+
+                                    // sleep in periods of one second, to be able to listen to the stop signal
+                                    while time_left > Duration::from_secs(1) {
+                                        std::thread::sleep(Duration::from_secs(1));
+                                        time_left = end_time - Instant::now();
+                                        let requested_action_raw =
+                                            requested_action.load(Ordering::Acquire);
+                                        if requested_action_raw > 0 {
+                                            break 'script_wait_loop;
+                                        }
+                                    }
+
+                                    // sleep the reminder of time
+                                    if time_left > Duration::from_secs(0) {
+                                        std::thread::sleep(time_left);
+                                    }
+                                }
                                 break;
                             } else {
                                 // script failed and we can't retry

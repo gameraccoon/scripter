@@ -182,6 +182,7 @@ pub struct OriginalScriptDefinition {
     pub argument_placeholders: Vec<ArgumentPlaceholder>,
     pub arguments_requirement: ArgumentRequirement,
     pub autorerun_count: usize,
+    pub autorerun_delay_sec: f32,
     pub reaction_to_previous_failures: ReactionToPreviousFailures,
     pub arguments_hint: String,
     pub custom_executor: Option<Vec<String>>,
@@ -205,6 +206,7 @@ impl Default for OriginalScriptDefinition {
             arguments_line: "".to_string(),
             argument_placeholders: Vec::new(),
             autorerun_count: 0,
+            autorerun_delay_sec: 0.0,
             reaction_to_previous_failures: ReactionToPreviousFailures::SkipOnFailure,
             arguments_requirement: ArgumentRequirement::Optional,
             arguments_hint: "\"arg1\" \"arg2\"".to_string(),
@@ -227,6 +229,7 @@ pub struct PresetItem {
     pub executor_arguments: Option<Vec<String>>,
     pub overridden_placeholder_values: std::collections::HashMap<String, String>,
     pub autorerun_count: Option<usize>,
+    pub autorerun_delay_sec: Option<f32>,
     pub reaction_to_previous_failures: Option<ReactionToPreviousFailures>,
     pub autoclean_on_success: Option<bool>,
 }

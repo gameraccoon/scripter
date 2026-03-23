@@ -74,6 +74,7 @@ static LOGS_SCROLL_ID: Lazy<scrollable::Id> = Lazy::new(scrollable::Id::unique);
 // caches for visual elements content
 pub(crate) struct VisualCaches {
     pub(crate) autorerun_count: String,
+    pub(crate) autorerun_delay_sec: String,
     pub(crate) is_custom_title_editing: bool,
     pub(crate) icons: ui_icons::IconCaches,
     pub(crate) keybind_hints: HashMap<keybind_editing::KeybindAssociatedData, String>,
@@ -263,6 +264,8 @@ pub(crate) enum WindowMessage {
     EditArgumentPlaceholderValueForScriptExecution(usize, String),
     EditAutorerunCountForConfig(ConfigScriptId, String),
     EditAutorerunCountForExecutionList(String),
+    EditAutorerunDelaySecForConfig(ConfigScriptId, String),
+    EditAutorerunDelaySecForExecutionList(String),
     EditReactionToPreviousFailuresForConfig(ConfigScriptId, config::ReactionToPreviousFailures),
     EditReactionToPreviousFailuresForExecutionList(config::ReactionToPreviousFailures),
     ToggleUseCustomExecutor(ConfigScriptId, bool),
@@ -386,6 +389,7 @@ impl MainWindow {
             scenario,
             visual_caches: VisualCaches {
                 autorerun_count: String::new(),
+                autorerun_delay_sec: String::new(),
                 is_custom_title_editing: false,
                 icons: ui_icons::IconCaches::new(),
                 keybind_hints: HashMap::new(),
@@ -1251,6 +1255,33 @@ impl MainWindow {
                     }
                 }
             }
+            WindowMessage::EditAutorerunDelaySecForConfig(
+                config_script_id,
+                new_autorerun_delay_sec_str,
+            ) => {
+                let new_autorerun_delay_sec =
+                    update_autorerun_delay_sec_text(self, new_autorerun_delay_sec_str);
+
+                if let Some(new_autorerun_delay_sec) = new_autorerun_delay_sec {
+                    apply_config_script_edit(self, config_script_id, |script| {
+                        script.autorerun_delay_sec = new_autorerun_delay_sec
+                    });
+                }
+            }
+            WindowMessage::EditAutorerunDelaySecForExecutionList(new_autorerun_delay_sec_str) => {
+                let new_autorerun_delay_sec =
+                    update_autorerun_delay_sec_text(self, new_autorerun_delay_sec_str);
+
+                if let Some(new_autorerun_delay_sec) = new_autorerun_delay_sec {
+                    if let Some((idx, _)) =
+                        get_only_selected_script(&self.window_state.selected_scripts)
+                    {
+                        apply_execution_script_edit(self, idx, |script| {
+                            script.autorerun_delay_sec = new_autorerun_delay_sec;
+                        });
+                    }
+                }
+            }
             WindowMessage::EditReactionToPreviousFailuresForConfig(config_script_id, value) => {
                 apply_config_script_edit(self, config_script_id, |script| {
                     script.reaction_to_previous_failures = value
@@ -1787,6 +1818,16 @@ impl MainWindow {
                         Some(script.autorerun_count)
                     };
 
+                    let autorerun_delay_sec = if let Some(original_script) = &original_script {
+                        if original_script.autorerun_delay_sec == script.autorerun_delay_sec {
+                            None
+                        } else {
+                            Some(script.autorerun_delay_sec)
+                        }
+                    } else {
+                        Some(script.autorerun_delay_sec)
+                    };
+
                     let reaction_to_previous_failures =
                         if let Some(original_script) = original_script {
                             if original_script.reaction_to_previous_failures
@@ -1817,6 +1858,7 @@ impl MainWindow {
                         executor_arguments,
                         overridden_placeholder_values,
                         autorerun_count,
+                        autorerun_delay_sec,
                         reaction_to_previous_failures,
                         autoclean_on_success,
                     });
@@ -3869,6 +3911,15 @@ fn produce_script_to_execute_edit_content<'a>(
             .padding(5)
             .into(),
     );
+    parameters.push(text("Retry delay (seconds):").into());
+    parameters.push(
+        text_input("0", &visual_caches.autorerun_delay_sec)
+            .on_input(move |new_value| {
+                WindowMessage::EditAutorerunDelaySecForExecutionList(new_value)
+            })
+            .padding(5)
+            .into(),
+    );
 
     parameters.push(horizontal_rule(SEPARATOR_HEIGHT).into());
     parameters.push(text("Reaction to previous failures:").into());
@@ -4038,6 +4089,22 @@ fn populate_original_script_config_edit_content<'a>(
         text_input("0", &visual_caches.autorerun_count)
             .on_input(move |new_value| {
                 WindowMessage::EditAutorerunCountForConfig(config_script_id, new_value)
+            })
+            .padding(5)
+            .into(),
+    );
+    parameters.push(
+        row![
+            text("Retry delay (seconds):"),
+            Space::with_width(4),
+            help_icon(RETRY_COUNT_HELP_TEXT, visual_caches, theme),
+        ]
+        .into(),
+    );
+    parameters.push(
+        text_input("0", &visual_caches.autorerun_delay_sec)
+            .on_input(move |new_value| {
+                WindowMessage::EditAutorerunDelaySecForConfig(config_script_id, new_value)
             })
             .padding(5)
             .into(),
@@ -4662,6 +4729,25 @@ fn update_autorerun_count_text(
         }
     }
     new_autorerun_count
+}
+
+fn update_autorerun_delay_sec_text(
+    app: &mut MainWindow,
+    new_autorerun_delay_sec_str: String,
+) -> Option<f32> {
+    let parse_result = f32::from_str(&new_autorerun_delay_sec_str);
+    let mut new_autorerun_delay_sec = None;
+    if let Ok(parse_result) = parse_result {
+        app.visual_caches.autorerun_delay_sec = new_autorerun_delay_sec_str;
+        new_autorerun_delay_sec = Some(parse_result);
+    } else {
+        // if input is empty, then keep it empty and assume 0, otherwise keep the old value
+        if new_autorerun_delay_sec_str.is_empty() {
+            app.visual_caches.autorerun_delay_sec = new_autorerun_delay_sec_str;
+            new_autorerun_delay_sec = Some(0.0);
+        }
+    }
+    new_autorerun_delay_sec
 }
 
 fn get_script_config_bring_into_view_scroll_offset(
