@@ -1752,6 +1752,39 @@ pub fn apply_config_script_edit(
     }
 }
 
+pub fn apply_config_preset_edit(
+    app: &mut MainWindow,
+    config_script_id: ConfigScriptId,
+    edit_fn: impl FnOnce(&mut config::ScriptPreset),
+) {
+    match config_script_id.edit_mode {
+        config::ConfigEditMode::Local => {
+            if let Some(config) = &mut app.app_config.local_config_body {
+                match &mut config.script_definitions.get_mut(config_script_id.idx) {
+                    Some(config::ScriptDefinition::Preset(preset)) => {
+                        edit_fn(preset);
+                        app.edit_data.is_dirty = true;
+                        update_config_cache(app);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        config::ConfigEditMode::Shared => match &mut app
+            .app_config
+            .script_definitions
+            .get_mut(config_script_id.idx)
+        {
+            Some(config::ScriptDefinition::Preset(preset)) => {
+                edit_fn(preset);
+                app.edit_data.is_dirty = true;
+                update_config_cache(app);
+            }
+            _ => {}
+        },
+    }
+}
+
 pub fn apply_execution_script_edit(
     app: &mut MainWindow,
     script_idx: usize,

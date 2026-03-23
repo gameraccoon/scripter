@@ -305,6 +305,7 @@ pub(crate) enum WindowMessage {
     CreateCopyOfSharedScript(usize),
     MoveToShared(usize),
     SaveAsPreset,
+    OverrideSelectedPreset,
     ScriptFilterChanged(String),
     RequestCloseApp,
     FocusFilter,
@@ -1717,152 +1718,10 @@ impl MainWindow {
                 }
             }
             WindowMessage::SaveAsPreset => {
-                let mut preset = config::ScriptPreset {
-                    uid: config::Guid::new(),
-                    name: "new preset".to_string(),
-                    icon: Default::default(),
-                    items: vec![],
-                };
-
-                for execution_script in self.execution_manager.get_edited_scripts() {
-                    let original_script = config::get_original_script_definition_by_uid(
-                        &self.app_config,
-                        &execution_script.original.uid,
-                    );
-
-                    let script = &execution_script.original;
-
-                    let original_script = if let Some(original_script_tuple) = original_script {
-                        match original_script_tuple.0 {
-                            config::ScriptDefinition::ReferenceToShared(reference) => {
-                                config::get_original_script_definition_by_uid(
-                                    &self.app_config,
-                                    &reference.uid,
-                                )
-                            }
-                            _ => Some(original_script_tuple),
-                        }
-                    } else {
-                        None
-                    };
-
-                    let original_script = if let Some((original_script, _idx)) = original_script {
-                        match original_script {
-                            config::ScriptDefinition::Original(script) => Some(script),
-                            _ => None,
-                        }
-                    } else {
-                        None
-                    };
-
-                    let name = if let Some(original_script) = &original_script {
-                        if original_script.name == script.name {
-                            None
-                        } else {
-                            Some(script.name.clone())
-                        }
-                    } else {
-                        Some(script.name.clone())
-                    };
-
-                    let arguments_line = if let Some(original_script) = &original_script {
-                        if original_script.arguments_line == script.arguments_line {
-                            None
-                        } else {
-                            Some(script.arguments_line.clone())
-                        }
-                    } else {
-                        Some(script.arguments_line.clone())
-                    };
-
-                    let executor_arguments = if let Some(original_script) = &original_script {
-                        if original_script.executor_arguments == script.executor_arguments {
-                            None
-                        } else {
-                            Some(script.executor_arguments.clone())
-                        }
-                    } else {
-                        Some(script.executor_arguments.clone())
-                    };
-
-                    let mut overridden_placeholder_values = HashMap::new();
-                    for placeholder in &script.argument_placeholders {
-                        let original_placeholder_value =
-                            original_script.as_ref().and_then(|original_script| {
-                                original_script
-                                    .argument_placeholders
-                                    .iter()
-                                    .find(|placeholder| {
-                                        placeholder.placeholder == placeholder.placeholder
-                                    })
-                                    .map(|placeholder| placeholder.value.clone())
-                            });
-
-                        if let Some(original_placeholder_value) = original_placeholder_value {
-                            if original_placeholder_value != placeholder.value {
-                                overridden_placeholder_values.insert(
-                                    placeholder.placeholder.clone(),
-                                    placeholder.value.clone(),
-                                );
-                            }
-                        }
-                    }
-
-                    let autorerun_count = if let Some(original_script) = &original_script {
-                        if original_script.autorerun_count == script.autorerun_count {
-                            None
-                        } else {
-                            Some(script.autorerun_count)
-                        }
-                    } else {
-                        Some(script.autorerun_count)
-                    };
-
-                    let autorerun_delay_sec = if let Some(original_script) = &original_script {
-                        if original_script.autorerun_delay_sec == script.autorerun_delay_sec {
-                            None
-                        } else {
-                            Some(script.autorerun_delay_sec)
-                        }
-                    } else {
-                        Some(script.autorerun_delay_sec)
-                    };
-
-                    let reaction_to_previous_failures =
-                        if let Some(original_script) = original_script {
-                            if original_script.reaction_to_previous_failures
-                                == script.reaction_to_previous_failures
-                            {
-                                None
-                            } else {
-                                Some(script.reaction_to_previous_failures)
-                            }
-                        } else {
-                            Some(script.reaction_to_previous_failures)
-                        };
-
-                    let autoclean_on_success = if let Some(original_script) = original_script {
-                        if original_script.autoclean_on_success == script.autoclean_on_success {
-                            None
-                        } else {
-                            Some(script.autoclean_on_success)
-                        }
-                    } else {
-                        Some(script.autoclean_on_success)
-                    };
-
-                    preset.items.push(config::PresetItem {
-                        uid: script.uid.clone(),
-                        name,
-                        arguments_line,
-                        executor_arguments,
-                        overridden_placeholder_values,
-                        autorerun_count,
-                        autorerun_delay_sec,
-                        reaction_to_previous_failures,
-                        autoclean_on_success,
-                    });
-                }
+                let preset = create_preset_with_scripts(
+                    &self.app_config,
+                    &self.execution_manager.get_edited_scripts(),
+                );
 
                 add_script_to_config(
                     self,
@@ -1871,6 +1730,27 @@ impl MainWindow {
                 );
 
                 return scrollable::snap_to(SCRIPTS_PANE_SCROLL_ID.clone(), RelativeOffset::END);
+            }
+            WindowMessage::OverrideSelectedPreset => {
+                let new_preset = create_preset_with_scripts(
+                    &self.app_config,
+                    &self.execution_manager.get_edited_scripts(),
+                );
+
+                if let Some((idx, _)) =
+                    get_only_selected_script(&self.window_state.selected_scripts)
+                {
+                    let edit_mode = config::get_main_edit_mode(&self.app_config);
+                    let mut is_edited = false;
+                    apply_config_preset_edit(self, ConfigScriptId { idx, edit_mode }, |preset| {
+                        preset.items = new_preset.items;
+                        is_edited = true;
+                    });
+
+                    if is_edited {
+                        clear_script_selection(&mut self.window_state.selected_scripts);
+                    }
+                }
             }
             WindowMessage::ScriptFilterChanged(new_filter_value) => {
                 self.edit_data.script_filter = new_filter_value;
@@ -3273,14 +3153,27 @@ fn produce_execution_list_content<'a>(
     .into();
 
     let edit_controls = column![if edit_data.window_edit_data.is_some() {
-        row![main_button(
-            "Save as preset",
-            if !execution_lists.get_edited_scripts().is_empty() {
-                Some(WindowMessage::SaveAsPreset)
-            } else {
-                None
-            }
-        )]
+        let has_edited_scripts = !execution_lists.get_edited_scripts().is_empty();
+        row![
+            main_button(
+                "Save as preset",
+                if has_edited_scripts {
+                    Some(WindowMessage::SaveAsPreset)
+                } else {
+                    None
+                },
+            ),
+            main_button(
+                "Override selected preset",
+                if has_edited_scripts
+                    && is_one_edited_script_selected(&window_state.selected_scripts)
+                {
+                    Some(WindowMessage::OverrideSelectedPreset)
+                } else {
+                    None
+                },
+            )
+        ]
     } else if !execution_lists.get_edited_scripts().is_empty() {
         let have_scripts_missing_arguments = execution_lists
             .get_edited_scripts()
@@ -5001,4 +4894,164 @@ fn init_from_scenario(app: &mut MainWindow) -> Option<Task<WindowMessage>> {
     } else {
         None
     }
+}
+
+fn is_one_edited_script_selected(selected_scripts: &Option<SelectedScripts>) -> bool {
+    if let Some(selected_scripts) = selected_scripts {
+        if selected_scripts.script_type != EditScriptType::ScriptConfig {
+            return false;
+        }
+
+        if selected_scripts.indexes.len() != 1 {
+            return false;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+fn create_preset_with_scripts(
+    app_config: &config::AppConfig,
+    edited_scripts: &Vec<execution_thread::ExecutionScript>,
+) -> config::ScriptPreset {
+    let mut preset = config::ScriptPreset {
+        uid: config::Guid::new(),
+        name: "new preset".to_string(),
+        icon: Default::default(),
+        items: vec![],
+    };
+
+    for execution_script in edited_scripts {
+        let original_script = config::get_original_script_definition_by_uid(
+            &app_config,
+            &execution_script.original.uid,
+        );
+
+        let script = &execution_script.original;
+
+        let original_script = if let Some(original_script_tuple) = original_script {
+            match original_script_tuple.0 {
+                config::ScriptDefinition::ReferenceToShared(reference) => {
+                    config::get_original_script_definition_by_uid(&app_config, &reference.uid)
+                }
+                _ => Some(original_script_tuple),
+            }
+        } else {
+            None
+        };
+
+        let original_script = if let Some((original_script, _idx)) = original_script {
+            match original_script {
+                config::ScriptDefinition::Original(script) => Some(script),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        let name = if let Some(original_script) = &original_script {
+            if original_script.name == script.name {
+                None
+            } else {
+                Some(script.name.clone())
+            }
+        } else {
+            Some(script.name.clone())
+        };
+
+        let arguments_line = if let Some(original_script) = &original_script {
+            if original_script.arguments_line == script.arguments_line {
+                None
+            } else {
+                Some(script.arguments_line.clone())
+            }
+        } else {
+            Some(script.arguments_line.clone())
+        };
+
+        let executor_arguments = if let Some(original_script) = &original_script {
+            if original_script.executor_arguments == script.executor_arguments {
+                None
+            } else {
+                Some(script.executor_arguments.clone())
+            }
+        } else {
+            Some(script.executor_arguments.clone())
+        };
+
+        let mut overridden_placeholder_values = HashMap::new();
+        for placeholder in &script.argument_placeholders {
+            let original_placeholder_value = original_script.as_ref().and_then(|original_script| {
+                original_script
+                    .argument_placeholders
+                    .iter()
+                    .find(|placeholder| placeholder.placeholder == placeholder.placeholder)
+                    .map(|placeholder| placeholder.value.clone())
+            });
+
+            if let Some(original_placeholder_value) = original_placeholder_value {
+                if original_placeholder_value != placeholder.value {
+                    overridden_placeholder_values
+                        .insert(placeholder.placeholder.clone(), placeholder.value.clone());
+                }
+            }
+        }
+
+        let autorerun_count = if let Some(original_script) = &original_script {
+            if original_script.autorerun_count == script.autorerun_count {
+                None
+            } else {
+                Some(script.autorerun_count)
+            }
+        } else {
+            Some(script.autorerun_count)
+        };
+
+        let autorerun_delay_sec = if let Some(original_script) = &original_script {
+            if original_script.autorerun_delay_sec == script.autorerun_delay_sec {
+                None
+            } else {
+                Some(script.autorerun_delay_sec)
+            }
+        } else {
+            Some(script.autorerun_delay_sec)
+        };
+
+        let reaction_to_previous_failures = if let Some(original_script) = original_script {
+            if original_script.reaction_to_previous_failures == script.reaction_to_previous_failures
+            {
+                None
+            } else {
+                Some(script.reaction_to_previous_failures)
+            }
+        } else {
+            Some(script.reaction_to_previous_failures)
+        };
+
+        let autoclean_on_success = if let Some(original_script) = original_script {
+            if original_script.autoclean_on_success == script.autoclean_on_success {
+                None
+            } else {
+                Some(script.autoclean_on_success)
+            }
+        } else {
+            Some(script.autoclean_on_success)
+        };
+
+        preset.items.push(config::PresetItem {
+            uid: script.uid.clone(),
+            name,
+            arguments_line,
+            executor_arguments,
+            overridden_placeholder_values,
+            autorerun_count,
+            autorerun_delay_sec,
+            reaction_to_previous_failures,
+            autoclean_on_success,
+        });
+    }
+
+    preset
 }
