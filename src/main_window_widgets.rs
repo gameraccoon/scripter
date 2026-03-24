@@ -21,6 +21,8 @@ pub(crate) const EXECUTOR_ARGUMENTS_HELP_TEXT: &str =
 pub(crate) const ARGUMENT_PLACEHOLDERS_HELP_TEXT: &str = "Some scripts or commands can have massive lists of arguments, you can use argument placeholders to make it easier to edit them.";
 pub(crate) const RETRY_COUNT_HELP_TEXT: &str =
     "If the script fails, it will be retried this many times before failing the whole execution.";
+pub(crate) const RETRY_DELAY_HELP_TEXT: &str =
+    "How many seconds to wait before retrying (can be fractional).";
 pub(crate) const CUSTOM_EXECUTOR_HELP_TEXT: &str = "By default, the script will be run using the shell of the operating system (e.g. cmd.exe on Windows, sh on Linux), this option allows to override this behavior to run the script using python, powershell, etc.";
 pub(crate) const IGNORE_OUTPUT_HELP_TEXT: &str = "Avoid attaching to stdout/stderr of the script which is used for reading the logs. Useful in cases when you want to run a script that detaches its child when you don't want it to be blocked by io redirections.";
 pub(crate) const WINDOW_STATUS_REACTIONS_HELP_TEXT: &str =

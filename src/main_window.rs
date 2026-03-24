@@ -3990,7 +3990,7 @@ fn populate_original_script_config_edit_content<'a>(
         row![
             text("Retry delay (seconds):"),
             Space::with_width(4),
-            help_icon(RETRY_COUNT_HELP_TEXT, visual_caches, theme),
+            help_icon(RETRY_DELAY_HELP_TEXT, visual_caches, theme),
         ]
         .into(),
     );
