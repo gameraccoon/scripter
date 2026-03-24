@@ -18,7 +18,7 @@ jobs:
   build_linux_x64:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - run: rustup toolchain install stable --profile minimal
     - uses: Swatinem/rust-cache@v2
     - name: Build
@@ -33,7 +33,7 @@ jobs:
     - name: Copy common data to data folder
       run: cp -r data/common/* data/linux/
     - name: Upload linux artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: scripter-Linux-x64
         path: data/linux/*
@@ -41,7 +41,7 @@ jobs:
   build_windows_x64:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - run: rustup toolchain install stable --profile minimal
     - uses: Swatinem/rust-cache@v2
     - name: Build
@@ -58,7 +58,7 @@ jobs:
     - name: Copy common data to data folder
       run: cp -r data/common/* data/windows/
     - name: Upload Windows artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: scripter-Windows-x64
         path: data/windows/*
@@ -66,7 +66,7 @@ jobs:
   build_macos_arm:
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - run: rustup toolchain install stable --profile minimal
     - uses: Swatinem/rust-cache@v2
     - name: Set up arm target
@@ -83,7 +83,7 @@ jobs:
     - name: Copy common data to data folder
       run: cp -r data/common/* data/macos/
     - name: Upload macOS artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: scripter-MacOS-arm
         path: data/macos/*
