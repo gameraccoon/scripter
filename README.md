@@ -30,7 +30,7 @@ scripter is not a tool that forces you to build your workflow around it, it is j
 - **Easy to see what is happening.** Not only the UI shows the current progress, and the time it takes to run each script, but the log preview with timestamps helps to see if something is off with how the scripts are running.
 - **Easy to investigate what went wrong.** Scripter collects and keeps all your logs in one place, so if something goes wrong, you have easier time tracking down what exactly happened, and when.
 - **Fully local, no servers, no analytics, no automatic updates.** You own it, from the beginning to the end.
-- **Easy to update.** If you ever care to update it, you just need to drop the new executable (just one file) to replace the old one. It will load all your existing configs as if nothing happened. My plan is to make sure that you can do this no matter how many versions forward you update at once.
+- **Easy to update.** If you ever care to update it, you just need to drop the new executable (just one file) to replace the old one. It will load all your existing configs as if nothing happened. My plan is to make sure that you can keep doing this no matter how many versions forward you update at once.
 - **Developed by a real human.** No vibe-coding, and minimum LLM/GenAI involvement (some of the very first versions were coded while using Github Copilot during the times when it was just a cool text completion tool).
 
 ## Getting Started
