@@ -403,10 +403,15 @@ pub fn run_scripts(
                                 write_to_execution_log(
                                     &mut execution_log_writer,
                                     &format!(
-                                        "'{}' failed, retrying (retry {} out of {})",
+                                        "'{}' failed, retrying (retry {} out of {}{})",
                                         script.name,
                                         script_state.retry_count,
                                         script.autorerun_count,
+                                        if script.autorerun_delay_sec > 0.0 {
+                                            format!(", with {}s delay", script.autorerun_delay_sec)
+                                        } else {
+                                            String::new()
+                                        }
                                     ),
                                 );
 
