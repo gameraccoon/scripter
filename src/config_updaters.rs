@@ -773,15 +773,16 @@ fn v1_1_3_add_immediate_script_keybind(config_json: &mut JsonValue) {
 }
 
 fn v1_2_4_add_autorerun_delay_field(config_json: &mut JsonValue) {
-    let update_item_fn = |item: &mut JsonValue| {
+    for_each_script_original_definition_post_0_10_0(config_json, |item: &mut JsonValue| {
         item["autorerun_delay_sec"] = json!(0.0);
-    };
-
-    for_each_script_original_definition_post_0_10_0(config_json, update_item_fn);
+    });
 
     for_each_script_preset(config_json, |preset| {
         if let Some(items) = preset["items"].as_array_mut() {
-            items.iter_mut().for_each(update_item_fn);
+            items.iter_mut().for_each(|item: &mut JsonValue| {
+                // it used to update to 0.0 in 1.2.4, fixed in 1.2.5
+                item["autorerun_delay_sec"] = JsonValue::Null;
+            });
         }
     });
 }
