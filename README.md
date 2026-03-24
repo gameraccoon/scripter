@@ -1,17 +1,15 @@
 
 # scripter
 
-Do you feel like you are automating your daily routines too much? There is no such thing as "too much" when it comes to automation.
-
 ![scripter_animation](https://github.com/gameraccoon/scripter/assets/24990031/39a17a9e-0835-49a5-910e-62785a48ec98)
 
 [![Builds and tests](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml/badge.svg)](https://github.com/gameraccoon/scripter/actions/workflows/rust.yml)
 
-A simple and lightweight GUI front-end for your scripts.
+A simple and lightweight GUI for running your scripts.
 
-- Run your existing scripts with one or two clicks
+- Run your existing scripts with a couple of clicks
 - Schedule batches of scripts and see the progress of their execution
-- Add notification scripts that signal when the execution is done (e.g., send yourself a [pushover](https://pushover.net/) notification)
+- Add notification scripts that signal when the execution is done (e.g., send yourself a [ntfy](https://ntfy.sh/) push)
 - Share your scripts with non-programmers in a more user-friendly way
 - Spend less time on typing and context switching
 
@@ -25,6 +23,15 @@ scripter is not a tool that forces you to build your workflow around it, it is j
 - Save often-used script combinations into presets, and run a preset in just one or two clicks
 - Set up quick buttons for scripts like "open project in IDE" that are always visible and ready to be started with one click
 - Set hotkeys to scheduling specific scripts or presets
+
+## What I'm proud of
+
+- **Responsive even when under load.** Using native UI and designed to work under 100% CPU load while running scripts that output many log lines per second. While your Slack can't open, and your YouTube music is lagging, you still should be able to interact with scripter.
+- **Easy to see what is happening.** Not only the UI shows the current progress, and the time it takes to run each script, but the log preview with timestamps helps to see if something is off with how the scripts are running.
+- **Easy to investigate what went wrong.** Scripter collects and keeps all your logs in one place, so if something goes wrong, you have easier time tracking down what exactly happened, and when.
+- **Fully local, no servers, no analytics, no automatic updates.** You own it, from the beginning to the end.
+- **Easy to update.** If you ever care to update it, you just need to drop the new executable (just one file) to replace the old one. It will load all your existing configs as if nothing happened. My plan is to make sure that you can do this no matter how many versions forward you update at once.
+- **Developed by a real human.** No vibe-coding, and minimum LLM/GenAI involvement (some of the very first versions were coded while using Github Copilot during the times when it was just a cool text completion tool).
 
 ## Getting Started
 
