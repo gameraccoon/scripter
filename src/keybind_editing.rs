@@ -56,6 +56,7 @@ pub fn process_key_press(
                 }
                 KeybindAssociatedData::Script(guid, keybind_type) => {
                     clear_script_keybind(app, &guid, keybind_type);
+                    app.edit_data.dirty_scripts.insert(guid);
                 }
             }
             app.edit_data.is_dirty = true;
@@ -88,6 +89,7 @@ pub fn process_key_press(
                         config::CustomKeybind { key, modifiers },
                         keybind_type,
                     );
+                    app.edit_data.dirty_scripts.insert(guid);
                 }
             }
 

@@ -38,6 +38,7 @@ use iced::{Element, Length, Subscription};
 use once_cell::sync::Lazy;
 use std::cmp::PartialEq;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::mem::swap;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -108,6 +109,8 @@ pub(crate) struct EditData {
     pub(crate) window_edit_data: Option<WindowEditData>,
     // do we have unsaved changes
     pub(crate) is_dirty: bool,
+    // which scripts have unsaved changes
+    pub(crate) dirty_scripts: HashSet<config::Guid>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -410,6 +413,7 @@ impl MainWindow {
                 script_filter: String::new(),
                 window_edit_data: None,
                 is_dirty: false,
+                dirty_scripts: HashSet::new(),
             },
             window_state: WindowState {
                 pane_focus: None,
@@ -1045,8 +1049,7 @@ impl MainWindow {
                         script_type: EditScriptType::ScriptConfig,
                     });
                 }
-                update_config_cache(self);
-                self.edit_data.is_dirty = true;
+                on_script_edited(self, new_script_uid);
                 return scroll_selected_script_into_view(&self);
             }
             WindowMessage::RemoveConfigScript(config_script_id) => {
@@ -1070,8 +1073,8 @@ impl MainWindow {
             WindowMessage::EditScriptNameForConfig(config_script_id, new_name) => {
                 if let Some(preset) = get_editing_preset(&mut self.app_config, config_script_id) {
                     preset.name = new_name;
-                    self.edit_data.is_dirty = true;
-                    update_config_cache(self);
+                    let preset_uid = preset.uid.clone();
+                    on_script_edited(self, preset_uid);
                 } else {
                     apply_config_script_edit(self, config_script_id, move |script| {
                         script.name = new_name
@@ -1108,8 +1111,8 @@ impl MainWindow {
             WindowMessage::EditScriptIconPath(config_script_id, new_icon_path) => {
                 if let Some(preset) = get_editing_preset(&mut self.app_config, config_script_id) {
                     preset.icon.path = new_icon_path;
-                    self.edit_data.is_dirty = true;
-                    update_config_cache(self);
+                    let preset_uid = preset.uid.clone();
+                    on_script_edited(self, preset_uid);
                 } else {
                     apply_config_script_edit(self, config_script_id, move |script| {
                         script.icon.path = new_icon_path
@@ -1119,8 +1122,8 @@ impl MainWindow {
             WindowMessage::EditScriptIconPathType(config_script_id, new_path_type) => {
                 if let Some(preset) = get_editing_preset(&mut self.app_config, config_script_id) {
                     preset.icon.path_type = new_path_type;
-                    self.edit_data.is_dirty = true;
-                    update_config_cache(self);
+                    let preset_uid = preset.uid.clone();
+                    on_script_edited(self, preset_uid);
                 } else {
                     apply_config_script_edit(self, config_script_id, move |script| {
                         script.icon.path_type = new_path_type;
@@ -1376,6 +1379,7 @@ impl MainWindow {
                 if has_saved {
                     self.app_config = config::read_config();
                     self.edit_data.is_dirty = false;
+                    self.edit_data.dirty_scripts.clear();
                     update_config_cache(self);
                     keybind_editing::update_keybinds(self);
                     let edit_mode = config::get_main_edit_mode(&self.app_config);
@@ -1390,6 +1394,7 @@ impl MainWindow {
                 config::populate_shared_scripts_from_config(&mut self.app_config);
                 apply_theme(self);
                 self.edit_data.is_dirty = false;
+                self.edit_data.dirty_scripts.clear();
                 clear_script_selection(&mut self.window_state.selected_scripts);
                 update_config_cache(self);
                 keybind_editing::update_keybinds(self);
@@ -1610,12 +1615,12 @@ impl MainWindow {
                     match script {
                         config::ScriptDefinition::ReferenceToShared(reference) => {
                             reference.is_hidden = is_hidden;
-                            self.edit_data.is_dirty = true;
+                            let reference_uid = reference.uid.clone();
+                            on_script_edited(self, reference_uid);
                         }
                         _ => {}
                     }
                 }
-                update_config_cache(self);
             }
             WindowMessage::CreateCopyOfSharedScript(script_idx) => {
                 let script = if let Some(config) = &self.app_config.local_config_body {
@@ -1628,8 +1633,10 @@ impl MainWindow {
                     return Task::none();
                 };
 
+                let new_script_uid;
                 let new_script = match script {
                     config::ScriptDefinition::ReferenceToShared(reference) => {
+                        new_script_uid = reference.uid.clone();
                         if let Some((script, _idx)) = config::get_original_script_definition_by_uid(
                             &self.app_config,
                             &reference.uid,
@@ -1669,9 +1676,8 @@ impl MainWindow {
                             edit_mode: config::ConfigEditMode::Local,
                         },
                     );
-                    self.edit_data.is_dirty = true;
+                    on_script_edited(self, new_script_uid);
                 }
-                update_config_cache(self);
                 return scroll_selected_script_into_view(&self);
             }
             WindowMessage::MoveToShared(script_idx) => {
@@ -1687,8 +1693,10 @@ impl MainWindow {
                     );
 
                     if let Some(script) = config.script_definitions.get_mut(script_idx) {
+                        let new_script_uid;
                         let mut replacement_script = match script {
                             config::ScriptDefinition::Original(definition) => {
+                                new_script_uid = definition.uid.clone();
                                 config::ScriptDefinition::ReferenceToShared(
                                     config::ReferenceToSharedScript {
                                         uid: definition.uid.clone(),
@@ -1697,6 +1705,7 @@ impl MainWindow {
                                 )
                             }
                             config::ScriptDefinition::Preset(preset) => {
+                                new_script_uid = preset.uid.clone();
                                 config::ScriptDefinition::ReferenceToShared(
                                     config::ReferenceToSharedScript {
                                         uid: preset.uid.clone(),
@@ -1713,7 +1722,7 @@ impl MainWindow {
                         self.app_config
                             .script_definitions
                             .insert(insert_position, replacement_script);
-                        self.edit_data.is_dirty = true;
+                        on_script_edited(self, new_script_uid);
                     }
                 }
             }
@@ -2104,8 +2113,7 @@ impl MainWindow {
                     config::get_main_rewritable_config_mut(&mut self.app_config)
                         .quick_launch_scripts
                         .push(original_script_id);
-                    self.edit_data.is_dirty = true;
-                    update_config_cache(self);
+                    on_script_edited(self, script_uid);
                 }
             }
             WindowMessage::RemoveFromQuickLaunchPanel(script_uid) => {
@@ -2116,8 +2124,7 @@ impl MainWindow {
                     .position(|v| *v == script_uid);
                 if let Some(index) = index {
                     config.quick_launch_scripts.remove(index);
-                    self.edit_data.is_dirty = true;
-                    update_config_cache(self);
+                    on_script_edited(self, script_uid);
                 }
             }
         }
@@ -2359,6 +2366,14 @@ fn produce_script_list_content<'a>(
                 }
                 if is_editing && script.is_hidden {
                     name_text += " [hidden]";
+                }
+
+                if is_editing
+                    && edit_data
+                        .dirty_scripts
+                        .contains(&script.original_script_uid)
+                {
+                    name_text.insert(0, '*')
                 }
 
                 let will_run_on_click =

@@ -1154,14 +1154,14 @@ pub fn add_script_to_config(
         return;
     }
 
+    let new_script_uid = config::get_script_uid(&script).clone();
+
     let script_idx = match edit_mode {
         config::ConfigEditMode::Shared => {
             Some(add_script_to_shared_config(&mut app.app_config, script))
         }
         config::ConfigEditMode::Local => add_script_to_local_config(&mut app.app_config, script),
     };
-
-    update_config_cache(app);
 
     app.edit_data
         .window_edit_data
@@ -1177,7 +1177,7 @@ pub fn add_script_to_config(
                 edit_mode,
             },
         );
-        app.edit_data.is_dirty = true;
+        on_script_edited(app, new_script_uid);
     }
 }
 
@@ -1244,15 +1244,22 @@ pub fn remove_config_script(app: &mut MainWindow, config_script_id: ConfigScript
     if app.edit_data.window_edit_data.is_some() {
         match config_script_id.edit_mode {
             config::ConfigEditMode::Shared => {
-                app.app_config
+                let script = app
+                    .app_config
                     .script_definitions
                     .remove(config_script_id.idx);
                 app.edit_data.is_dirty = true;
+                app.edit_data
+                    .dirty_scripts
+                    .remove(config::get_script_uid(&script));
             }
             config::ConfigEditMode::Local => {
                 if let Some(config) = &mut app.app_config.local_config_body {
-                    config.script_definitions.remove(config_script_id.idx);
+                    let script = config.script_definitions.remove(config_script_id.idx);
                     app.edit_data.is_dirty = true;
+                    app.edit_data
+                        .dirty_scripts
+                        .remove(config::get_script_uid(&script));
                 }
             }
         }
@@ -1719,6 +1726,12 @@ pub fn move_config_script_to_index(app: &mut MainWindow, index: usize, new_index
     update_config_cache(app);
 }
 
+pub fn on_script_edited(app: &mut MainWindow, edited_script_uid: config::Guid) {
+    app.edit_data.is_dirty = true;
+    app.edit_data.dirty_scripts.insert(edited_script_uid);
+    update_config_cache(app);
+}
+
 pub fn apply_config_script_edit(
     app: &mut MainWindow,
     config_script_id: ConfigScriptId,
@@ -1730,8 +1743,8 @@ pub fn apply_config_script_edit(
                 match &mut config.script_definitions.get_mut(config_script_id.idx) {
                     Some(config::ScriptDefinition::Original(script)) => {
                         edit_fn(script);
-                        app.edit_data.is_dirty = true;
-                        update_config_cache(app);
+                        let script_uid = script.uid.clone();
+                        on_script_edited(app, script_uid);
                     }
                     _ => {}
                 }
@@ -1744,8 +1757,8 @@ pub fn apply_config_script_edit(
         {
             Some(config::ScriptDefinition::Original(script)) => {
                 edit_fn(script);
-                app.edit_data.is_dirty = true;
-                update_config_cache(app);
+                let script_uid = script.uid.clone();
+                on_script_edited(app, script_uid);
             }
             _ => {}
         },
@@ -1763,8 +1776,8 @@ pub fn apply_config_preset_edit(
                 match &mut config.script_definitions.get_mut(config_script_id.idx) {
                     Some(config::ScriptDefinition::Preset(preset)) => {
                         edit_fn(preset);
-                        app.edit_data.is_dirty = true;
-                        update_config_cache(app);
+                        let script_uid = preset.uid.clone();
+                        on_script_edited(app, script_uid);
                     }
                     _ => {}
                 }
@@ -1777,8 +1790,8 @@ pub fn apply_config_preset_edit(
         {
             Some(config::ScriptDefinition::Preset(preset)) => {
                 edit_fn(preset);
-                app.edit_data.is_dirty = true;
-                update_config_cache(app);
+                let script_uid = preset.uid.clone();
+                on_script_edited(app, script_uid);
             }
             _ => {}
         },
