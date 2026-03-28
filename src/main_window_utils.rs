@@ -470,7 +470,7 @@ pub fn update_config_cache(app: &mut MainWindow) {
     let binding = app.edit_data.script_filter.to_lowercase();
     let search_words = binding.split_whitespace().collect::<Vec<&str>>();
 
-    let is_full_list = app.edit_data.window_edit_data.is_some();
+    let is_edited_list = app.edit_data.window_edit_data.is_some();
 
     let is_script_filtered_out = |name: &str| -> bool {
         !search_words.is_empty() && {
@@ -526,10 +526,14 @@ pub fn update_config_cache(app: &mut MainWindow) {
                             };
                             let is_script_hidden =
                                 reference.is_hidden || is_script_filtered_out(&name);
+                            let is_script_dirty = is_edited_list
+                                && app.edit_data.dirty_scripts.contains(&reference.uid.clone());
                             add_cache_record(
                                 result_list,
-                                is_full_list,
+                                is_edited_list,
                                 is_script_hidden,
+                                is_script_dirty,
+                                false,
                                 name,
                                 reference.uid.clone(),
                                 config::get_full_optional_path(paths, &icon),
@@ -544,11 +548,15 @@ pub fn update_config_cache(app: &mut MainWindow) {
                     }
                 }
                 config::ScriptDefinition::Original(script) => {
-                    let is_script_hidden = is_script_filtered_out(&script.name) || script.is_hidden;
+                    let is_script_hidden = script.is_hidden || is_script_filtered_out(&script.name);
+                    let is_script_dirty =
+                        is_edited_list && app.edit_data.dirty_scripts.contains(&script.uid.clone());
                     add_cache_record(
                         result_list,
-                        is_full_list,
+                        is_edited_list,
                         is_script_hidden,
+                        is_script_dirty,
+                        true,
                         script.name.clone(),
                         script.uid.clone(),
                         config::get_full_optional_path(paths, &script.icon),
@@ -556,11 +564,15 @@ pub fn update_config_cache(app: &mut MainWindow) {
                 }
                 config::ScriptDefinition::Preset(preset) => {
                     let is_script_hidden = is_script_filtered_out(&preset.name);
+                    let is_script_dirty =
+                        is_edited_list && app.edit_data.dirty_scripts.contains(&preset.uid.clone());
 
                     add_cache_record(
                         result_list,
-                        is_full_list,
+                        is_edited_list,
                         is_script_hidden,
+                        is_script_dirty,
+                        true,
                         preset.name.clone(),
                         preset.uid.clone(),
                         config::get_full_optional_path(paths, &preset.icon),
@@ -577,10 +589,14 @@ pub fn update_config_cache(app: &mut MainWindow) {
                 config::ScriptDefinition::ReferenceToShared(_) => {}
                 config::ScriptDefinition::Original(script) => {
                     let is_script_hidden = is_script_filtered_out(&script.name) || script.is_hidden;
+                    let is_script_dirty =
+                        is_edited_list && app.edit_data.dirty_scripts.contains(&script.uid.clone());
                     add_cache_record(
                         result_list,
-                        is_full_list,
+                        is_edited_list,
                         is_script_hidden,
+                        is_script_dirty,
+                        false,
                         script.name.clone(),
                         script.uid.clone(),
                         config::get_full_optional_path(paths, &script.icon),
@@ -588,10 +604,14 @@ pub fn update_config_cache(app: &mut MainWindow) {
                 }
                 config::ScriptDefinition::Preset(preset) => {
                     let is_script_hidden = is_script_filtered_out(&preset.name);
+                    let is_script_dirty =
+                        is_edited_list && app.edit_data.dirty_scripts.contains(&preset.uid.clone());
                     add_cache_record(
                         result_list,
-                        is_full_list,
+                        is_edited_list,
                         is_script_hidden,
+                        is_script_dirty,
+                        false,
                         preset.name.clone(),
                         preset.uid.clone(),
                         config::get_full_optional_path(paths, &preset.icon),
@@ -657,20 +677,44 @@ pub fn update_config_cache(app: &mut MainWindow) {
     update_edited_execution_list_script_number(app);
 }
 
+fn get_script_edit_name(
+    name_text: String,
+    is_dirty: bool,
+    is_hidden: bool,
+    is_local: bool,
+) -> String {
+    format!(
+        "{}{}{}{}",
+        if is_dirty { "*" } else { "" },
+        name_text,
+        if is_local { " [local]" } else { "" },
+        if is_hidden { " [hidden]" } else { "" },
+    )
+}
+
 pub fn add_cache_record(
     result_list: &mut Vec<ScriptListCacheRecord>,
-    is_full_list: bool,
+    is_edited_list: bool,
     is_script_hidden: bool,
+    is_script_dirty: bool,
+    is_script_local: bool,
     script_name: String,
     script_uid: config::Guid,
     script_icon_path: Option<PathBuf>,
 ) {
-    if is_full_list || !is_script_hidden {
+    if is_edited_list || !is_script_hidden {
         result_list.push(ScriptListCacheRecord {
-            name: script_name,
+            name: if !is_edited_list {
+                script_name
+            } else {
+                get_script_edit_name(
+                    script_name,
+                    is_script_dirty,
+                    is_script_hidden,
+                    is_script_local,
+                )
+            },
             full_icon_path: script_icon_path,
-            is_hidden: is_script_hidden,
-            is_dirty: is_script_dirty,
             original_script_uid: script_uid,
         });
     }

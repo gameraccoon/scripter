@@ -97,8 +97,6 @@ pub(crate) struct ButtonKeyCaches {
 pub(crate) struct ScriptListCacheRecord {
     pub(crate) name: String,
     pub(crate) full_icon_path: Option<PathBuf>,
-    pub(crate) is_hidden: bool,
-    pub(crate) is_dirty: bool,
     pub(crate) original_script_uid: config::Guid,
 }
 
@@ -2361,19 +2359,6 @@ fn produce_script_list_content<'a>(
             .iter()
             .enumerate()
             .map(|(i, script)| {
-                let mut name_text = script.name.clone();
-
-                if is_editing && is_local_config_script(i, &config) {
-                    name_text += " [local]";
-                }
-                if is_editing && script.is_hidden {
-                    name_text += " [hidden]";
-                }
-
-                if is_editing && script.is_dirty {
-                    name_text.insert(0, '*')
-                }
-
                 let will_run_on_click =
                     edit_data.window_edit_data.is_none() && window_state.is_command_key_down;
 
@@ -2414,7 +2399,7 @@ fn produce_script_list_content<'a>(
                     row![
                         icon,
                         Space::with_width(6),
-                        text(name_text).height(22),
+                        text(script.name.clone()).height(22),
                         horizontal_space()
                     ]
                     .height(22),
