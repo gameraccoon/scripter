@@ -98,6 +98,7 @@ pub(crate) struct ScriptListCacheRecord {
     pub(crate) name: String,
     pub(crate) full_icon_path: Option<PathBuf>,
     pub(crate) is_hidden: bool,
+    pub(crate) is_dirty: bool,
     pub(crate) original_script_uid: config::Guid,
 }
 
@@ -1636,7 +1637,6 @@ impl MainWindow {
                 let new_script_uid;
                 let new_script = match script {
                     config::ScriptDefinition::ReferenceToShared(reference) => {
-                        new_script_uid = reference.uid.clone();
                         if let Some((script, _idx)) = config::get_original_script_definition_by_uid(
                             &self.app_config,
                             &reference.uid,
@@ -1647,11 +1647,13 @@ impl MainWindow {
                                     original_script.uid = config::Guid::new();
                                     original_script.name =
                                         format!("{} (copy)", original_script.name);
+                                    new_script_uid = original_script.uid.clone();
                                     script
                                 }
                                 config::ScriptDefinition::Preset(preset) => {
                                     preset.uid = config::Guid::new();
                                     preset.name = format!("{} (copy)", preset.name);
+                                    new_script_uid = preset.uid.clone();
                                     script
                                 }
                                 config::ScriptDefinition::ReferenceToShared(_) => {
@@ -2368,11 +2370,7 @@ fn produce_script_list_content<'a>(
                     name_text += " [hidden]";
                 }
 
-                if is_editing
-                    && edit_data
-                        .dirty_scripts
-                        .contains(&script.original_script_uid)
-                {
+                if is_editing && script.is_dirty {
                     name_text.insert(0, '*')
                 }
 

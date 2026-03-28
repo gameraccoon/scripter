@@ -670,6 +670,7 @@ pub fn add_cache_record(
             name: script_name,
             full_icon_path: script_icon_path,
             is_hidden: is_script_hidden,
+            is_dirty: is_script_dirty,
             original_script_uid: script_uid,
         });
     }

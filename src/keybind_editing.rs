@@ -7,10 +7,10 @@ use iced::{
     Element,
 };
 
-use crate::config;
 use crate::custom_keybinds;
 use crate::key_mapping;
 use crate::main_window;
+use crate::{config, main_window_utils::update_config_cache};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum KeybindAssociatedData {
@@ -59,7 +59,6 @@ pub fn process_key_press(
                     app.edit_data.dirty_scripts.insert(guid);
                 }
             }
-            app.edit_data.is_dirty = true;
         } else {
             if let Some(old_keybind) = app.keybinds.get_keybind(iced_key.clone(), iced_modifiers) {
                 if *old_keybind != keybind {
@@ -92,9 +91,9 @@ pub fn process_key_press(
                     app.edit_data.dirty_scripts.insert(guid);
                 }
             }
-
-            app.edit_data.is_dirty = true;
         }
+        app.edit_data.is_dirty = true;
+        update_config_cache(app);
         return true;
     }
 
