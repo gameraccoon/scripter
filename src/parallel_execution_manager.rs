@@ -198,6 +198,28 @@ impl Execution {
         &self.log_directory
     }
 
+    pub fn get_first_failed_script_log_path(&self) -> Option<PathBuf> {
+        if self.has_failed_scripts {
+            if let Some(script_idx) = self
+                .scheduled_scripts_cache
+                .iter()
+                .position(|s| s.status.has_script_failed())
+            {
+                return Some(file_utils::get_script_output_path(
+                    self.log_directory.clone(),
+                    &self.scheduled_scripts_cache[script_idx]
+                        .script
+                        .original
+                        .name,
+                    script_idx as isize,
+                    0,
+                ));
+            }
+        }
+
+        None
+    }
+
     pub fn get_recent_logs(&self) -> &Arc<Mutex<execution_thread::LogBuffer>> {
         &self.recent_logs
     }

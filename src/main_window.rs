@@ -326,6 +326,7 @@ pub(crate) enum WindowMessage {
     OpenWithDefaultApplication(PathBuf),
     OpenUrl(String),
     OpenLogFolder(parallel_execution_manager::ExecutionId),
+    OpenFirstFailedScriptLog(parallel_execution_manager::ExecutionId),
     OpenLogRootFolder,
     ProcessKeyPress(keyboard::Key, keyboard::Modifiers),
     StartRecordingKeybind(keybind_editing::KeybindAssociatedData),
@@ -2022,6 +2023,17 @@ impl MainWindow {
                     open::that_in_background(execution.get_log_folder_path());
                 }
             }
+            WindowMessage::OpenFirstFailedScriptLog(execution_id) => {
+                if let Some(execution) = self
+                    .execution_manager
+                    .get_started_executions()
+                    .get(execution_id)
+                {
+                    if let Some(log_path) = execution.get_first_failed_script_log_path() {
+                        open::that_in_background(&log_path);
+                    }
+                }
+            }
             WindowMessage::OpenLogRootFolder => {
                 match std::fs::exists(&self.app_config.paths.logs_path) {
                     Ok(true) => {}
@@ -3417,8 +3429,19 @@ fn produce_log_output_content<'a>(
 
         let logs_button = if selected_execution.has_non_skipped_scripts() {
             column![main_button(
-                "Open log directory",
+                "Log directory",
                 Some(WindowMessage::OpenLogFolder(selected_execution.get_id())),
+            )]
+        } else {
+            column![]
+        };
+
+        let first_failed_log_button = if selected_execution.has_failed_scripts() {
+            column![main_button(
+                "First failed log",
+                Some(WindowMessage::OpenFirstFailedScriptLog(
+                    selected_execution.get_id()
+                )),
             )]
         } else {
             column![]
@@ -3428,7 +3451,7 @@ fn produce_log_output_content<'a>(
 
         column![
             tabs,
-            logs_button.width(Length::Fill).align_x(Alignment::Center),
+            row![logs_button, first_failed_log_button].spacing(5),
             stack![
                 scrollable(data)
                     .style(style::log_scrollable_style)
